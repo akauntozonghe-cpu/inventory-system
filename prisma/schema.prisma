@@ -1,0 +1,80 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Item {
+  id                  String   @id @default(cuid())
+  managementCode      String?  @unique
+  managementGroupCode String?
+  janCode             String?
+  name                String
+  manufacturer        String?
+  majorCategory       String?
+  minorCategory       String?
+  defaultUnit         String?
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  inventoryInstances  InventoryInstance[]
+}
+
+model StorageLocation {
+  id          String   @id @default(cuid())
+  name        String   @unique
+  description String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  inventories InventoryInstance[]
+}
+
+model InventoryInstance {
+  id                     String   @id @default(cuid())
+
+  itemId                 String
+  item                   Item @relation(fields: [itemId], references: [id])
+
+  storageLocationId      String?
+  storageLocation        StorageLocation? @relation(fields: [storageLocationId], references: [id])
+
+  managementCode         String?
+  managementGroupCode    String?
+
+  lotNo                  String?
+  expirationDate         String?
+  unit                   String?
+
+  quantity               Int
+  actualQuantity         Int?
+
+  allocationType         AllocationType
+  status                 String
+
+  createdAt              DateTime @default(now())
+  updatedAt              DateTime @updatedAt
+
+  histories              InventoryHistory[]
+}
+
+model InventoryHistory {
+  id                     String   @id @default(cuid())
+
+  inventoryInstanceId    String
+  inventoryInstance      InventoryInstance @relation(fields: [inventoryInstanceId], references: [id])
+
+  changeQuantity         Int
+  action                 String
+
+  createdAt              DateTime @default(now())
+}
+
+enum AllocationType {
+  home
+  flea_market
+  warehouse
+}
