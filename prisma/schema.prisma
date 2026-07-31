@@ -20,7 +20,7 @@ model Item {
   createdAt           DateTime @default(now())
   updatedAt           DateTime @updatedAt
 
-  inventoryInstances  InventoryInstance[]
+  inventoryInstances InventoryInstance[]
 }
 
 model StorageLocation {
@@ -34,47 +34,100 @@ model StorageLocation {
 }
 
 model InventoryInstance {
-  id                     String   @id @default(cuid())
+  id                String @id @default(cuid())
 
-  itemId                 String
-  item                   Item @relation(fields: [itemId], references: [id])
+  itemId            String
+  item              Item @relation(fields: [itemId], references: [id])
 
-  storageLocationId      String?
-  storageLocation        StorageLocation? @relation(fields: [storageLocationId], references: [id])
+  storageLocationId String?
+  storageLocation   StorageLocation? @relation(fields: [storageLocationId], references: [id])
 
-  managementCode         String?
-  managementGroupCode    String?
+  managementCode      String?
+  managementGroupCode String?
 
-  lotNo                  String?
-  expirationDate         String?
-  unit                   String?
+  manufacturer      String?
+  majorCategory     String?
+  minorCategory     String?
 
-  quantity               Int
-  actualQuantity         Int?
+  lotNo             String?
+  expirationDate    String?
+  unit              String?
 
-  allocationType         AllocationType
-  status                 String
+  quantity          Int
+  actualQuantity    Int?
 
-  createdAt              DateTime @default(now())
-  updatedAt              DateTime @updatedAt
+  allocationType    AllocationType
+  status            String
 
-  histories              InventoryHistory[]
+  stocktakeStatus   String @default("未棚卸")
+  stocktakeAt       DateTime?
+
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  histories         InventoryHistory[]
+  stocktakeRecords  StocktakeRecord[]
+
+  // 同じ商品・保管場所・Lot・期限の重複を防止
+  @@unique([itemId, storageLocationId, lotNo, expirationDate])
 }
 
 model InventoryHistory {
-  id                     String   @id @default(cuid())
+  id                  String @id @default(cuid())
 
-  inventoryInstanceId    String
-  inventoryInstance      InventoryInstance @relation(fields: [inventoryInstanceId], references: [id])
+  inventoryInstanceId String
+  inventoryInstance   InventoryInstance @relation(fields: [inventoryInstanceId], references: [id])
 
-  changeQuantity         Int
-  action                 String
+  changeQuantity      Int
+  action              String
 
-  createdAt              DateTime @default(now())
+  createdAt           DateTime @default(now())
+}
+
+model StocktakeSession {
+  id          String @id @default(cuid())
+
+  title       String
+  operator    String? @default("管理者")
+
+  status      StocktakeStatus @default(IN_PROGRESS)
+
+  startedAt   DateTime @default(now())
+  pausedAt    DateTime?
+  completedAt DateTime?
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  records     StocktakeRecord[]
+}
+
+model StocktakeRecord {
+  id                  String @id @default(cuid())
+
+  sessionId           String
+  session             StocktakeSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  inventoryInstanceId String
+  inventoryInstance   InventoryInstance @relation(fields: [inventoryInstanceId], references: [id])
+
+  countedQuantity     Int
+  memo                String?
+
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  @@unique([sessionId, inventoryInstanceId])
 }
 
 enum AllocationType {
   home
   flea_market
   warehouse
+}
+
+enum StocktakeStatus {
+  IN_PROGRESS
+  PAUSED
+  COMPLETED
 }

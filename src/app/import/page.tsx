@@ -1,103 +1,110 @@
 "use client";
 
 import { useState } from "react";
+import * as XLSX from "xlsx";
 
 export default function ImportPage() {
-  const [file, setFile] =
-    useState<File | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [message, setMessage] = useState("");
 
-  const importCsv = async () => {
-    if (!file) return;
+  async function importExcel(file: File) {
+    try {
+      setLoading(true);
+      setMessage("");
 
-    const buffer =
-      await file.arrayBuffer();
+      const buffer = await file.arrayBuffer();
 
-    const decoder =
-      new TextDecoder("shift-jis");
+      const workbook = XLSX.read(buffer, {
+        type: "array",
+      });
 
-    const text =
-      decoder.decode(buffer);
+      // 管理表シート
+      const sheet = workbook.Sheets["管理表"];
 
-    const rows =
-      text.split("\n");
-
-    for (const row of rows.slice(1)) {
-      if (!row.trim()) continue;
-
-      const columns =
-        row.split(",");
-
-      const managementCode =
-        columns[0]?.trim();
-
-      const managementGroupCode =
-        columns[1]?.trim();
-
-      const locationName =
-        columns[2]?.trim();
-
-      const majorCategory =
-        columns[3]?.trim();
-
-      const minorCategory =
-        columns[4]?.trim();
-
-      const janCode =
-        columns[5]?.trim();
-
-      const manufacturer =
-        columns[7]?.trim();
-
-      const name =
-        columns[8]?.trim();
-
-      const lotNo =
-        columns[9]?.trim();
-
-      const expirationDate =
-        columns[10]?.trim();
-
-      const unit =
-        columns[11]?.trim();
-
-      if (
-        !name ||
-        name === "品名"
-      ) {
-        continue;
+      if (!sheet) {
+        setMessage("管理表シートが見つかりません");
+        return;
       }
 
-      let storageLocationId:
-        | string
-        | undefined;
+      // ★2行目をヘッダーとして読む
+      const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(
+        sheet,
+        {
+          raw: false,
+          defval: "",
+          range: 1,
+        }
+      );
 
-      if (locationName) {
-        const locationRes =
-          await fetch(
-            "/api/storage-locations",
-            {
-              method: "POST",
+      console.log("シート一覧", workbook.SheetNames);
+      console.log("読み込み件数", rows.length);
+      console.log("1行目", rows[0]);
+      console.log("列名", Object.keys(rows[0] ?? {}));
 
-              headers: {
-                "Content-Type":
-                  "application/json",
-              },
-
-              body: JSON.stringify({
-                name: locationName,
-              }),
-            }
+      const inventories = rows
+        .filter((row) => {
+          return (
+            String(row["品名"] ?? "").trim() !== ""
           );
+        })
+        .map((row) => ({
+          storageLocation: String(
+            row["保管場所"] ?? ""
+          ).trim(),
 
-        const location =
-          await locationRes.json();
+          managementCode: String(
+            row["管理コード"] ?? ""
+          ).trim(),
 
-        storageLocationId =
-          location.id;
-      }
+          managementGroupCode: String(
+            row["管理区分"] ?? ""
+          ).trim(),
 
-      const itemRes =
-        await fetch("/api/items", {
+          manufacturer: String(
+            row["会社名"] ?? ""
+          ).trim(),
+
+          majorCategory: String(
+            row["大分類"] ?? ""
+          ).trim(),
+
+          minorCategory: String(
+            row["小分類"] ?? ""
+          ).trim(),
+
+          janCode: String(
+            row["JANコード"] ?? ""
+          ).trim(),
+
+          name: String(
+            row["品名"] ?? ""
+          ).trim(),
+
+          lotNo: String(
+            row["Lot.No・製造番号"] ?? ""
+          ).trim(),
+
+          expirationDate: String(
+            row["期限"] ?? ""
+          ).trim(),
+
+          quantity: Number(
+            row["個数"] ?? 0
+          ),
+
+          unit: String(
+            row["個数単位"] ?? "個"
+          ).trim(),
+        }));
+
+      console.log(
+        "登録件数",
+        inventories.length
+      );
+
+      const res = await fetch(
+        "/api/import",
+        {
           method: "POST",
 
           headers: {
@@ -106,85 +113,95 @@ export default function ImportPage() {
           },
 
           body: JSON.stringify({
-            managementCode,
-
-            managementGroupCode,
-
-            janCode,
-
-            name,
-
-            manufacturer,
-
-            majorCategory,
-
-            minorCategory,
-
-            defaultUnit:
-              unit,
+            inventories,
           }),
-        });
+        }
+      );
 
-      const item =
-        await itemRes.json();
+      const result =
+        await res.json();
 
-      await fetch("/api/inventory", {
-        method: "POST",
+      if (!res.ok) {
+        throw new Error(
+          result.message
+        );
+      }
 
-        headers: {
-          "Content-Type":
-            "application/json",
-        },
+      setMessage(
+        `${result.created}件インポートしました`
+      );
 
-        body: JSON.stringify({
-          itemId: item.id,
-
-          quantity: 1,
-
-          allocationType:
-            "home",
-
-          storageLocationId,
-
-          managementCode,
-
-          managementGroupCode,
-
-          lotNo,
-
-          expirationDate,
-
-          unit,
-        }),
-      });
+    } catch (error) {
+      console.error(error);
+      setMessage("インポート失敗");
+    } finally {
+      setLoading(false);
     }
-
-    alert("インポート完了");
-  };
+  }
 
   return (
-    <div className="p-8 max-w-md">
-      <h1 className="text-3xl font-bold mb-8">
-        CSVインポート
+    <div className="max-w-3xl mx-auto p-8">
+
+      <h1 className="text-4xl font-bold mb-8">
+        初回インポート
       </h1>
 
-      <input
-        type="file"
-        accept=".csv"
-        onChange={(e) =>
-          setFile(
-            e.target.files?.[0] ??
-              null
-          )
-        }
-      />
+      <div className="bg-white rounded-xl shadow p-8">
 
-      <button
-        onClick={importCsv}
-        className="bg-blue-500 text-white px-4 py-2 rounded mt-4"
-      >
-        インポート
-      </button>
+        <div className="space-y-6">
+
+          <input
+            type="file"
+            accept=".xlsx,.xls"
+            onChange={(e) => {
+              const file =
+                e.target.files?.[0];
+
+              if (file) {
+                importExcel(file);
+              }
+            }}
+            className="border rounded-lg p-3 w-full"
+          />
+
+          {loading && (
+            <div className="rounded-lg bg-blue-100 p-4">
+              インポート中...
+            </div>
+          )}
+
+          {!loading && message && (
+            <div className="rounded-lg bg-green-100 p-4">
+              {message}
+            </div>
+          )}
+
+          <div className="rounded-lg bg-gray-50 border p-4 text-sm text-gray-600">
+
+            <div className="font-bold mb-2">
+              読み込み対象
+            </div>
+
+            <ul className="list-disc ml-5 space-y-1">
+              <li>管理表シート</li>
+              <li>保管場所</li>
+              <li>会社名</li>
+              <li>大分類</li>
+              <li>小分類</li>
+              <li>JANコード</li>
+              <li>品名</li>
+              <li>Lot.No・製造番号</li>
+              <li>期限</li>
+              <li>個数</li>
+              <li>個数単位</li>
+            </ul>
+
+          </div>
+
+        </div>
+
+      </div>
+
     </div>
   );
 }

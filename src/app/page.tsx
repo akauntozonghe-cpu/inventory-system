@@ -1,244 +1,143 @@
 "use client";
 
-import {
-  useEffect,
-  useState,
-} from "react";
-
-type Inventory = {
-  id: string;
-
-  quantity: number;
-
-  managementCode?: string;
-
-  storageLocation?: {
-    name: string;
-  };
-
-  item: {
-    name: string;
-
-    janCode?: string;
-  };
-};
+import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { useEffect, useState } from "react";
 
 export default function Home() {
-  const [items, setItems] =
-    useState<Inventory[]>(
-      []
-    );
+  const router = useRouter();
 
-  const [loading, setLoading] =
-    useState(true);
+  const [adminOpen, setAdminOpen] = useState(false);
+  const [adminPass, setAdminPass] = useState("");
+  const [masterPass, setMasterPass] = useState("2580");
 
-  const [error, setError] =
-    useState("");
+useEffect(() => {
+  const saved = localStorage.getItem("adminPass");
 
-  const fetchInventory =
-    async () => {
-      try {
-        setLoading(true);
+  if (saved) {
+    setMasterPass(saved);
+  } else {
+    localStorage.setItem("adminPass", "2580");
+  }
+}, []);
 
-        setError("");
-
-        const baseUrl =
-          typeof window !==
-          "undefined"
-            ? window.location
-                .origin
-            : "";
-
-        const res =
-          await fetch(
-            `${baseUrl}/api/inventory`,
-            {
-              cache:
-                "no-store",
-            }
-          );
-
-        if (!res.ok) {
-          throw new Error(
-            "API Error"
-          );
-        }
-
-        const data =
-          await res.json();
-
-        console.log(
-          "inventory",
-          data
-        );
-
-        if (
-          Array.isArray(data)
-        ) {
-          setItems(data);
-        } else {
-          setItems([]);
-        }
-      } catch (err) {
-        console.error(err);
-
-        setError(
-          "在庫取得失敗"
-        );
-
-        setItems([]);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-  useEffect(() => {
-    fetchInventory();
-  }, []);
-
-  const totalQuantity =
-    items.reduce(
-      (
-        total,
-        item
-      ) =>
-        total +
-        item.quantity,
-      0
-    );
+  const loginAdmin = () => {
+    if (adminPass === masterPass) {
+      setAdminOpen(false);
+      setAdminPass("");
+      router.push("/admin");
+    } else {
+      alert("パスコードが違います");
+      setAdminPass("");
+    }
+  };
 
   return (
-    <div className="min-h-screen bg-gray-100 p-4">
-      <div className="max-w-6xl mx-auto">
-        <div className="mb-6">
-          <div className="text-sm text-gray-500">
-            在庫管理システム
-          </div>
+    <main className="min-h-screen bg-gray-100">
+      <div className="max-w-5xl mx-auto p-8">
+        <div className="mb-10">
+          <h1
+            onDoubleClick={() => setAdminOpen(true)}
+            className="text-5xl font-bold cursor-pointer select-none"
+          >
+            Inventory OS
+          </h1>
 
-          <div className="text-5xl font-bold">
-            在庫一覧
-          </div>
+          <p className="text-gray-500 mt-2">
+            棚卸システム v1.0
+          </p>
         </div>
 
-        <div className="grid grid-cols-2 gap-4 mb-6">
-          <div className="bg-white rounded-2xl shadow p-5">
-            <div className="text-sm text-gray-500">
-              登録アイテム数
-            </div>
+        <div className="grid gap-6">
+          <Link
+            href="/import"
+            className="bg-white rounded-2xl shadow p-8 hover:shadow-lg transition"
+          >
+            <div className="text-5xl mb-4">📥</div>
 
-            <div className="text-5xl font-bold">
-              {items.length}
-            </div>
-          </div>
-
-          <div className="bg-white rounded-2xl shadow p-5">
-            <div className="text-sm text-gray-500">
-              総数量
-            </div>
-
-            <div className="text-5xl font-bold">
-              {totalQuantity}
-            </div>
-          </div>
-        </div>
-
-        <div className="bg-white rounded-2xl shadow overflow-hidden">
-          <div className="p-4 border-b flex justify-between items-center">
             <div className="text-2xl font-bold">
-              在庫一覧
+              初回インポート
             </div>
 
-            <button
-              onClick={
-                fetchInventory
-              }
-              className="bg-black text-white px-4 py-2 rounded-xl"
-            >
-              更新
-            </button>
-          </div>
-
-          {loading ? (
-            <div className="p-8 text-center text-gray-500 text-xl">
-              読み込み中...
+            <div className="text-gray-500 mt-2">
+              管理表Excelを読み込みます
             </div>
-          ) : error ? (
-            <div className="p-8 text-center text-red-600 text-xl">
-              {error}
+          </Link>
+
+          <Link
+            href="/stocktake"
+            className="bg-white rounded-2xl shadow p-8 hover:shadow-lg transition"
+          >
+            <div className="text-5xl mb-4">📋</div>
+
+            <div className="text-2xl font-bold">
+              棚卸
             </div>
-          ) : items.length ===
-            0 ? (
-            <div className="p-8 text-center text-gray-500 text-xl">
-              データなし
+
+            <div className="text-gray-500 mt-2">
+              バーコードで棚卸を行います
             </div>
-          ) : (
-            <div className="divide-y">
-              {items.map(
-                (item) => (
-                  <div
-                    key={
-                      item.id
-                    }
-                    className="p-5 hover:bg-gray-50 transition"
-                  >
-                    <div className="flex justify-between gap-4">
-                      <div className="flex-1">
-                        <div className="text-3xl font-bold break-words">
-                          {
-                            item
-                              .item
-                              .name
-                          }
-                        </div>
+          </Link>
 
-                        <div className="mt-3 text-gray-600 break-all">
-                          JAN:
-                          {" "}
-                          {
-                            item
-                              .item
-                              .janCode
-                          }
-                        </div>
+          <Link
+            href="/settings"
+            className="bg-white rounded-2xl shadow p-8 hover:shadow-lg transition"
+          >
+            <div className="text-5xl mb-4">⚙</div>
 
-                        <div className="text-gray-600 break-all">
-                          管理番号:
-                          {" "}
-                          {
-                            item.managementCode
-                          }
-                        </div>
-
-                        <div className="text-gray-600">
-                          保管場所:
-                          {" "}
-                          {
-                            item
-                              .storageLocation
-                              ?.name
-                          }
-                        </div>
-                      </div>
-
-                      <div className="text-right min-w-[80px]">
-                        <div className="text-sm text-gray-500">
-                          数量
-                        </div>
-
-                        <div className="text-5xl font-bold">
-                          {
-                            item.quantity
-                          }
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                )
-              )}
+            <div className="text-2xl font-bold">
+              設定
             </div>
-          )}
+
+            <div className="text-gray-500 mt-2">
+              保管場所・システム設定
+            </div>
+          </Link>
         </div>
       </div>
-    </div>
+
+      {adminOpen && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
+          <div className="bg-white rounded-2xl shadow-xl p-6 w-80">
+            <h2 className="text-xl font-bold mb-4">
+              🔒 管理者認証
+            </h2>
+
+            <input
+              type="password"
+              value={adminPass}
+              onChange={(e) => setAdminPass(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  loginAdmin();
+                }
+              }}
+              placeholder="パスコード"
+              className="w-full border rounded-lg p-3"
+              autoFocus
+            />
+
+            <div className="mt-5 flex justify-end gap-2">
+              <button
+                onClick={() => {
+                  setAdminOpen(false);
+                  setAdminPass("");
+                }}
+                className="px-4 py-2 rounded-lg border"
+              >
+                キャンセル
+              </button>
+
+              <button
+                onClick={loginAdmin}
+                className="px-4 py-2 rounded-lg bg-blue-600 text-white"
+              >
+                OK
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </main>
   );
 }

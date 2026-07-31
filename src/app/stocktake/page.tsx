@@ -1,877 +1,416 @@
 "use client";
 
 import {
+  useCallback,
   useEffect,
-  useMemo,
   useRef,
   useState,
 } from "react";
 
-import {
-  BrowserMultiFormatReader,
-} from "@zxing/browser";
+import BarcodeInput from "@/components/BarcodeInput";
+import BarcodeScanner from "@/components/BarcodeScanner";
 
-type Inventory = {
+import SearchResult, {
+  SearchItem,
+} from "@/components/SearchResult";
+
+import ProgressCard from "@/components/ProgressCard";
+import ItemCard from "@/components/ItemCard";
+
+type StorageLocation = {
   id: string;
-  quantity: number;
-  actualQuantity?: number | null;
-  status?: string;
-
-  managementCode?: string | null;
-  expirationDate?: string | null;
-  unit?: string | null;
-
-  storageLocation?: {
-    name: string;
-  } | null;
-
-  item: {
-    name: string;
-    janCode?: string | null;
-  };
+  name: string;
 };
 
 export default function StocktakePage() {
-  const [inventory,
-    setInventory] =
-    useState<Inventory[]>([]);
+  // バーコード入力欄
+  const lastCodeRef = useRef("");
+  const lastReadTimeRef = useRef(0);
+  const barcodeRef =
+    useRef<HTMLInputElement>(null);
 
-  const [search,
-    setSearch] =
+  // バーコード検索
+  const [keyword, setKeyword] =
     useState("");
 
-  const [selectedItem,
-    setSelectedItem] =
-    useState<Inventory | null>(
-      null
-    );
+  // 検索結果
+  const [results, setResults] =
+    useState<SearchItem[]>([]);
 
-  const [savingId,
-    setSavingId] =
-    useState("");
+  // 選択中の商品
+  const [selectedItem, setSelectedItem] =
+    useState<SearchItem | null>(null);
 
-  const [message,
-    setMessage] =
-    useState("");
-
-  const [recentItems,
-    setRecentItems] =
-    useState<Inventory[]>([]);
-
-  const [scannerOpen,
-    setScannerOpen] =
-    useState(false);
-
-  const [devices,
-    setDevices] =
-    useState<
-      MediaDeviceInfo[]
-    >([]);
-
-  const [cameraIndex,
-    setCameraIndex] =
+  // 数量
+  const [quantity, setQuantity] =
     useState(0);
 
-  const videoRef =
-    useRef<HTMLVideoElement>(
-      null
-    );
+  // 保管場所
+  const [
+    storageLocations,
+    setStorageLocations,
+  ] = useState<StorageLocation[]>([]);
 
-  const readerRef =
-    useRef<
-      BrowserMultiFormatReader | null
-    >(null);
+  const [
+    storageLocationId,
+    setStorageLocationId,
+  ] = useState("");
 
-  const fetchInventory =
-    async () => {
-      try {
-        const res =
-          await fetch(
-            "/api/inventory",
-            {
-              cache:
-                "no-store",
-            }
-          );
+  // 保存中
+  const [saving, setSaving] =
+    useState(false);
 
-        const data =
-          await res.json();
+  // 進捗
+  const [completedCount, setCompletedCount] =
+    useState(0);
 
-        setInventory(data);
-      } catch (
-        error
-      ) {
-        console.error(
-          error
-        );
-      }
-    };
+  const [totalCount, setTotalCount] =
+    useState(0);
+
+  // カメラ
+  const [cameraOpen, setCameraOpen] =
+    useState(false);
+
+  // エラーメッセージ
+  const [errorMessage, setErrorMessage] =
+    useState("");
+  // 読み取り状態
+  const [scanStatus, setScanStatus] =
+    useState("🟢 読み取り待機中");
 
   useEffect(() => {
-    fetchInventory();
+    loadLocations();
+    loadTotal();
   }, []);
 
-  const completed =
-    inventory.filter(
-      (i) =>
-        i.actualQuantity !==
-          null &&
-        i.actualQuantity !==
-          undefined
-    ).length;
+  async function loadLocations() {
+    const res =
+      await fetch("/api/storage-locations");
 
-  const pending =
-    inventory.length -
-    completed;
+    const data =
+      await res.json();
 
-  const differenceCount =
-    inventory.filter(
-      (i) =>
-        i.actualQuantity !==
-          null &&
-        i.actualQuantity !==
-          undefined &&
-        i.actualQuantity !==
-          i.quantity
-    ).length;
+    setStorageLocations(data);
 
-  const progress =
-    inventory.length === 0
-      ? 0
-      : Math.round(
-          (completed /
-            inventory.length) *
-            100
-        );
-
-  const displayInventory =
-    useMemo(() => {
-      if (
-        !search.trim()
-      ) {
-        return inventory;
-      }
-
-      const keyword =
-        search.toLowerCase();
-
-      return inventory.filter(
-        (i) =>
-          i.item.name
-            ?.toLowerCase()
-            .includes(
-              keyword
-            ) ||
-          i.managementCode
-            ?.toLowerCase()
-            .includes(
-              keyword
-            ) ||
-          i.item.janCode
-            ?.toLowerCase()
-            .includes(
-              keyword
-            )
-      );
-    }, [
-      inventory,
-      search,
-    ]);
-
-    useEffect(() => {
-    const keyword =
-      search.trim();
-
-    if (!keyword) {
-      setSelectedItem(
-        null
-      );
-      return;
+    if (data.length > 0) {
+      setStorageLocationId(data[0].id);
     }
-
-    const found =
-      inventory.find(
-        (i) =>
-          i.item.name.includes(
-            keyword
-          ) ||
-          i.managementCode ===
-            keyword ||
-          i.item.janCode ===
-            keyword
-      );
-
-    setSelectedItem(
-      found ?? null
-    );
-  }, [
-    search,
-    inventory,
-  ]);
-
-  const getDifference =
-    (
-      item: Inventory
-    ) => {
-      if (
-        item.actualQuantity ===
-          null ||
-        item.actualQuantity ===
-          undefined
-      ) {
-        return null;
-      }
-
-      return (
-        item.actualQuantity -
-        item.quantity
-      );
-    };
-
-  const startScanner =
-  async (
-    deviceId?: string
-  ) => {
-    try {
-
-      setScannerOpen(
-        true
-      );
-
-      const cameraList =
-        await navigator.mediaDevices.enumerateDevices();
-
-      const videoDevices =
-        cameraList.filter(
-          (d) =>
-            d.kind ===
-            "videoinput"
-        );
-
-      setDevices(
-        videoDevices
-      );
-
-      if (
-        !videoRef.current
-      ) {
-        return;
-      }
-
-      readerRef.current =
-        new BrowserMultiFormatReader();
-
-      await readerRef.current.decodeFromVideoDevice(
-        deviceId,
-        videoRef.current,
-        (result) => {
-
-          if (!result) {
-            return;
-          }
-
-          const code =
-            result.getText();
-
-          console.log(
-            "BARCODE:",
-            code
-          );
-
-          setSearch(
-            code
-          );
-        }
-      );
-
-    } catch (
-      error
-    ) {
-
-      console.error(
-        error
-      );
-
-      alert(
-        "カメラ起動失敗"
-      );
-    }
-  };
-
-  const stopScanner =
-  () => {
-
-    const stream =
-      videoRef.current
-        ?.srcObject as
-        | MediaStream
-        | null;
-
-    stream
-      ?.getTracks()
-      .forEach(
-        (
-          track
-        ) =>
-          track.stop()
-      );
-
-    if (
-      videoRef.current
-    ) {
-      videoRef.current.srcObject =
-        null;
-    }
-
-    readerRef.current =
-      null;
-
-    setScannerOpen(
-      false
-    );
-  };
-
-  const changeCamera =
-  async () => {
-
-    if (
-      devices.length <= 1
-    ) {
-      return;
-    }
-
-    const nextIndex =
-      (
-        cameraIndex +
-        1
-      ) %
-      devices.length;
-
-    setCameraIndex(
-      nextIndex
-    );
-
-    stopScanner();
-
-    setTimeout(
-      () => {
-        startScanner(
-          devices[
-            nextIndex
-          ].deviceId
-        );
-      },
-      500
-    );
-  };  
-
-  const saveStocktake =
-    async (
-      id: string,
-      actualQuantity: number
-    ) => {
-      try {
-        setSavingId(
-          id
-        );
-
-        const target =
-          inventory.find(
-            (i) =>
-              i.id === id
-          );
-
-        if (
-          !target
-        ) {
-          return;
-        }
-
-        await fetch(
-          "/api/inventory",
-          {
-            method:
-              "PATCH",
-
-            headers: {
-              "Content-Type":
-                "application/json",
-            },
-
-            body:
-              JSON.stringify(
-                {
-                  id,
-                  actualQuantity,
-                }
-              ),
-          }
-        );
-
-        setRecentItems(
-          (
-            prev
-          ) => [
-            target,
-            ...prev.filter(
-              (
-                i
-              ) =>
-                i.id !==
-                target.id
-            ),
-          ].slice(
-            0,
-            10
-          )
-        );
-
-        setMessage(
-          "保存完了"
-        );
-
-        await fetchInventory();
-
-        setSelectedItem(
-          null
-        );
-
-        setSearch("");
-
-        setTimeout(
-          () => {
-            setMessage(
-              ""
-            );
-          },
-          1500
-        );
-              } catch (
-        error
-      ) {
-        console.error(
-          error
-        );
-
-        setMessage(
-          "保存失敗"
-        );
-      } finally {
-        setSavingId(
-          ""
-        );
-      }
-    };
-
-  return (
-    <div className="p-8 max-w-7xl mx-auto">
-
-      <div className="flex items-center justify-between mb-8">
-        <h1 className="text-4xl font-bold">
-          棚卸
-        </h1>
-
-        {message && (
-          <div
-            className={`px-4 py-2 rounded ${
-              message ===
-              "保存完了"
-                ? "bg-green-100 text-green-700"
-                : "bg-red-100 text-red-700"
-            }`}
-          >
-            {message}
-          </div>
-        )}
-      </div>
-
-      <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-8">
-
-        <div className="border rounded-xl p-4 bg-white">
-          <div className="text-sm text-gray-500">
-            棚卸対象
-          </div>
-
-          <div className="text-4xl font-bold">
-            {inventory.length}
-          </div>
-        </div>
-
-        <div className="border rounded-xl p-4 bg-white">
-          <div className="text-sm text-gray-500">
-            完了
-          </div>
-
-          <div className="text-4xl font-bold text-green-600">
-            {completed}
-          </div>
-        </div>
-
-        <div className="border rounded-xl p-4 bg-white">
-          <div className="text-sm text-gray-500">
-            未完了
-          </div>
-
-          <div className="text-4xl font-bold text-red-600">
-            {pending}
-          </div>
-        </div>
-
-        <div className="border rounded-xl p-4 bg-white">
-          <div className="text-sm text-gray-500">
-            完了率
-          </div>
-
-          <div className="text-4xl font-bold text-blue-600">
-            {progress}%
-          </div>
-        </div>
-
-        <div className="border rounded-xl p-4 bg-white">
-          <div className="text-sm text-gray-500">
-            差異あり
-          </div>
-
-          <div className="text-4xl font-bold text-orange-600">
-            {differenceCount}
-          </div>
-        </div>
-
-      </div>
-
-      <div className="border rounded-xl bg-white p-6 mb-6">
-
-        <input
-  autoFocus
-  type="text"
-  value={search}
-  onChange={(e) =>
-    setSearch(
-      e.target.value
-    )
   }
-  placeholder="JAN・管理番号・商品名"
-  className="w-full border rounded-xl p-4 mb-4 text-xl"
-/>
 
-        <div className="grid md:grid-cols-2 gap-4">
+  async function loadTotal() {
+    const res =
+      await fetch("/api/inventory");
 
-          <button
-            onClick={
-              scannerOpen
-                ? stopScanner
-                : () =>
-                    startScanner()
-            }
-            className="bg-blue-600 text-white rounded-xl p-5 text-xl font-bold"
-          >
-            {scannerOpen
-              ? "停止"
-              : "📷 棚卸開始"}
-          </button>
+    const data =
+      await res.json();
 
-          <button
-            onClick={
-              changeCamera
-            }
-            disabled={
-              !scannerOpen
-            }
-            className="bg-gray-700 text-white rounded-xl p-5 text-xl font-bold disabled:bg-gray-400"
-          >
-            🔄 カメラ切替
-          </button>
+    setTotalCount(data.length);
+  }
 
-        </div>
+  async function search(
+  value: string
+): Promise<boolean> {
+  setKeyword(value);
 
-      </div>
+  if (!value.trim()) {
+    setResults([]);
+    setSelectedItem(null);
+    setErrorMessage("");
+    return false;
+  }
 
-      {scannerOpen && (
-        <div className="border rounded-xl bg-black p-4 mb-6">
+  const res = await fetch(
+    `/api/inventory/search?q=${encodeURIComponent(
+      value
+    )}`
+  );
 
-          <div className="text-white mb-2">
-            カメラ起動中
-          </div>
+  if (!res.ok) {
+    setResults([]);
+    setSelectedItem(null);
+    setErrorMessage(
+      "検索に失敗しました。"
+    );
+    return false;
+  }
 
-          <video
-            ref={videoRef}
-            autoPlay
-            playsInline
-            muted
-            className="w-full h-[400px] rounded"
-          />
+  const data: SearchItem[] =
+    await res.json();
 
-        </div>
-      )}
+  setResults(data);
 
-      {selectedItem && (
-        <div className="border-2 border-blue-500 rounded-2xl bg-blue-50 p-6 mb-6">
+  // 見つからない
+  if (data.length === 0) {
+    setSelectedItem(null);
 
-          <div className="text-sm text-blue-600 mb-2">
-            読み取り商品
-          </div>
+    setErrorMessage(
+      "登録されていないバーコードです。登録済みの商品を読み取ってください。"
+    );
 
-          <div className="text-3xl font-bold mb-4">
-            {selectedItem.item.name}
-          </div>
+    return false;
+  }
 
-          <div className="grid md:grid-cols-4 gap-4 mb-6">
+  // エラー解除
+  setErrorMessage("");
 
-            <div>
-              <div className="text-sm text-gray-500">
-                管理番号
-              </div>
-              <div>
-                {selectedItem.managementCode || "-"}
-              </div>
-            </div>
+  // 1件だけなら自動選択
+  if (data.length === 1) {
+    const item = data[0];
 
-            <div>
-              <div className="text-sm text-gray-500">
-                JAN
-              </div>
-              <div>
-                {selectedItem.item.janCode || "-"}
-              </div>
-            </div>
+    setKeyword(item.item.name);
 
-            <div>
-              <div className="text-sm text-gray-500">
-                保管場所
-              </div>
-              <div>
-                {selectedItem.storageLocation?.name || "-"}
-              </div>
-            </div>
+    setSelectedItem(item);
 
-            <div>
-              <div className="text-sm text-gray-500">
-                理論在庫
-              </div>
-              <div className="text-3xl font-bold">
-                {selectedItem.quantity}
-              </div>
-            </div>
+    setQuantity(item.quantity);
 
-          </div>
-                    <div className="flex gap-4">
+    setStorageLocationId(
+      item.storageLocation?.id ?? ""
+    );
 
-            <input
-              id="selected-qty"
-              type="number"
-              defaultValue={
-                selectedItem.actualQuantity ??
-                selectedItem.quantity
-              }
-              className="border rounded-xl p-4 flex-1 text-2xl"
-            />
+    setResults([]);
 
-            <button
-              onClick={() => {
-                const input =
-                  document.getElementById(
-                    "selected-qty"
-                  ) as HTMLInputElement;
+    // 数量入力へフォーカス
+    requestAnimationFrame(() => {
+      const input =
+        document.querySelector(
+          'input[type="number"]'
+        ) as HTMLInputElement | null;
 
-                saveStocktake(
-                  selectedItem.id,
-                  Number(
-                    input.value
-                  )
-                );
-              }}
-              disabled={
-                savingId ===
-                selectedItem.id
-              }
-              className="bg-green-600 text-white px-8 rounded-xl disabled:bg-gray-400"
-            >
-              {savingId ===
-              selectedItem.id
-                ? "保存中..."
-                : "保存"}
-            </button>
+      input?.focus();
+      input?.select();
+    });
 
-          </div>
+    return true;
+  }
 
-        </div>
-      )}
+  return true;
+}
 
-      {recentItems.length > 0 && (
+  // カメラで読み取った時
+const handleBarcodeDetected =
+  useCallback(async (code: string) => {
+    const found = await search(code);
+    if (!found) {
+  setScanStatus("🔴 未登録バーコード");
+  return;
+}
 
-        <div className="border rounded-xl bg-white p-4 mb-6">
+setScanStatus("✅ 読み取り成功");
 
-          <h2 className="text-xl font-bold mb-4">
-            最近棚卸した商品
-          </h2>
+setTimeout(() => {
+  setScanStatus("🟢 読み取り待機中");
+}, 1200);
+    if (!found) {
+      return;
+    }
 
-          <div className="space-y-2">
+    setCameraOpen(false);
+  }, []);
 
-            {recentItems.map(
-              (item) => (
+  async function save() {
+  if (!selectedItem) {
+    alert("商品を選択してください");
+    return;
+  }
 
-                <div
-                  key={item.id}
-                  className="flex justify-between border-b pb-2"
-                >
-                  <span>
-                    {item.item.name}
-                  </span>
+  if (!storageLocationId) {
+    alert("保管場所を選択してください");
+    return;
+  }
 
-                  <span className="text-gray-500">
-                    {item.managementCode}
-                  </span>
+  setSaving(true);
 
-                </div>
-              )
-            )}
+  try {
+    const res = await fetch("/api/inventory", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        itemId: selectedItem.item.id,
+        quantity,
+        actualQuantity: quantity,
+        storageLocationId,
+        lotNo: selectedItem.lotNo,
+        expirationDate:
+          selectedItem.expirationDate,
+        allocationType: "home",
+        status: "保管中",
+      }),
+    });
 
-          </div>
+    if (!res.ok) {
+      throw new Error();
+    }
 
-        </div>
-      )}
+    setCompletedCount((c) => c + 1);
 
-      <div className="border rounded-xl bg-white p-4 mb-4">
+    // 入力内容を初期化
+    setKeyword("");
+    setResults([]);
+    setSelectedItem(null);
+    setQuantity(0);
+    setErrorMessage("");
 
-        <h2 className="text-xl font-bold mb-4">
-          差異一覧
-        </h2>
+    await loadTotal();
 
-        <div className="space-y-2">
+    // PC運用ならバーコード入力へ戻す
+    if (!cameraOpen) {
+      requestAnimationFrame(() => {
+        barcodeRef.current?.focus();
+      });
+    }
 
-          {displayInventory
-            .filter(
-              (item) =>
-                item.actualQuantity !==
-                  null &&
-                item.actualQuantity !==
-                  undefined &&
-                item.actualQuantity !==
-                  item.quantity
-            )
-            .map(
-              (item) => (
+  } catch (error) {
+    console.error(error);
+    alert("保存に失敗しました");
+  } finally {
+    setSaving(false);
+  }
+}
 
-                <div
-                  key={item.id}
-                  className="border rounded p-3"
-                >
-                  <div className="font-bold">
-                    {item.item.name}
-                  </div>
+    return (
+    <div className="max-w-6xl mx-auto p-8 space-y-6">
 
-                  <div className="text-sm text-gray-600">
-                    理論:
-                    {" "}
-                    {item.quantity}
-                    {" / "}
-                    実棚:
-                    {" "}
-                    {item.actualQuantity}
-                    {" / "}
-                    差異:
-                    {" "}
-                    {getDifference(
-                      item
-                    )}
-                  </div>
+      <ProgressCard
+        completed={completedCount}
+        total={totalCount}
+      />
+      <div
+  className={`rounded-xl p-4 text-center text-lg font-bold transition-all ${
+    scanStatus.startsWith("✅")
+      ? "bg-green-100 text-green-700 border border-green-400"
+      : scanStatus.startsWith("🔴")
+      ? "bg-red-100 text-red-700 border border-red-400"
+      : "bg-blue-100 text-blue-700 border border-blue-300"
+  }`}
+>
+  {scanStatus}
+</div>
+      <BarcodeInput
+        ref={barcodeRef}
+        value={keyword}
+        onChange={search}
+        onEnter={() => {
+          if (results.length > 0) {
+            const item = results[0];
 
-                </div>
-              )
-            )}
+            setSelectedItem(item);
 
-        </div>
+            setQuantity(item.quantity);
 
-      </div>
-
-      <div className="space-y-4">
-
-        {displayInventory.map(
-          (item) => {
-
-            const difference =
-              getDifference(
-                item
-              );
-
-            return (
-
-              <div
-                key={item.id}
-                className="border rounded-xl bg-white p-4"
-              >
-
-                <div className="flex justify-between items-center mb-3">
-
-                  <div className="font-bold text-xl">
-                    {item.item.name}
-                  </div>
-
-                  <div>
-                    {item.status ===
-                    "checked"
-                      ? "棚卸済"
-                      : "未棚卸"}
-                  </div>
-
-                </div>
-
-                <div className="grid md:grid-cols-4 gap-4">
-
-                  <div>
-                    <div className="text-sm text-gray-500">
-                      管理番号
-                    </div>
-                    <div>
-                      {item.managementCode || "-"}
-                    </div>
-                  </div>
-
-                  <div>
-                    <div className="text-sm text-gray-500">
-                      JAN
-                    </div>
-                    <div>
-                      {item.item.janCode || "-"}
-                    </div>
-                  </div>
-
-                  <div>
-                    <div className="text-sm text-gray-500">
-                      理論在庫
-                    </div>
-                    <div>
-                      {item.quantity}
-                    </div>
-                  </div>
-
-                  <div>
-                    <div className="text-sm text-gray-500">
-                      差異
-                    </div>
-                    <div>
-                      {difference ?? "-"}
-                    </div>
-                  </div>
-
-                </div>
-
-              </div>
+            setStorageLocationId(
+              item.storageLocation?.id ?? ""
             );
+
+            setKeyword(item.item.name);
+
+            setResults([]);
+
+            setErrorMessage("");
+
+            requestAnimationFrame(() => {
+              const input =
+                document.querySelector(
+                  'input[type="number"]'
+                ) as HTMLInputElement | null;
+
+              input?.focus();
+              input?.select();
+            });
           }
-        )}
+        }}
+      />
 
-        {displayInventory.length ===
-          0 && (
+      {/* エラーメッセージ */}
+      {errorMessage && (
+        <div className="rounded-xl border-2 border-red-500 bg-red-50 p-5 shadow">
 
-          <div className="border rounded-xl bg-white p-10 text-center text-gray-500">
+          <div className="flex items-start gap-3">
 
-            商品がありません
+            <div className="text-4xl">
+              ⚠️
+            </div>
+
+            <div className="flex-1">
+
+              <div className="text-lg font-bold text-red-700">
+                バーコードが登録されていません
+              </div>
+
+              <div className="mt-2 text-red-600">
+                登録済み商品のバーコードを読み取ってください。
+              </div>
+
+              <div className="mt-2 text-sm text-gray-600">
+                カメラはそのまま使用できます。
+              </div>
+
+            </div>
 
           </div>
-        )}
 
+        </div>
+      )}
+
+      <div className="flex justify-end">
+        <button
+          type="button"
+          onClick={() =>
+            setCameraOpen((prev) => !prev)
+          }
+          className="rounded-xl bg-blue-600 px-5 py-3 font-bold text-white hover:bg-blue-700 transition"
+        >
+          {cameraOpen
+            ? "📷 カメラを閉じる"
+            : "📷 カメラで読み取る"}
+        </button>
       </div>
+
+      {cameraOpen && (
+        <BarcodeScanner
+          onDetected={handleBarcodeDetected}
+        />
+      )}
+
+      <SearchResult
+        items={results}
+        onSelect={(item) => {
+          setSelectedItem(item);
+
+          setQuantity(item.quantity);
+
+          setStorageLocationId(
+            item.storageLocation?.id ?? ""
+          );
+
+          setKeyword(item.item.name);
+
+          setResults([]);
+
+          setErrorMessage("");
+
+          requestAnimationFrame(() => {
+            const input =
+              document.querySelector(
+                'input[type="number"]'
+              ) as HTMLInputElement | null;
+
+            input?.focus();
+            input?.select();
+          });
+        }}
+      />
+      <ItemCard
+        item={selectedItem}
+        quantity={quantity}
+        onQuantityChange={setQuantity}
+        storageLocations={storageLocations}
+        storageLocationId={storageLocationId}
+        onLocationChange={setStorageLocationId}
+        saving={saving}
+        onSave={save}
+      />
 
     </div>
   );
