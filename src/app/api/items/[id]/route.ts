@@ -19,12 +19,15 @@ export async function GET(
         id,
       },
       include: {
-        inventoryInstances: {
-          orderBy: {
-            updatedAt: "desc",
-          },
-        },
-      },
+  inventoryInstances: {
+    include: {
+      storageLocation: true,
+    },
+    orderBy: {
+      updatedAt: "desc",
+    },
+  },
+},
     });
 
     if (!item) {

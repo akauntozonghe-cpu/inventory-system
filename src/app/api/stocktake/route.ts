@@ -1,128 +1,149 @@
+import { NextRequest, NextResponse } from "next/server";
+import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
-import { NextResponse } from "next/server";
 
-export async function POST(req: Request) {
+const scopeTypes = [
+  "ALL",
+  "LOCATION",
+  "MAJOR_CATEGORY",
+  "MINOR_CATEGORY",
+] as const;
+
+type ScopeType = (typeof scopeTypes)[number];
+
+export async function POST(request: NextRequest) {
+  let createdSessionId: string | null = null;
 
   try {
+    const body = await request.json();
 
-    const body = await req.json();
+    const title =
+      typeof body.title === "string" ? body.title.trim() : "";
 
-    const existing =
-  await prisma.inventoryInstance.findFirst({
-    where: {
-      itemId: body.itemId,
-      storageLocationId: body.storageLocationId || null,
-      lotNo: body.lotNo || null,
-      expirationDate: body.expirationDate || null,
-    },
-  });
+    const operator =
+      typeof body.operator === "string" ? body.operator.trim() : "";
 
-    let inventory;
+    const memo =
+      typeof body.memo === "string" ? body.memo.trim() : "";
 
-    if (existing) {
+    const scopeType: ScopeType = scopeTypes.includes(body.scopeType)
+      ? body.scopeType
+      : "ALL";
 
-      inventory =
-        await prisma.inventoryInstance.update({
+    const scopeValue =
+      typeof body.scopeValue === "string"
+        ? body.scopeValue.trim()
+        : "";
 
-          where: {
+    const scopeLabel =
+      typeof body.scopeLabel === "string"
+        ? body.scopeLabel.trim()
+        : "";
 
-            id:
-              existing.id,
-
-          },
-
-          data: {
-
-            quantity:
-              Number(body.quantity),
-
-            actualQuantity:
-              Number(body.quantity),
-
-            status:
-              "保管中",
-
-          },
-
-        });
-
-    } else {
-
-      inventory =
-        await prisma.inventoryInstance.create({
-
-          data: {
-
-            itemId:
-              body.itemId,
-
-            storageLocationId:
-              body.storageLocationId,
-
-            quantity:
-              Number(body.quantity),
-
-            actualQuantity:
-              Number(body.quantity),
-
-            allocationType:
-              "home",
-
-            status:
-              "保管中",
-
-          },
-
-        });
-
+    if (!title) {
+      return NextResponse.json(
+        { message: "棚卸名を入力してください" },
+        { status: 400 }
+      );
     }
 
-    await prisma.inventoryHistory.create({
+    if (scopeType !== "ALL" && !scopeValue) {
+      return NextResponse.json(
+        { message: "棚卸対象を選択してください" },
+        { status: 400 }
+      );
+    }
 
-      data: {
+    const inventoryWhere: Prisma.InventoryInstanceWhereInput = {};
 
-        inventoryInstanceId:
-          inventory.id,
+    if (scopeType === "LOCATION") {
+      inventoryWhere.storageLocationId = scopeValue;
+    }
 
-        action:
-          "初回棚卸",
+    if (scopeType === "MAJOR_CATEGORY") {
+      inventoryWhere.item = {
+        majorCategory: scopeValue,
+      };
+    }
 
-        changeQuantity:
-          Number(body.quantity),
+    if (scopeType === "MINOR_CATEGORY") {
+      inventoryWhere.item = {
+        minorCategory: scopeValue,
+      };
+    }
 
+    // 先に対象在庫を取得する。長いトランザクションにはしない。
+    const inventories = await prisma.inventoryInstance.findMany({
+      where: inventoryWhere,
+      select: {
+        id: true,
+        quantity: true,
       },
-
     });
 
-    return NextResponse.json({
+    if (inventories.length === 0) {
+      return NextResponse.json(
+        { message: "選択した対象に在庫がありません" },
+        { status: 400 }
+      );
+    }
 
-      success: true,
-
-      inventory,
-
+    // 棚卸セッションを作成
+    const session = await prisma.stocktakeSession.create({
+      data: {
+        title,
+        operator: operator || "管理者",
+        memo: memo || null,
+        location:
+          scopeType === "LOCATION"
+            ? scopeLabel || null
+            : null,
+        scopeType,
+        scopeValue:
+          scopeType === "ALL"
+            ? null
+            : scopeValue,
+        scopeLabel:
+          scopeType === "ALL"
+            ? "全在庫"
+            : scopeLabel,
+      },
     });
 
+    createdSessionId = session.id;
+
+    // 対象在庫のスナップショットを一括登録
+    await prisma.stocktakeTarget.createMany({
+      data: inventories.map((inventory) => ({
+        sessionId: session.id,
+        inventoryInstanceId: inventory.id,
+        expectedQuantity: inventory.quantity,
+      })),
+    });
+
+    return NextResponse.json(session, { status: 201 });
   } catch (error) {
-
     console.error(error);
 
-    return NextResponse.json(
-
-      {
-
-        message:
-          "棚卸保存失敗",
-
-      },
-
-      {
-
-        status: 500,
-
+    // 対象登録に失敗した場合は、空の棚卸を残さない
+    if (createdSessionId) {
+      try {
+        await prisma.stocktakeSession.delete({
+          where: { id: createdSessionId },
+        });
+      } catch (cleanupError) {
+        console.error("棚卸セッションの後始末に失敗しました", cleanupError);
       }
+    }
 
+    return NextResponse.json(
+      {
+        message:
+          error instanceof Error
+            ? `棚卸を開始できませんでした: ${error.message}`
+            : "棚卸を開始できませんでした",
+      },
+      { status: 500 }
     );
-
   }
-
 }

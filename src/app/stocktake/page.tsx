@@ -1,417 +1,280 @@
 "use client";
 
-import {
-  useCallback,
-  useEffect,
-  useRef,
-  useState,
-} from "react";
+import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 
-import BarcodeInput from "@/components/BarcodeInput";
-import BarcodeScanner from "@/components/BarcodeScanner";
+type ScopeType =
+  | "ALL"
+  | "LOCATION"
+  | "MAJOR_CATEGORY"
+  | "MINOR_CATEGORY";
 
-import SearchResult, {
-  SearchItem,
-} from "@/components/SearchResult";
-
-import ProgressCard from "@/components/ProgressCard";
-import ItemCard from "@/components/ItemCard";
-
-type StorageLocation = {
-  id: string;
-  name: string;
+type Options = {
+  locations: Array<{
+    id: string;
+    name: string;
+  }>;
+  majorCategories: string[];
+  minorCategories: string[];
 };
 
-export default function StocktakePage() {
-  // バーコード入力欄
-  const lastCodeRef = useRef("");
-  const lastReadTimeRef = useRef(0);
-  const barcodeRef =
-    useRef<HTMLInputElement>(null);
+const scopeLabels: Record<ScopeType, string> = {
+  ALL: "全在庫",
+  LOCATION: "保管場所ごと",
+  MAJOR_CATEGORY: "大分類ごと",
+  MINOR_CATEGORY: "小分類ごと",
+};
 
-  // バーコード検索
-  const [keyword, setKeyword] =
-    useState("");
+export default function StocktakeStartPage() {
+  const router = useRouter();
 
-  // 検索結果
-  const [results, setResults] =
-    useState<SearchItem[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [optionsLoading, setOptionsLoading] = useState(true);
 
-  // 選択中の商品
-  const [selectedItem, setSelectedItem] =
-    useState<SearchItem | null>(null);
+  const [options, setOptions] = useState<Options>({
+    locations: [],
+    majorCategories: [],
+    minorCategories: [],
+  });
 
-  // 数量
-  const [quantity, setQuantity] =
-    useState(0);
-
-  // 保管場所
-  const [
-    storageLocations,
-    setStorageLocations,
-  ] = useState<StorageLocation[]>([]);
-
-  const [
-    storageLocationId,
-    setStorageLocationId,
-  ] = useState("");
-
-  // 保存中
-  const [saving, setSaving] =
-    useState(false);
-
-  // 進捗
-  const [completedCount, setCompletedCount] =
-    useState(0);
-
-  const [totalCount, setTotalCount] =
-    useState(0);
-
-  // カメラ
-  const [cameraOpen, setCameraOpen] =
-    useState(false);
-
-  // エラーメッセージ
-  const [errorMessage, setErrorMessage] =
-    useState("");
-  // 読み取り状態
-  const [scanStatus, setScanStatus] =
-    useState("🟢 読み取り待機中");
+  const [form, setForm] = useState({
+    title: "",
+    operator: "",
+    memo: "",
+    scopeType: "ALL" as ScopeType,
+    scopeValue: "",
+  });
 
   useEffect(() => {
-    loadLocations();
-    loadTotal();
+    const fetchOptions = async () => {
+      try {
+        const res = await fetch("/api/stocktake/options");
+
+        if (!res.ok) {
+          throw new Error("選択肢を取得できませんでした");
+        }
+
+        const data: Options = await res.json();
+        setOptions(data);
+      } catch (error) {
+        console.error(error);
+        alert("棚卸対象の選択肢を取得できませんでした");
+      } finally {
+        setOptionsLoading(false);
+      }
+    };
+
+    fetchOptions();
   }, []);
 
-  async function loadLocations() {
-    const res =
-      await fetch("/api/storage-locations");
+  const handleTextChange = (
+    e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>
+  ) => {
+    setForm((previous) => ({
+      ...previous,
+      [e.target.name]: e.target.value,
+    }));
+  };
 
-    const data =
-      await res.json();
+  const handleScopeTypeChange = (scopeType: ScopeType) => {
+    setForm((previous) => ({
+      ...previous,
+      scopeType,
+      scopeValue: "",
+    }));
+  };
 
-    setStorageLocations(data);
-
-    if (data.length > 0) {
-      setStorageLocationId(data[0].id);
+  const selectedScopeLabel = () => {
+    if (form.scopeType === "ALL") {
+      return "全在庫";
     }
-  }
 
-  async function loadTotal() {
-    const res =
-      await fetch("/api/inventory");
+    if (form.scopeType === "LOCATION") {
+      return (
+        options.locations.find(
+          (location) => location.id === form.scopeValue
+        )?.name ?? ""
+      );
+    }
 
-    const data =
-      await res.json();
+    return form.scopeValue;
+  };
 
-    setTotalCount(data.length);
-  }
-
-  async function search(
-  value: string
-): Promise<boolean> {
-  setKeyword(value);
-
-  if (!value.trim()) {
-    setResults([]);
-    setSelectedItem(null);
-    setErrorMessage("");
-    return false;
-  }
-
-  const res = await fetch(
-    `/api/inventory/search?q=${encodeURIComponent(
-      value
-    )}`
-  );
-
-  if (!res.ok) {
-    setResults([]);
-    setSelectedItem(null);
-    setErrorMessage(
-      "検索に失敗しました。"
-    );
-    return false;
-  }
-
-  const data: SearchItem[] =
-    await res.json();
-
-  setResults(data);
-
-  // 見つからない
-  if (data.length === 0) {
-    setSelectedItem(null);
-
-    setErrorMessage(
-      "登録されていないバーコードです。登録済みの商品を読み取ってください。"
-    );
-
-    return false;
-  }
-
-  // エラー解除
-  setErrorMessage("");
-
-  // 1件だけなら自動選択
-  if (data.length === 1) {
-    const item = data[0];
-
-    setKeyword(item.item.name);
-
-    setSelectedItem(item);
-
-    setQuantity(item.quantity);
-
-    setStorageLocationId(
-      item.storageLocation?.id ?? ""
-    );
-
-    setResults([]);
-
-    // 数量入力へフォーカス
-    requestAnimationFrame(() => {
-      const input =
-        document.querySelector(
-          'input[type="number"]'
-        ) as HTMLInputElement | null;
-
-      input?.focus();
-      input?.select();
-    });
-
-    return true;
-  }
-
-  return true;
-}
-
-  // カメラで読み取った時
-const handleBarcodeDetected =
-  useCallback(async (code: string) => {
-    const found = await search(code);
-    if (!found) {
-  setScanStatus("🔴 未登録バーコード");
-  return;
-}
-
-setScanStatus("✅ 読み取り成功");
-
-setTimeout(() => {
-  setScanStatus("🟢 読み取り待機中");
-}, 1200);
-    if (!found) {
+  const startStocktake = async () => {
+    if (!form.title.trim()) {
+      alert("棚卸名を入力してください");
       return;
     }
 
-    setCameraOpen(false);
-  }, []);
-
-  async function save() {
-  if (!selectedItem) {
-    alert("商品を選択してください");
-    return;
-  }
-
-  if (!storageLocationId) {
-    alert("保管場所を選択してください");
-    return;
-  }
-
-  setSaving(true);
-
-  try {
-    const res = await fetch("/api/inventory", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        itemId: selectedItem.item.id,
-        quantity,
-        actualQuantity: quantity,
-        storageLocationId,
-        lotNo: selectedItem.lotNo,
-        expirationDate:
-          selectedItem.expirationDate,
-        allocationType: "home",
-        status: "保管中",
-      }),
-    });
-
-    if (!res.ok) {
-      throw new Error();
+    if (form.scopeType !== "ALL" && !form.scopeValue) {
+      alert("棚卸対象を選択してください");
+      return;
     }
 
-    setCompletedCount((c) => c + 1);
+    setLoading(true);
 
-    // 入力内容を初期化
-    setKeyword("");
-    setResults([]);
-    setSelectedItem(null);
-    setQuantity(0);
-    setErrorMessage("");
-
-    await loadTotal();
-
-    // PC運用ならバーコード入力へ戻す
-    if (!cameraOpen) {
-      requestAnimationFrame(() => {
-        barcodeRef.current?.focus();
+    try {
+      const res = await fetch("/api/stocktake/start", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          ...form,
+          scopeLabel: selectedScopeLabel(),
+        }),
       });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        throw new Error(data.message ?? "棚卸を開始できませんでした");
+      }
+
+      router.push(`/stocktake/${data.id}`);
+    } catch (error) {
+      console.error(error);
+
+      alert(
+        error instanceof Error
+          ? error.message
+          : "棚卸を開始できませんでした"
+      );
+    } finally {
+      setLoading(false);
     }
+  };
 
-  } catch (error) {
-    console.error(error);
-    alert("保存に失敗しました");
-  } finally {
-    setSaving(false);
-  }
-}
+  const targetOptions =
+    form.scopeType === "LOCATION"
+      ? options.locations.map((location) => ({
+          value: location.id,
+          label: location.name,
+        }))
+      : form.scopeType === "MAJOR_CATEGORY"
+        ? options.majorCategories.map((category) => ({
+            value: category,
+            label: category,
+          }))
+        : form.scopeType === "MINOR_CATEGORY"
+          ? options.minorCategories.map((category) => ({
+              value: category,
+              label: category,
+            }))
+          : [];
 
-    return (
-    <div className="max-w-6xl mx-auto p-8 space-y-6">
+  return (
+    <main className="mx-auto max-w-3xl p-8 text-white">
+      <h1 className="mb-8 text-3xl font-bold">棚卸開始</h1>
 
-      <ProgressCard
-        completed={completedCount}
-        total={totalCount}
-      />
-      <div
-  className={`rounded-xl p-4 text-center text-lg font-bold transition-all ${
-    scanStatus.startsWith("✅")
-      ? "bg-green-100 text-green-700 border border-green-400"
-      : scanStatus.startsWith("🔴")
-      ? "bg-red-100 text-red-700 border border-red-400"
-      : "bg-blue-100 text-blue-700 border border-blue-300"
-  }`}
->
-  {scanStatus}
-</div>
-      <BarcodeInput
-        ref={barcodeRef}
-        value={keyword}
-        onChange={search}
-        onEnter={() => {
-          if (results.length > 0) {
-            const item = results[0];
+      <div className="space-y-6 rounded-xl bg-white p-8 text-slate-800 shadow">
+        <div>
+          <label className="font-semibold" htmlFor="title">
+            棚卸名
+          </label>
 
-            setSelectedItem(item);
-
-            setQuantity(item.quantity);
-
-            setStorageLocationId(
-              item.storageLocation?.id ?? ""
-            );
-
-            setKeyword(item.item.name);
-
-            setResults([]);
-
-            setErrorMessage("");
-
-            requestAnimationFrame(() => {
-              const input =
-                document.querySelector(
-                  'input[type="number"]'
-                ) as HTMLInputElement | null;
-
-              input?.focus();
-              input?.select();
-            });
-          }
-        }}
-      />
-
-      {/* エラーメッセージ */}
-      {errorMessage && (
-        <div className="rounded-xl border-2 border-red-500 bg-red-50 p-5 shadow">
-
-          <div className="flex items-start gap-3">
-
-            <div className="text-4xl">
-              ⚠️
-            </div>
-
-            <div className="flex-1">
-
-              <div className="text-lg font-bold text-red-700">
-                バーコードが登録されていません
-              </div>
-
-              <div className="mt-2 text-red-600">
-                登録済み商品のバーコードを読み取ってください。
-              </div>
-
-              <div className="mt-2 text-sm text-gray-600">
-                カメラはそのまま使用できます。
-              </div>
-
-            </div>
-
-          </div>
-
+          <input
+            id="title"
+            className="mt-2 w-full rounded-lg border p-3 text-slate-900"
+            name="title"
+            value={form.title}
+            onChange={handleTextChange}
+            placeholder="例：2026年8月 倉庫棚卸"
+          />
         </div>
-      )}
 
-      <div className="flex justify-end">
+        <div>
+          <label className="font-semibold" htmlFor="operator">
+            担当者
+          </label>
+
+          <input
+            id="operator"
+            className="mt-2 w-full rounded-lg border p-3 text-slate-900"
+            name="operator"
+            value={form.operator}
+            onChange={handleTextChange}
+            placeholder="山田 太郎"
+          />
+        </div>
+
+        <div>
+          <div className="font-semibold">棚卸対象</div>
+
+          <div className="mt-3 grid gap-2 sm:grid-cols-2">
+            {(Object.keys(scopeLabels) as ScopeType[]).map((scopeType) => (
+              <button
+                key={scopeType}
+                type="button"
+                onClick={() => handleScopeTypeChange(scopeType)}
+                className={`rounded-lg border p-3 text-left font-semibold ${
+                  form.scopeType === scopeType
+                    ? "border-blue-600 bg-blue-50 text-blue-700"
+                    : "border-slate-300 bg-white text-slate-700 hover:bg-slate-50"
+                }`}
+              >
+                {scopeLabels[scopeType]}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {form.scopeType !== "ALL" && (
+          <div>
+            <label className="font-semibold" htmlFor="scopeValue">
+              {scopeLabels[form.scopeType]}を選択
+            </label>
+
+            <select
+              id="scopeValue"
+              className="mt-2 w-full rounded-lg border p-3 text-slate-900"
+              value={form.scopeValue}
+              onChange={(e) =>
+                setForm((previous) => ({
+                  ...previous,
+                  scopeValue: e.target.value,
+                }))
+              }
+              disabled={optionsLoading}
+            >
+              <option value="">
+                {optionsLoading ? "読み込み中..." : "選択してください"}
+              </option>
+
+              {targetOptions.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
+
+        <div>
+          <label className="font-semibold" htmlFor="memo">
+            メモ
+          </label>
+
+          <textarea
+            id="memo"
+            className="mt-2 w-full rounded-lg border p-3 text-slate-900"
+            rows={4}
+            name="memo"
+            value={form.memo}
+            onChange={handleTextChange}
+            placeholder="必要であれば入力"
+          />
+        </div>
+
         <button
           type="button"
-          onClick={() =>
-            setCameraOpen((prev) => !prev)
-          }
-          className="rounded-xl bg-blue-600 px-5 py-3 font-bold text-white hover:bg-blue-700 transition"
+          onClick={startStocktake}
+          disabled={loading || optionsLoading}
+          className="w-full rounded-xl bg-blue-600 py-4 text-lg font-bold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-slate-400"
         >
-          {cameraOpen
-            ? "📷 カメラを閉じる"
-            : "📷 カメラで読み取る"}
+          {loading ? "開始中..." : "棚卸を開始する"}
         </button>
       </div>
-
-      {cameraOpen && (
-        <BarcodeScanner
-          onDetected={handleBarcodeDetected}
-        />
-      )}
-
-      <SearchResult
-        items={results}
-        onSelect={(item) => {
-          setSelectedItem(item);
-
-          setQuantity(item.quantity);
-
-          setStorageLocationId(
-            item.storageLocation?.id ?? ""
-          );
-
-          setKeyword(item.item.name);
-
-          setResults([]);
-
-          setErrorMessage("");
-
-          requestAnimationFrame(() => {
-            const input =
-              document.querySelector(
-                'input[type="number"]'
-              ) as HTMLInputElement | null;
-
-            input?.focus();
-            input?.select();
-          });
-        }}
-      />
-      <ItemCard
-        item={selectedItem}
-        quantity={quantity}
-        onQuantityChange={setQuantity}
-        storageLocations={storageLocations}
-        storageLocationId={storageLocationId}
-        onLocationChange={setStorageLocationId}
-        saving={saving}
-        onSave={save}
-      />
-
-    </div>
+    </main>
   );
 }

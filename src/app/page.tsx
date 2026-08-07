@@ -1,143 +1,115 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+
+const menus = [
+  {
+    title: "棚卸開始",
+    description: "新しい棚卸を開始します",
+    href: "/stocktake/start",
+    icon: "📦",
+    color: "bg-blue-500",
+  },
+  {
+    title: "在庫検索",
+    description: "JAN・商品名などで検索",
+    href: "/inventory-search",
+    icon: "🔍",
+    color: "bg-green-500",
+  },
+  {
+    title: "商品一覧",
+    description: "登録商品を見る",
+    href: "/items",
+    icon: "📋",
+    color: "bg-orange-500",
+  },
+  {
+    title: "棚卸履歴",
+    description: "過去の棚卸を見る",
+    href: "/history",
+    icon: "🕒",
+    color: "bg-purple-500",
+  },
+];
 
 export default function Home() {
-  const router = useRouter();
-
-  const [adminOpen, setAdminOpen] = useState(false);
-  const [adminPass, setAdminPass] = useState("");
-  const [masterPass, setMasterPass] = useState("2580");
-
-useEffect(() => {
-  const saved = localStorage.getItem("adminPass");
-
-  if (saved) {
-    setMasterPass(saved);
-  } else {
-    localStorage.setItem("adminPass", "2580");
-  }
-}, []);
-
-  const loginAdmin = () => {
-    if (adminPass === masterPass) {
-      setAdminOpen(false);
-      setAdminPass("");
-      router.push("/admin");
-    } else {
-      alert("パスコードが違います");
-      setAdminPass("");
-    }
-  };
-
   return (
-    <main className="min-h-screen bg-gray-100">
-      <div className="max-w-5xl mx-auto p-8">
-        <div className="mb-10">
-          <h1
-            onDoubleClick={() => setAdminOpen(true)}
-            className="text-5xl font-bold cursor-pointer select-none"
-          >
-            Inventory OS
-          </h1>
+    <main className="min-h-screen bg-slate-100 p-8">
+      <div className="max-w-7xl mx-auto">
 
-          <p className="text-gray-500 mt-2">
-            棚卸システム v1.0
-          </p>
+        <h1 className="text-4xl font-bold">
+          在庫管理システム
+        </h1>
+
+        <p className="text-gray-500 mt-2">
+          棚卸・検索・在庫管理
+        </p>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6 mt-10">
+
+          {menus.map((menu) => (
+            <Link
+              key={menu.href}
+              href={menu.href}
+            >
+              <div className="bg-white rounded-xl shadow hover:shadow-xl transition p-6 h-full cursor-pointer">
+
+                <div
+                  className={`${menu.color} w-14 h-14 rounded-xl flex items-center justify-center text-3xl text-white`}
+                >
+                  {menu.icon}
+                </div>
+
+                <h2 className="mt-5 text-xl font-semibold">
+                  {menu.title}
+                </h2>
+
+                <p className="text-gray-500 mt-2">
+                  {menu.description}
+                </p>
+
+              </div>
+            </Link>
+          ))}
+
         </div>
 
-        <div className="grid gap-6">
-          <Link
-            href="/import"
-            className="bg-white rounded-2xl shadow p-8 hover:shadow-lg transition"
-          >
-            <div className="text-5xl mb-4">📥</div>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mt-10">
 
-            <div className="text-2xl font-bold">
-              初回インポート
+          <div className="bg-white rounded-xl shadow p-6">
+            <div className="text-gray-500">
+              登録商品数
             </div>
 
-            <div className="text-gray-500 mt-2">
-              管理表Excelを読み込みます
-            </div>
-          </Link>
-
-          <Link
-            href="/stocktake"
-            className="bg-white rounded-2xl shadow p-8 hover:shadow-lg transition"
-          >
-            <div className="text-5xl mb-4">📋</div>
-
-            <div className="text-2xl font-bold">
-              棚卸
-            </div>
-
-            <div className="text-gray-500 mt-2">
-              バーコードで棚卸を行います
-            </div>
-          </Link>
-
-          <Link
-            href="/settings"
-            className="bg-white rounded-2xl shadow p-8 hover:shadow-lg transition"
-          >
-            <div className="text-5xl mb-4">⚙</div>
-
-            <div className="text-2xl font-bold">
-              設定
-            </div>
-
-            <div className="text-gray-500 mt-2">
-              保管場所・システム設定
-            </div>
-          </Link>
-        </div>
-      </div>
-
-      {adminOpen && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
-          <div className="bg-white rounded-2xl shadow-xl p-6 w-80">
-            <h2 className="text-xl font-bold mb-4">
-              🔒 管理者認証
-            </h2>
-
-            <input
-              type="password"
-              value={adminPass}
-              onChange={(e) => setAdminPass(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") {
-                  loginAdmin();
-                }
-              }}
-              placeholder="パスコード"
-              className="w-full border rounded-lg p-3"
-              autoFocus
-            />
-
-            <div className="mt-5 flex justify-end gap-2">
-              <button
-                onClick={() => {
-                  setAdminOpen(false);
-                  setAdminPass("");
-                }}
-                className="px-4 py-2 rounded-lg border"
-              >
-                キャンセル
-              </button>
-
-              <button
-                onClick={loginAdmin}
-                className="px-4 py-2 rounded-lg bg-blue-600 text-white"
-              >
-                OK
-              </button>
+            <div className="text-4xl font-bold mt-3">
+              --
             </div>
           </div>
+
+          <div className="bg-white rounded-xl shadow p-6">
+            <div className="text-gray-500">
+              進行中棚卸
+            </div>
+
+            <div className="text-4xl font-bold mt-3">
+              --
+            </div>
+          </div>
+
+          <div className="bg-white rounded-xl shadow p-6">
+            <div className="text-gray-500">
+              今日の棚卸
+            </div>
+
+            <div className="text-4xl font-bold mt-3">
+              --
+            </div>
+          </div>
+
         </div>
-      )}
+
+      </div>
     </main>
   );
 }

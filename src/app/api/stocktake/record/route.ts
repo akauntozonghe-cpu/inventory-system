@@ -1,38 +1,96 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 
-export async function POST(request: Request) {
+export async function POST(req: NextRequest) {
   try {
-    const body = await request.json();
+    const body = await req.json();
 
-    const record = await prisma.stocktakeRecord.upsert({
-      where: {
-        sessionId_inventoryInstanceId: {
-          sessionId: body.sessionId,
-          inventoryInstanceId: body.inventoryInstanceId,
+    const sessionId =
+      typeof body.sessionId === "string" ? body.sessionId : "";
+
+    const inventoryInstanceId =
+      typeof body.inventoryInstanceId === "string"
+        ? body.inventoryInstanceId
+        : "";
+
+    const countedQuantity = Number(body.countedQuantity);
+
+    if (!sessionId || !inventoryInstanceId) {
+      return NextResponse.json(
+        { message: "保存に必要な情報が不足しています" },
+        { status: 400 }
+      );
+    }
+
+    if (!Number.isInteger(countedQuantity) || countedQuantity < 0) {
+      return NextResponse.json(
+        { message: "棚卸数量には0以上の整数を入力してください" },
+        { status: 400 }
+      );
+    }
+
+    const record = await prisma.$transaction(async (tx) => {
+      const [session, target] = await Promise.all([
+        tx.stocktakeSession.findUnique({
+          where: {
+            id: sessionId,
+          },
+          select: {
+            status: true,
+          },
+        }),
+
+        tx.stocktakeTarget.findUnique({
+          where: {
+            sessionId_inventoryInstanceId: {
+              sessionId,
+              inventoryInstanceId,
+            },
+          },
+        }),
+      ]);
+
+      if (!session) {
+        throw new Error("棚卸セッションが見つかりません");
+      }
+
+      if (session.status !== "IN_PROGRESS") {
+        throw new Error("この棚卸は入力できません");
+      }
+
+      if (!target) {
+        throw new Error("この商品は棚卸対象に含まれていません");
+      }
+
+      const savedRecord = await tx.stocktakeRecord.upsert({
+        where: {
+          sessionId_inventoryInstanceId: {
+            sessionId,
+            inventoryInstanceId,
+          },
         },
-      },
-      update: {
-        countedQuantity: body.countedQuantity,
-        memo: body.memo ?? null,
-      },
-      create: {
-        sessionId: body.sessionId,
-        inventoryInstanceId: body.inventoryInstanceId,
-        countedQuantity: body.countedQuantity,
-        memo: body.memo ?? null,
-      },
-    });
+        update: {
+          countedQuantity,
+        },
+        create: {
+          sessionId,
+          inventoryInstanceId,
+          countedQuantity,
+        },
+      });
 
-    await prisma.inventoryInstance.update({
-      where: {
-        id: body.inventoryInstanceId,
-      },
-      data: {
-        actualQuantity: body.countedQuantity,
-        stocktakeStatus: "棚卸済",
-        stocktakeAt: new Date(),
-      },
+      await tx.inventoryInstance.update({
+        where: {
+          id: inventoryInstanceId,
+        },
+        data: {
+          actualQuantity: countedQuantity,
+          stocktakeStatus: "棚卸済",
+          stocktakeAt: new Date(),
+        },
+      });
+
+      return savedRecord;
     });
 
     return NextResponse.json(record);
@@ -40,8 +98,13 @@ export async function POST(request: Request) {
     console.error(error);
 
     return NextResponse.json(
-      { message: "保存に失敗しました" },
-      { status: 500 }
+      {
+        message:
+          error instanceof Error
+            ? error.message
+            : "棚卸の保存に失敗しました",
+      },
+      { status: 400 }
     );
   }
 }

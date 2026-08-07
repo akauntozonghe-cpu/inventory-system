@@ -44,31 +44,28 @@ model InventoryInstance {
 
   managementCode      String?
   managementGroupCode String?
+  manufacturer        String?
+  majorCategory       String?
+  minorCategory       String?
+  lotNo               String?
+  expirationDate      String?
+  unit                String?
 
-  manufacturer      String?
-  majorCategory     String?
-  minorCategory     String?
+  quantity        Int
+  actualQuantity  Int?
+  allocationType  AllocationType
+  status          String
 
-  lotNo             String?
-  expirationDate    String?
-  unit              String?
+  stocktakeStatus String   @default("未棚卸")
+  stocktakeAt     DateTime?
 
-  quantity          Int
-  actualQuantity    Int?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
 
-  allocationType    AllocationType
-  status            String
+  histories        InventoryHistory[]
+  stocktakeRecords StocktakeRecord[]
+  stocktakeTargets StocktakeTarget[]
 
-  stocktakeStatus   String @default("未棚卸")
-  stocktakeAt       DateTime?
-
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
-
-  histories         InventoryHistory[]
-  stocktakeRecords  StocktakeRecord[]
-
-  // 同じ商品・保管場所・Lot・期限の重複を防止
   @@unique([itemId, storageLocationId, lotNo, expirationDate])
 }
 
@@ -85,10 +82,16 @@ model InventoryHistory {
 }
 
 model StocktakeSession {
-  id          String @id @default(cuid())
+  id          String   @id @default(cuid())
 
   title       String
-  operator    String? @default("管理者")
+  operator    String?  @default("管理者")
+  location    String?
+  memo        String?
+
+  scopeType   StocktakeScope @default(ALL)
+  scopeValue  String?
+  scopeLabel  String?
 
   status      StocktakeStatus @default(IN_PROGRESS)
 
@@ -100,6 +103,23 @@ model StocktakeSession {
   updatedAt   DateTime @updatedAt
 
   records     StocktakeRecord[]
+  targets     StocktakeTarget[]
+}
+
+model StocktakeTarget {
+  id                  String @id @default(cuid())
+
+  sessionId           String
+  session             StocktakeSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  inventoryInstanceId String
+  inventoryInstance   InventoryInstance @relation(fields: [inventoryInstanceId], references: [id])
+
+  expectedQuantity    Int
+
+  createdAt           DateTime @default(now())
+
+  @@unique([sessionId, inventoryInstanceId])
 }
 
 model StocktakeRecord {
@@ -124,6 +144,13 @@ enum AllocationType {
   home
   flea_market
   warehouse
+}
+
+enum StocktakeScope {
+  ALL
+  LOCATION
+  MAJOR_CATEGORY
+  MINOR_CATEGORY
 }
 
 enum StocktakeStatus {

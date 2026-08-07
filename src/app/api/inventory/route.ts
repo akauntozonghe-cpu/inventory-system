@@ -6,15 +6,24 @@ export async function GET() {
     const inventories =
       await prisma.inventoryInstance.findMany({
         include: {
-          item: true,
-          storageLocation: true,
-          histories: {
-            orderBy: {
-              createdAt: "desc",
-            },
-            take: 10,
-          },
-        },
+  item: true,
+
+  storageLocation: true,
+
+  histories: {
+    orderBy: {
+      createdAt: "desc",
+    },
+    take: 10,
+  },
+
+  stocktakeRecords: {
+    orderBy: {
+      updatedAt: "desc",
+    },
+    take: 1,
+  },
+},
         orderBy: {
           updatedAt: "desc",
         },
@@ -85,10 +94,14 @@ export async function POST(req: Request) {
           },
           data: {
             quantity:
-              Number(body.quantity),
+  existing.quantity +
+  Number(body.quantity),
 
-            actualQuantity:
-              Number(body.quantity),
+actualQuantity:
+  existing.actualQuantity == null
+    ? existing.quantity + Number(body.quantity)
+    : existing.actualQuantity +
+      Number(body.quantity),
 
             storageLocationId:
               body.storageLocationId || null,
@@ -247,19 +260,27 @@ export async function PUT(req: Request) {
         },
       });
 
-    await prisma.inventoryHistory.create({
-      data: {
-        inventoryInstanceId:
-          inventory.id,
+    const diff =
+  inventory.quantity -
+  before.quantity;
 
-        changeQuantity:
-          inventory.quantity -
-          before.quantity,
+const action =
+  diff > 0
+    ? "入庫"
+    : diff < 0
+    ? "出庫"
+    : "修正";
 
-        action:
-          "在庫更新",
-      },
-    });
+await prisma.inventoryHistory.create({
+  data: {
+    inventoryInstanceId:
+      inventory.id,
+
+    changeQuantity: diff,
+
+    action,
+  },
+});
 
     return NextResponse.json(inventory);
 
