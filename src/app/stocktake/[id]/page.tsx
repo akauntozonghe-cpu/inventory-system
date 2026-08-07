@@ -1,21 +1,11 @@
 "use client";
 
-import {
-  useCallback,
-  useEffect,
-  useRef,
-  useState,
-} from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import BarcodeCamera from "@/components/stocktake/BarcodeCamera";
 
-type Filter =
-  | "ALL"
-  | "UNRECORDED"
-  | "RECORDED"
-  | "DIFFERENCE";
-
+type Filter = "ALL" | "UNRECORDED" | "RECORDED" | "DIFFERENCE";
 type Action = "PAUSE" | "RESUME" | "COMPLETE";
 
 type Inventory = {
@@ -28,9 +18,7 @@ type Inventory = {
     janCode: string | null;
     managementCode: string | null;
   };
-  storageLocation: {
-    name: string;
-  } | null;
+  storageLocation: { name: string } | null;
 };
 
 type Progress = {
@@ -50,37 +38,31 @@ type Progress = {
   };
 };
 
-const filters: Array<{
-  value: Filter;
-  label: string;
-}> = [
-  { value: "UNRECORDED", label: "未棚卸のみ" },
-  { value: "RECORDED", label: "棚卸済み" },
-  { value: "DIFFERENCE", label: "差異あり" },
-  { value: "ALL", label: "すべて" },
+const filters: Array<[Filter, string]> = [
+  ["UNRECORDED", "未棚卸のみ"],
+  ["RECORDED", "棚卸済み"],
+  ["DIFFERENCE", "差異あり"],
+  ["ALL", "すべて"],
 ];
 
 export default function StocktakePage() {
-  const params = useParams<{ id: string }>();
+  const { id: sessionId } = useParams<{ id: string }>();
   const router = useRouter();
-  const sessionId = params.id;
 
+  const searchRef = useRef<HTMLInputElement>(null);
   const quantityRef = useRef<HTMLInputElement>(null);
 
   const [progress, setProgress] = useState<Progress | null>(null);
   const [items, setItems] = useState<Inventory[]>([]);
   const [selected, setSelected] = useState<Inventory | null>(null);
 
-  const [filter, setFilter] =
-    useState<Filter>("UNRECORDED");
-
+  const [filter, setFilter] = useState<Filter>("UNRECORDED");
   const [keyword, setKeyword] = useState("");
   const [quantity, setQuantity] = useState("");
 
+  const [scannerOpen, setScannerOpen] = useState(false);
   const [loadingItems, setLoadingItems] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [changingStatus, setChangingStatus] = useState(false);
-  const [cameraOpen, setCameraOpen] = useState(false);
   const [message, setMessage] = useState("");
 
   const canEdit = progress?.session.status === "IN_PROGRESS";
@@ -94,8 +76,7 @@ export default function StocktakePage() {
       throw new Error("進捗を取得できませんでした");
     }
 
-    const data: Progress = await response.json();
-    setProgress(data);
+    setProgress(await response.json());
   }, [sessionId]);
 
   const fetchItems = useCallback(
@@ -118,8 +99,7 @@ export default function StocktakePage() {
           throw new Error("在庫を取得できませんでした");
         }
 
-        const data: Inventory[] = await response.json();
-        setItems(data);
+        setItems(await response.json());
       } catch (error) {
         console.error(error);
         setItems([]);
@@ -138,13 +118,8 @@ export default function StocktakePage() {
   }, [fetchProgress]);
 
   useEffect(() => {
-    const timer = window.setTimeout(() => {
-      fetchItems();
-    }, 250);
-
-    return () => {
-      window.clearTimeout(timer);
-    };
+    const timer = window.setTimeout(fetchItems, 250);
+    return () => window.clearTimeout(timer);
   }, [fetchItems]);
 
   const selectItem = (item: Inventory) => {
@@ -153,16 +128,11 @@ export default function StocktakePage() {
       return;
     }
 
-    setMessage("");
     setSelected(item);
-
-    // 既に入力済みならその数、未入力なら現在庫を自動入力
     setQuantity(
-      String(
-        item.countedQuantity ??
-          item.expectedQuantity
-      )
+      String(item.countedQuantity ?? item.expectedQuantity)
     );
+    setMessage("");
 
     requestAnimationFrame(() => {
       quantityRef.current?.focus();
@@ -170,28 +140,31 @@ export default function StocktakePage() {
     });
   };
 
-  const searchBarcode = useCallback(
+  const scanBarcode = useCallback(
     async (barcode: string) => {
-      const value = barcode.trim();
-
-      if (!value) {
+      // 入力中は次のバーコードを受け付けない。
+      // カメラ自体は起動したままなので、保存後すぐ次を読める。
+      if (selected) {
+        setMessage(
+          "いまの商品を保存してから、次を読み取ってください"
+        );
         return;
       }
 
+      const value = barcode.trim();
+      if (!value) return;
+
       setKeyword(value);
-      setMessage(`読み取り：${value}`);
 
       try {
         const response = await fetch(
           `/api/inventory/search?sessionId=${encodeURIComponent(
             sessionId
-          )}&q=${encodeURIComponent(
-            value
-          )}&filter=ALL`
+          )}&q=${encodeURIComponent(value)}&filter=ALL`
         );
 
         if (!response.ok) {
-          throw new Error("検索に失敗しました");
+          throw new Error("バーコード検索に失敗しました");
         }
 
         const data: Inventory[] = await response.json();
@@ -199,27 +172,22 @@ export default function StocktakePage() {
 
         if (data.length === 1) {
           selectItem(data[0]);
+          setMessage(`読み取りました：${value}`);
         } else if (data.length === 0) {
-          setMessage(
-            `「${value}」に該当する対象在庫がありません`
-          );
+          setMessage("対象在庫が見つかりません");
         } else {
-          setMessage(
-            `${data.length}件見つかりました。商品を選んでください`
-          );
+          setMessage(`${data.length}件見つかりました`);
         }
       } catch (error) {
         console.error(error);
         setMessage("バーコード検索に失敗しました");
       }
     },
-    [sessionId]
+    [selected, sessionId]
   );
 
-  const saveRecord = async () => {
-    if (!selected) {
-      return;
-    }
+  const save = async () => {
+    if (!selected) return;
 
     const countedQuantity = Number(quantity);
 
@@ -233,7 +201,6 @@ export default function StocktakePage() {
     }
 
     setSaving(true);
-    setMessage("");
 
     try {
       const response = await fetch("/api/stocktake/record", {
@@ -251,29 +218,36 @@ export default function StocktakePage() {
       const data = await response.json();
 
       if (!response.ok) {
-        throw new Error(
-          data.message ?? "保存に失敗しました"
-        );
+        throw new Error(data.message ?? "保存に失敗しました");
       }
 
       const difference =
         countedQuantity - selected.expectedQuantity;
 
-      setMessage(
-        difference === 0
-          ? "棚卸を保存しました（一致）"
-          : `棚卸を保存しました（差異 ${
-              difference > 0 ? "+" : ""
-            }${difference}）`
-      );
-
+      // 保存後は必ず入力値を消す。
+      // 連続スキャン中なら、カメラはそのままで次を読める。
       setSelected(null);
       setQuantity("");
+      setKeyword("");
+
+      setMessage(
+        difference === 0
+          ? "保存しました。一致です。次を読み取ってください。"
+          : `保存しました。差異 ${
+              difference > 0 ? "+" : ""
+            }${difference}`
+      );
 
       await Promise.all([
         fetchProgress(),
-        fetchItems(),
+        fetchItems("", filter),
       ]);
+
+      requestAnimationFrame(() => {
+        if (!scannerOpen) {
+          searchRef.current?.focus();
+        }
+      });
     } catch (error) {
       console.error(error);
 
@@ -288,26 +262,16 @@ export default function StocktakePage() {
   };
 
   const changeStatus = async (action: Action) => {
-    if (
-      action === "PAUSE" &&
-      !window.confirm(
-        "棚卸を中断しますか？入力済みの内容は保存されたままです。"
-      )
-    ) {
+    const confirmation =
+      action === "PAUSE"
+        ? "棚卸を中断しますか？入力済みの内容は残ります。"
+        : action === "COMPLETE"
+          ? "未棚卸の商品が残っていても終了しますか？"
+          : "";
+
+    if (confirmation && !window.confirm(confirmation)) {
       return;
     }
-
-    if (
-      action === "COMPLETE" &&
-      !window.confirm(
-        "棚卸を終了しますか？未棚卸の商品が残っていても終了できます。"
-      )
-    ) {
-      return;
-    }
-
-    setChangingStatus(true);
-    setMessage("");
 
     try {
       const response = await fetch(
@@ -338,7 +302,7 @@ export default function StocktakePage() {
 
       setMessage(
         action === "PAUSE"
-          ? "棚卸を中断しました。開始画面から再開できます。"
+          ? "中断しました。開始画面から再開できます。"
           : "棚卸を再開しました。"
       );
     } catch (error) {
@@ -349,48 +313,120 @@ export default function StocktakePage() {
           ? error.message
           : "状態の変更に失敗しました"
       );
-    } finally {
-      setChangingStatus(false);
     }
   };
 
-  const selectedDifference = selected
-    ? Number(quantity || 0) -
-      selected.expectedQuantity
+  const difference = selected
+    ? Number(quantity || 0) - selected.expectedQuantity
     : 0;
 
+  const inputPanel = selected && (
+    <div className="rounded-2xl bg-white p-4 text-slate-900 shadow-2xl">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="text-xs font-bold text-blue-600">
+            棚卸入力
+          </p>
+
+          <h2 className="mt-1 truncate text-lg font-bold">
+            {selected.item.name}
+          </h2>
+
+          <p className="mt-1 text-sm text-slate-600">
+            現在庫：{selected.expectedQuantity}
+          </p>
+        </div>
+
+        <button
+          type="button"
+          onClick={() => {
+            setSelected(null);
+            setQuantity("");
+          }}
+          className="rounded-lg bg-slate-100 px-3 py-2 text-sm"
+        >
+          戻る
+        </button>
+      </div>
+
+      <label className="mt-4 block text-sm font-bold">
+        棚卸数量
+      </label>
+
+      <input
+        ref={quantityRef}
+        type="number"
+        min="0"
+        inputMode="numeric"
+        value={quantity}
+        disabled={!canEdit || saving}
+        onChange={(event) => setQuantity(event.target.value)}
+        onKeyDown={(event) => {
+          if (event.key === "Enter") save();
+        }}
+        className="mt-1 w-full rounded-xl border-2 border-slate-300 p-3 text-3xl font-bold outline-none focus:border-blue-600"
+      />
+
+      <p
+        className={`mt-3 rounded-xl p-3 font-bold ${
+          difference === 0
+            ? "bg-green-100 text-green-700"
+            : "bg-red-100 text-red-700"
+        }`}
+      >
+        差異：{difference > 0 ? "+" : ""}
+        {difference}
+      </p>
+
+      <button
+        type="button"
+        onClick={save}
+        disabled={!canEdit || saving}
+        className="mt-3 w-full rounded-xl bg-blue-600 py-3 text-lg font-bold text-white hover:bg-blue-700 disabled:bg-slate-400"
+      >
+        {saving
+          ? "保存中..."
+          : difference === 0
+            ? "一致で保存して次へ"
+            : "保存して次へ"}
+      </button>
+    </div>
+  );
+
   return (
-    <main className="mx-auto min-h-screen max-w-7xl p-4 text-white sm:p-6 lg:p-8">
-      <header className="mb-5 flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+    <main
+      className={`mx-auto min-h-screen max-w-7xl p-4 text-white sm:p-6 lg:p-8 ${
+        selected ? "pb-48 lg:pb-8" : ""
+      }`}
+    >
+      <header className="mb-4 flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
         <div>
           <h1 className="text-2xl font-bold sm:text-3xl">
             {progress?.session.title ?? "棚卸"}
           </h1>
 
           <p className="mt-1 text-sm text-slate-300">
-            対象：
-            {progress?.session.scopeLabel ?? "全在庫"}
-          </p>
-
-          <p className="mt-1 text-sm text-slate-300">
-            状態：
-            {progress?.session.status === "PAUSED"
-              ? "中断中"
-              : progress?.session.status === "COMPLETED"
-                ? "終了済み"
-                : "棚卸中"}
+            対象：{progress?.session.scopeLabel ?? "全在庫"}
           </p>
         </div>
 
-        <div className="flex flex-wrap gap-2">
+        <div className="flex gap-2 overflow-x-auto pb-1">
+          <button
+            type="button"
+            onClick={() => setScannerOpen(true)}
+            disabled={!canEdit}
+            className="shrink-0 rounded-xl bg-slate-800 px-3 py-2 text-sm font-bold hover:bg-slate-700 disabled:bg-slate-500"
+          >
+            連続スキャン
+          </button>
+
           {progress?.session.status === "IN_PROGRESS" && (
             <button
               type="button"
               onClick={() => changeStatus("PAUSE")}
-              disabled={changingStatus}
-              className="rounded-xl bg-orange-500 px-4 py-3 font-bold hover:bg-orange-600 disabled:opacity-60"
+              className="shrink-0 rounded-xl bg-orange-500 px-3 py-2 text-sm font-bold"
             >
-              中断する
+              中断
             </button>
           )}
 
@@ -398,10 +434,9 @@ export default function StocktakePage() {
             <button
               type="button"
               onClick={() => changeStatus("RESUME")}
-              disabled={changingStatus}
-              className="rounded-xl bg-green-600 px-4 py-3 font-bold hover:bg-green-700 disabled:opacity-60"
+              className="shrink-0 rounded-xl bg-green-600 px-3 py-2 text-sm font-bold"
             >
-              再開する
+              再開
             </button>
           )}
 
@@ -409,31 +444,30 @@ export default function StocktakePage() {
             <button
               type="button"
               onClick={() => changeStatus("COMPLETE")}
-              disabled={changingStatus}
-              className="rounded-xl bg-slate-700 px-4 py-3 font-bold hover:bg-slate-600 disabled:opacity-60"
+              className="shrink-0 rounded-xl bg-slate-700 px-3 py-2 text-sm font-bold"
             >
-              棚卸を終了する
+              終了
             </button>
           )}
 
           <Link
             href={`/stocktake/${sessionId}/result`}
-            className="rounded-xl bg-blue-600 px-4 py-3 font-bold hover:bg-blue-700"
+            className="shrink-0 rounded-xl bg-blue-600 px-3 py-2 text-sm font-bold"
           >
-            結果を見る
+            結果
           </Link>
         </div>
       </header>
 
       {progress && (
-        <section className="mb-5 rounded-2xl bg-white p-4 text-slate-900 shadow sm:p-6">
-          <div className="flex items-end justify-between gap-4">
+        <section className="mb-4 rounded-2xl bg-white p-4 text-slate-900 sm:p-5">
+          <div className="flex items-end justify-between">
             <div>
               <p className="text-sm text-slate-500">
                 棚卸進捗
               </p>
 
-              <p className="mt-1 text-2xl font-bold">
+              <p className="text-2xl font-bold">
                 {progress.summary.recordedCount}
                 <span className="text-base font-normal text-slate-500">
                   {" "}
@@ -447,42 +481,33 @@ export default function StocktakePage() {
             </p>
           </div>
 
-          <div className="mt-3 h-3 overflow-hidden rounded-full bg-slate-200">
+          <div className="mt-2 h-2 overflow-hidden rounded-full bg-slate-200">
             <div
-              className="h-full rounded-full bg-blue-600 transition-all"
+              className="h-full rounded-full bg-blue-600"
               style={{
                 width: `${progress.summary.progressPercent}%`,
               }}
             />
           </div>
 
-          <div className="mt-4 grid grid-cols-3 gap-2 text-center sm:gap-4">
-            <div className="rounded-xl bg-slate-100 p-3">
-              <p className="text-xs text-slate-500">
-                一致
-              </p>
-
-              <p className="text-2xl font-bold text-green-600">
+          <div className="mt-3 grid grid-cols-3 gap-2 text-center">
+            <div className="rounded-xl bg-slate-100 p-2">
+              <p className="text-xs text-slate-500">一致</p>
+              <p className="text-xl font-bold text-green-600">
                 {progress.summary.matchedCount}
               </p>
             </div>
 
-            <div className="rounded-xl bg-slate-100 p-3">
-              <p className="text-xs text-slate-500">
-                差異
-              </p>
-
-              <p className="text-2xl font-bold text-red-600">
+            <div className="rounded-xl bg-slate-100 p-2">
+              <p className="text-xs text-slate-500">差異</p>
+              <p className="text-xl font-bold text-red-600">
                 {progress.summary.differenceCount}
               </p>
             </div>
 
-            <div className="rounded-xl bg-slate-100 p-3">
-              <p className="text-xs text-slate-500">
-                未棚卸
-              </p>
-
-              <p className="text-2xl font-bold text-orange-600">
+            <div className="rounded-xl bg-slate-100 p-2">
+              <p className="text-xs text-slate-500">未棚卸</p>
+              <p className="text-xl font-bold text-orange-600">
                 {progress.summary.unrecordedCount}
               </p>
             </div>
@@ -491,104 +516,74 @@ export default function StocktakePage() {
       )}
 
       {message && (
-        <div className="mb-4 rounded-xl bg-blue-100 px-4 py-3 text-sm font-medium text-blue-950">
+        <p className="mb-3 rounded-xl bg-blue-100 px-4 py-3 text-sm text-blue-950">
           {message}
-        </div>
-      )}
-
-      {!canEdit && progress && (
-        <div className="mb-4 rounded-xl bg-orange-100 px-4 py-3 text-orange-950">
-          {progress.session.status === "PAUSED"
-            ? "棚卸は中断中です。「再開する」を押すと入力できます。"
-            : "棚卸は終了済みです。結果画面から確認できます。"}
-        </div>
+        </p>
       )}
 
       <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_380px]">
-        <section className="order-2 lg:order-1">
-          <div className="mb-3 flex flex-col gap-2 sm:flex-row">
-            <input
-              value={keyword}
-              onChange={(event) =>
-                setKeyword(event.target.value)
+        <section>
+          <input
+            ref={searchRef}
+            value={keyword}
+            onChange={(event) => setKeyword(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter") {
+                event.preventDefault();
+                scanBarcode(keyword);
               }
-              onKeyDown={(event) => {
-                if (event.key === "Enter") {
-                  event.preventDefault();
-                  searchBarcode(keyword);
-                }
-              }}
-              placeholder="JAN・バーコード・商品名で検索"
-              className="min-w-0 flex-1 rounded-xl border-2 border-slate-300 bg-white px-4 py-3 text-lg text-slate-900 outline-none focus:border-blue-600"
-            />
+            }}
+            placeholder="JAN・バーコード・商品名で検索"
+            className="w-full rounded-xl border-2 border-slate-300 bg-white px-4 py-3 text-lg text-slate-900 outline-none focus:border-blue-600"
+          />
 
-            <button
-              type="button"
-              onClick={() => setCameraOpen(true)}
-              disabled={!canEdit}
-              className="rounded-xl bg-blue-600 px-5 py-3 font-bold hover:bg-blue-700 disabled:bg-slate-500"
-            >
-              📷 カメラで読む
-            </button>
-          </div>
-
-          <div className="mb-4 flex gap-2 overflow-x-auto pb-1">
-            {filters.map((item) => (
+          <div className="my-3 flex gap-2 overflow-x-auto pb-1">
+            {filters.map(([value, label]) => (
               <button
-                key={item.value}
+                key={value}
                 type="button"
                 onClick={() => {
-                  setFilter(item.value);
+                  setFilter(value);
                   setSelected(null);
                 }}
-                className={`whitespace-nowrap rounded-full px-4 py-2 font-bold ${
-                  filter === item.value
+                className={`shrink-0 rounded-full px-4 py-2 font-bold ${
+                  filter === value
                     ? "bg-blue-600 text-white"
                     : "bg-white text-slate-700"
                 }`}
               >
-                {item.label}
+                {label}
               </button>
             ))}
           </div>
 
           {loadingItems ? (
-            <div className="rounded-2xl bg-white p-6 text-slate-600">
+            <div className="rounded-2xl bg-white p-5 text-slate-600">
               読み込み中...
-            </div>
-          ) : items.length === 0 ? (
-            <div className="rounded-2xl bg-white p-6 text-slate-600">
-              該当する在庫がありません。
             </div>
           ) : (
             <div className="space-y-3">
               {items.map((item) => {
-                const difference =
+                const itemDifference =
                   item.countedQuantity === null
                     ? null
-                    : item.countedQuantity -
-                      item.expectedQuantity;
+                    : item.countedQuantity - item.expectedQuantity;
 
                 return (
                   <button
                     key={item.id}
                     type="button"
                     onClick={() => selectItem(item)}
-                    className={`w-full rounded-2xl bg-white p-4 text-left text-slate-900 shadow transition hover:ring-2 hover:ring-blue-500 ${
-                      selected?.id === item.id
-                        ? "ring-4 ring-blue-500"
-                        : ""
-                    }`}
+                    className="w-full rounded-2xl bg-white p-4 text-left text-slate-900 shadow hover:ring-2 hover:ring-blue-500"
                   >
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="min-w-0">
-                        <h2 className="truncate text-lg font-bold">
+                    <div className="flex justify-between gap-3">
+                      <div>
+                        <h2 className="text-lg font-bold">
                           {item.item.name}
                         </h2>
 
                         <p className="mt-1 text-sm text-slate-600">
-                          JAN：
-                          {item.item.janCode ?? "-"}
+                          JAN：{item.item.janCode ?? "-"}
                         </p>
 
                         <p className="text-sm text-slate-600">
@@ -597,29 +592,28 @@ export default function StocktakePage() {
                         </p>
 
                         <p className="mt-2 font-bold text-blue-600">
-                          現在庫：
-                          {item.expectedQuantity}
+                          現在庫：{item.expectedQuantity}
                         </p>
                       </div>
 
                       <span
-                        className={`shrink-0 rounded-full px-3 py-1 text-sm font-bold ${
+                        className={`h-fit shrink-0 rounded-full px-3 py-1 text-sm font-bold ${
                           !item.isRecorded
                             ? "bg-orange-100 text-orange-700"
-                            : difference === 0
+                            : itemDifference === 0
                               ? "bg-green-100 text-green-700"
                               : "bg-red-100 text-red-700"
                         }`}
                       >
                         {!item.isRecorded
                           ? "未棚卸"
-                          : difference === 0
+                          : itemDifference === 0
                             ? "一致"
                             : `差異 ${
-                                difference && difference > 0
+                                itemDifference && itemDifference > 0
                                   ? "+"
                                   : ""
-                              }${difference}`}
+                              }${itemDifference}`}
                       </span>
                     </div>
                   </button>
@@ -629,87 +623,28 @@ export default function StocktakePage() {
           )}
         </section>
 
-        <aside className="order-1 lg:order-2">
-          <div className="sticky top-4 rounded-2xl bg-white p-5 text-slate-900 shadow">
-            <h2 className="text-xl font-bold">
-              棚卸入力
-            </h2>
-
-            {!selected ? (
-              <p className="mt-4 rounded-xl bg-slate-100 p-4 text-slate-600">
-                商品を選ぶか、バーコードを読み取ってください。
-              </p>
-            ) : (
-              <>
-                <div className="mt-4 rounded-xl bg-slate-100 p-4">
-                  <p className="font-bold">
-                    {selected.item.name}
-                  </p>
-
-                  <p className="mt-1 text-sm text-slate-600">
-                    保管場所：
-                    {selected.storageLocation?.name ?? "未設定"}
-                  </p>
-
-                  <p className="mt-1 text-sm text-slate-600">
-                    現在庫：
-                    {selected.expectedQuantity}
-                  </p>
-                </div>
-
-                <label className="mt-5 block font-bold">
-                  棚卸数量
-                </label>
-
-                <input
-                  ref={quantityRef}
-                  type="number"
-                  min="0"
-                  inputMode="numeric"
-                  value={quantity}
-                  onChange={(event) =>
-                    setQuantity(event.target.value)
-                  }
-                  onKeyDown={(event) => {
-                    if (event.key === "Enter") {
-                      saveRecord();
-                    }
-                  }}
-                  disabled={!canEdit || saving}
-                  className="mt-2 w-full rounded-xl border-2 border-slate-300 p-4 text-3xl font-bold outline-none focus:border-blue-600 disabled:bg-slate-100"
-                />
-
-                <p
-                  className={`mt-3 rounded-xl p-3 font-bold ${
-                    selectedDifference === 0
-                      ? "bg-green-100 text-green-700"
-                      : "bg-red-100 text-red-700"
-                  }`}
-                >
-                  差異：
-                  {selectedDifference > 0 ? "+" : ""}
-                  {selectedDifference}
-                </p>
-
-                <button
-                  type="button"
-                  onClick={saveRecord}
-                  disabled={!canEdit || saving}
-                  className="mt-4 w-full rounded-xl bg-blue-600 py-4 text-lg font-bold text-white hover:bg-blue-700 disabled:bg-slate-400"
-                >
-                  {saving ? "保存中..." : "棚卸を保存する"}
-                </button>
-              </>
-            )}
-          </div>
+        <aside className="hidden lg:block">
+          {inputPanel}
         </aside>
       </div>
 
-      {cameraOpen && (
+      {selected && (
+        <div className="fixed inset-x-0 bottom-0 z-40 border-t border-slate-200 bg-slate-100 p-3 shadow-2xl lg:hidden">
+          {inputPanel}
+        </div>
+      )}
+
+      {scannerOpen && (
         <BarcodeCamera
-          onDetected={searchBarcode}
-          onClose={() => setCameraOpen(false)}
-        />
+          onDetected={scanBarcode}
+          onClose={() => setScannerOpen(false)}
+        >
+          {selected && (
+            <div className="max-h-[55vh] overflow-y-auto">
+              {inputPanel}
+            </div>
+          )}
+        </BarcodeCamera>
       )}
     </main>
   );

@@ -1,23 +1,30 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import {
+  type ReactNode,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 
 type Props = {
   onDetected: (barcode: string) => void;
   onClose: () => void;
+  children?: ReactNode;
 };
 
 export default function BarcodeCamera({
   onDetected,
   onClose,
+  children,
 }: Props) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const onDetectedRef = useRef(onDetected);
-  const lastBarcodeRef = useRef("");
+  const lastValueRef = useRef("");
   const lastDetectedAtRef = useRef(0);
 
   const [message, setMessage] = useState(
-    "カメラでバーコードを読み取ります"
+    "バーコードを枠に入れてください"
   );
 
   useEffect(() => {
@@ -28,10 +35,9 @@ export default function BarcodeCamera({
     let stopped = false;
     let controls: { stop: () => void } | undefined;
 
-    const startCamera = async () => {
+    const start = async () => {
       try {
         const { BrowserMultiFormatReader } = await import("@zxing/browser");
-
         const { BarcodeFormat, DecodeHintType } = await import(
           "@zxing/library"
         );
@@ -46,59 +52,44 @@ export default function BarcodeCamera({
         ]);
 
         const reader = new BrowserMultiFormatReader(hints, {
-            delayBetweenScanAttempts: 150,
+          delayBetweenScanAttempts: 150,
         });
 
-        const devices =
-          await BrowserMultiFormatReader.listVideoInputDevices();
-
-        const rearCamera = devices.find((device) =>
-          /back|rear|environment/i.test(device.label)
-        );
-
-        if (!videoRef.current) {
-          return;
-        }
+        if (!videoRef.current) return;
 
         controls = await reader.decodeFromVideoDevice(
-          rearCamera?.deviceId,
+          undefined,
           videoRef.current,
           (result) => {
-            if (!result || stopped) {
-              return;
-            }
+            if (!result || stopped) return;
 
-            const barcode = result.getText();
+            const value = result.getText();
             const now = Date.now();
 
-            // 同じコードをカメラが連続で拾うのを少しだけ抑える
             if (
-              lastBarcodeRef.current === barcode &&
+              lastValueRef.current === value &&
               now - lastDetectedAtRef.current < 1200
             ) {
               return;
             }
 
-            lastBarcodeRef.current = barcode;
+            lastValueRef.current = value;
             lastDetectedAtRef.current = now;
 
-            setMessage(`読み取りました：${barcode}`);
             navigator.vibrate?.(80);
-
-            // 読み取ってもカメラは閉じない
-            onDetectedRef.current(barcode);
+            setMessage(`読み取りました：${value}`);
+            onDetectedRef.current(value);
           }
         );
       } catch (error) {
         console.error(error);
-
         setMessage(
-          "カメラを開始できませんでした。ブラウザのカメラ利用を許可してから、もう一度開いてください。"
+          "カメラを開始できませんでした。権限を確認してください。"
         );
       }
     };
 
-    startCamera();
+    start();
 
     return () => {
       stopped = true;
@@ -107,44 +98,47 @@ export default function BarcodeCamera({
   }, []);
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end bg-black/70 sm:items-center sm:justify-center">
-      <section className="w-full max-w-xl rounded-t-3xl bg-slate-950 p-4 text-white sm:rounded-3xl">
-        <div className="mb-3 flex items-center justify-between gap-4">
+    <div className="fixed inset-0 z-50 bg-black text-white">
+      <div className="relative mx-auto flex h-full max-w-2xl flex-col">
+        <header className="flex items-center justify-between p-4">
           <div>
-            <h2 className="text-lg font-bold">
-              カメラでバーコードを読む
-            </h2>
-
+            <h2 className="font-bold">連続スキャン中</h2>
             <p className="text-xs text-slate-300">
-              読み取った後もカメラは開いたままです
+              読み取ってもカメラは閉じません
             </p>
           </div>
 
           <button
             type="button"
             onClick={onClose}
-            className="rounded-lg bg-white/15 px-4 py-2 font-bold hover:bg-white/25"
+            className="rounded-xl bg-white/15 px-4 py-2 font-bold"
           >
-            閉じる
+            スキャン終了
           </button>
+        </header>
+
+        <div className="relative flex-1 overflow-hidden bg-black">
+          <video
+            ref={videoRef}
+            autoPlay
+            playsInline
+            muted
+            className="h-full w-full object-cover"
+          />
+
+          <div className="pointer-events-none absolute inset-x-8 top-1/2 h-44 -translate-y-1/2 rounded-2xl border-4 border-white/80" />
+
+          <p className="absolute inset-x-4 top-4 rounded-xl bg-black/60 p-3 text-center text-sm">
+            {message}
+          </p>
         </div>
 
-        <video
-          ref={videoRef}
-          autoPlay
-          playsInline
-          muted
-          className="aspect-video w-full rounded-2xl bg-black object-cover"
-        />
-
-        <p className="mt-3 text-sm text-slate-200">
-          {message}
-        </p>
-
-        <p className="mt-1 text-xs text-slate-400">
-          バーコード全体が枠に入るように、少し離してピントが合うまで待ってください。
-        </p>
-      </section>
+        {children && (
+          <div className="absolute inset-x-3 bottom-3 z-10">
+            {children}
+          </div>
+        )}
+      </div>
     </div>
   );
 }
