@@ -1,20 +1,30 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { getLoggedInUser } from "@/lib/auth";
 
 type Action = "PAUSE" | "RESUME" | "COMPLETE";
 
 export async function PATCH(
-  req: NextRequest,
+  request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const user = getLoggedInUser(request);
+
+  if (!user) {
+    return NextResponse.json(
+      { message: "ログインが必要です。" },
+      { status: 401 }
+    );
+  }
+
   try {
     const { id } = await params;
-    const body = await req.json();
+    const body = await request.json();
     const action = body.action as Action;
 
     if (!["PAUSE", "RESUME", "COMPLETE"].includes(action)) {
       return NextResponse.json(
-        { message: "操作が不正です" },
+        { message: "操作が正しくありません。" },
         { status: 400 }
       );
     }
@@ -26,20 +36,28 @@ export async function PATCH(
       select: {
         id: true,
         status: true,
+        operatorUserId: true,
       },
     });
 
     if (!session) {
       return NextResponse.json(
-        { message: "棚卸セッションが見つかりません" },
+        { message: "棚卸が見つかりません。" },
         { status: 404 }
+      );
+    }
+
+    if (session.operatorUserId !== user.id) {
+      return NextResponse.json(
+        { message: "この棚卸を操作する権限がありません。" },
+        { status: 403 }
       );
     }
 
     if (action === "PAUSE") {
       if (session.status !== "IN_PROGRESS") {
         return NextResponse.json(
-          { message: "棚卸中のセッションだけ中断できます" },
+          { message: "この棚卸は中断できません。" },
           { status: 400 }
         );
       }
@@ -60,7 +78,7 @@ export async function PATCH(
     if (action === "RESUME") {
       if (session.status !== "PAUSED") {
         return NextResponse.json(
-          { message: "中断中のセッションだけ再開できます" },
+          { message: "この棚卸は再開できません。" },
           { status: 400 }
         );
       }
@@ -80,13 +98,11 @@ export async function PATCH(
 
     if (session.status === "COMPLETED") {
       return NextResponse.json(
-        { message: "この棚卸はすでに終了しています" },
+        { message: "この棚卸はすでに完了しています。" },
         { status: 400 }
       );
     }
 
-    // 未棚卸が残っていても終了可能。
-    // 未入力分は結果画面で「未棚卸」として確認できる。
     const updated = await prisma.stocktakeSession.update({
       where: {
         id,
@@ -102,7 +118,7 @@ export async function PATCH(
     console.error(error);
 
     return NextResponse.json(
-      { message: "棚卸状態の更新に失敗しました" },
+      { message: "棚卸状態の更新に失敗しました。" },
       { status: 500 }
     );
   }

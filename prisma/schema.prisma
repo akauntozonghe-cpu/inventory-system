@@ -7,6 +7,20 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+model AppUser {
+  id           String   @id @default(cuid())
+  username     String   @unique
+  displayName  String
+  passwordHash String
+  role         UserRole @default(WORKER)
+  isActive     Boolean  @default(true)
+
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  stocktakeSessions StocktakeSession[]
+}
+
 model Item {
   id                  String   @id @default(cuid())
   managementCode      String?  @unique
@@ -86,6 +100,11 @@ model StocktakeSession {
 
   title       String
   operator    String?  @default("管理者")
+
+  // ログインユーザーとの紐付け
+  operatorUserId String?
+  operatorUser   AppUser? @relation(fields: [operatorUserId], references: [id])
+
   location    String?
   memo        String?
 
@@ -104,6 +123,8 @@ model StocktakeSession {
 
   records     StocktakeRecord[]
   targets     StocktakeTarget[]
+
+  @@index([operatorUserId, status])
 }
 
 model StocktakeTarget {
@@ -157,4 +178,9 @@ enum StocktakeStatus {
   IN_PROGRESS
   PAUSED
   COMPLETED
+}
+
+enum UserRole {
+  ADMIN
+  WORKER
 }

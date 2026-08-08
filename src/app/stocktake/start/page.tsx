@@ -1,35 +1,24 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 
-type ScopeType =
-  | "ALL"
-  | "LOCATION"
-  | "MAJOR_CATEGORY"
-  | "MINOR_CATEGORY";
-
+type Scope = "ALL" | "LOCATION" | "MAJOR_CATEGORY" | "MINOR_CATEGORY";
 type Options = {
-  locations: Array<{
-    id: string;
-    name: string;
-  }>;
+  locations: Array<{ id: string; name: string }>;
   majorCategories: string[];
   minorCategories: string[];
 };
-
-type ActiveSession = {
+type Session = {
   id: string;
   title: string;
-  operator: string | null;
   scopeLabel: string | null;
   status: "IN_PROGRESS" | "PAUSED";
-  startedAt: string;
   targetCount: number;
   recordedCount: number;
 };
 
-const scopeLabels: Record<ScopeType, string> = {
+const scopeLabels: Record<Scope, string> = {
   ALL: "全在庫",
   LOCATION: "保管場所ごと",
   MAJOR_CATEGORY: "大分類ごと",
@@ -38,348 +27,158 @@ const scopeLabels: Record<ScopeType, string> = {
 
 export default function StocktakeStartPage() {
   const router = useRouter();
-
-  const [loading, setLoading] = useState(false);
-  const [optionsLoading, setOptionsLoading] = useState(true);
-  const [activeLoading, setActiveLoading] = useState(true);
-
   const [options, setOptions] = useState<Options>({
     locations: [],
     majorCategories: [],
     minorCategories: [],
   });
-
-  const [activeSessions, setActiveSessions] = useState<ActiveSession[]>(
-    []
-  );
-
-  const [form, setForm] = useState({
-    title: "",
-    operator: "",
-    memo: "",
-    scopeType: "ALL" as ScopeType,
-    scopeValue: "",
-  });
+  const [sessions, setSessions] = useState<Session[]>([]);
+  const [operator, setOperator] = useState("");
+  const [title, setTitle] = useState("");
+  const [memo, setMemo] = useState("");
+  const [scopeType, setScopeType] = useState<Scope>("ALL");
+  const [scopeValue, setScopeValue] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [message, setMessage] = useState("");
 
   useEffect(() => {
-    const fetchInitialData = async () => {
+    const load = async () => {
       try {
-        const [optionsRes, sessionsRes] = await Promise.all([
+        const [meResponse, optionsResponse, sessionsResponse] = await Promise.all([
+          fetch("/api/auth/me"),
           fetch("/api/stocktake/options"),
           fetch("/api/stocktake/session?active=true"),
         ]);
 
-        if (!optionsRes.ok) {
-          throw new Error("棚卸対象の選択肢を取得できませんでした");
+        if (meResponse.status === 401) {
+          router.replace("/login");
+          return;
         }
 
-        const optionsData: Options = await optionsRes.json();
-        setOptions(optionsData);
+        if (!meResponse.ok) throw new Error(`AUTH_ME_${meResponse.status}: ログイン情報を確認できませんでした。`);
+        if (!optionsResponse.ok) throw new Error(`STOCKTAKE_OPTIONS_${optionsResponse.status}: 棚卸範囲を取得できませんでした。`);
+        if (!sessionsResponse.ok) throw new Error(`STOCKTAKE_SESSIONS_${sessionsResponse.status}: 中断中の棚卸を取得できませんでした。`);
 
-        if (sessionsRes.ok) {
-          const sessionsData: ActiveSession[] = await sessionsRes.json();
-          setActiveSessions(sessionsData);
-        }
+        const me = (await meResponse.json()) as { displayName: string };
+        setOperator(me.displayName);
+        if (optionsResponse.ok) setOptions(await optionsResponse.json());
+        if (sessionsResponse.ok) setSessions(await sessionsResponse.json());
       } catch (error) {
-        console.error(error);
-        alert(
-          error instanceof Error
-            ? error.message
-            : "棚卸開始画面の読み込みに失敗しました"
-        );
-      } finally {
-        setOptionsLoading(false);
-        setActiveLoading(false);
+        setMessage(error instanceof Error ? error.message : "STOCKTAKE_START_UNKNOWN: 情報を取得できませんでした。");
       }
     };
 
-    fetchInitialData();
-  }, []);
+    void load();
+  }, [router]);
 
-  const handleTextChange = (
-    e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>
-  ) => {
-    setForm((previous) => ({
-      ...previous,
-      [e.target.name]: e.target.value,
-    }));
-  };
-
-  const handleScopeTypeChange = (scopeType: ScopeType) => {
-    setForm((previous) => ({
-      ...previous,
-      scopeType,
-      scopeValue: "",
-    }));
-  };
-
-  const selectedScopeLabel = () => {
-    if (form.scopeType === "ALL") {
-      return "全在庫";
+  const values = useMemo(() => {
+    if (scopeType === "LOCATION") {
+      return options.locations.map((item) => ({ value: item.id, label: item.name }));
     }
-
-    if (form.scopeType === "LOCATION") {
-      return (
-        options.locations.find(
-          (location) => location.id === form.scopeValue
-        )?.name ?? ""
-      );
+    if (scopeType === "MAJOR_CATEGORY") {
+      return options.majorCategories.map((value) => ({ value, label: value }));
     }
+    if (scopeType === "MINOR_CATEGORY") {
+      return options.minorCategories.map((value) => ({ value, label: value }));
+    }
+    return [];
+  }, [options, scopeType]);
 
-    return form.scopeValue;
-  };
+  const ownActiveSession = sessions[0];
 
-  const startStocktake = async () => {
-    if (!form.title.trim()) {
-      alert("棚卸名を入力してください");
+  const start = async () => {
+    if (!title.trim()) {
+      setMessage("棚卸名を入力してください。");
+      return;
+    }
+    if (scopeType !== "ALL" && !scopeValue) {
+      setMessage("棚卸範囲を選択してください。");
       return;
     }
 
-    if (form.scopeType !== "ALL" && !form.scopeValue) {
-      alert("棚卸対象を選択してください");
-      return;
-    }
-
-    setLoading(true);
+    setSaving(true);
+    setMessage("");
+    const scopeLabel =
+      scopeType === "ALL"
+        ? "全在庫"
+        : values.find((item) => item.value === scopeValue)?.label ?? "";
 
     try {
-      const res = await fetch("/api/stocktake/start", {
+      const response = await fetch("/api/stocktake/start", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          ...form,
-          scopeLabel: selectedScopeLabel(),
-        }),
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ title, operator, memo, scopeType, scopeValue, scopeLabel }),
       });
-
-      const data = await res.json();
-
-      if (!res.ok) {
-        throw new Error(data.message ?? "棚卸を開始できませんでした");
+      const data = (await response.json()) as { id?: string; message?: string };
+      if (!response.ok || !data.id) {
+        throw new Error(data.message ?? "棚卸を開始できませんでした。");
       }
-
       router.push(`/stocktake/${data.id}`);
     } catch (error) {
-      console.error(error);
-
-      alert(
-        error instanceof Error
-          ? error.message
-          : "棚卸を開始できませんでした"
-      );
+      setMessage(error instanceof Error ? error.message : "棚卸を開始できませんでした。");
     } finally {
-      setLoading(false);
+      setSaving(false);
     }
   };
 
-  const scopeOptions =
-    form.scopeType === "LOCATION"
-      ? options.locations.map((location) => ({
-          value: location.id,
-          label: location.name,
-        }))
-      : form.scopeType === "MAJOR_CATEGORY"
-        ? options.majorCategories.map((category) => ({
-            value: category,
-            label: category,
-          }))
-        : form.scopeType === "MINOR_CATEGORY"
-          ? options.minorCategories.map((category) => ({
-              value: category,
-              label: category,
-            }))
-          : [];
+  const resume = async () => {
+    if (!ownActiveSession) return;
+    setSaving(true);
+    setMessage("");
+    try {
+      if (ownActiveSession.status === "PAUSED") {
+        const response = await fetch(`/api/stocktake/session/${ownActiveSession.id}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: "RESUME" }),
+        });
+        const data = (await response.json()) as { message?: string };
+        if (!response.ok) throw new Error(data.message ?? "棚卸を再開できませんでした。");
+      }
+      router.push(`/stocktake/${ownActiveSession.id}`);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "棚卸を開けませんでした。");
+    } finally {
+      setSaving(false);
+    }
+  };
 
   return (
-    <main className="mx-auto max-w-4xl p-8 text-white">
-      <h1 className="mb-8 text-3xl font-bold">棚卸開始</h1>
-
-      {!activeLoading && activeSessions.length > 0 && (
-        <section className="mb-8 rounded-xl bg-white p-6 text-slate-800 shadow">
-          <h2 className="text-2xl font-bold text-slate-900">
-            再開できる棚卸
-          </h2>
-
-          <p className="mt-2 text-slate-600">
-            中断中・入力途中の棚卸を選ぶと、続きから作業できます。
-          </p>
-
-          <div className="mt-5 space-y-3">
-            {activeSessions.map((session) => {
-              const progressPercent =
-                session.targetCount === 0
-                  ? 0
-                  : Math.round(
-                      (session.recordedCount / session.targetCount) * 100
-                    );
-
-              return (
-                <div
-                  key={session.id}
-                  className="flex flex-wrap items-center justify-between gap-4 rounded-lg border border-slate-200 p-4"
-                >
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <p className="text-lg font-bold text-slate-900">
-                        {session.title}
-                      </p>
-
-                      <span
-                        className={`rounded-full px-2 py-1 text-xs font-bold ${
-                          session.status === "PAUSED"
-                            ? "bg-orange-100 text-orange-700"
-                            : "bg-blue-100 text-blue-700"
-                        }`}
-                      >
-                        {session.status === "PAUSED" ? "中断中" : "棚卸中"}
-                      </span>
-                    </div>
-
-                    <p className="mt-1 text-sm text-slate-600">
-                      対象：{session.scopeLabel ?? "全在庫"}　担当者：
-                      {session.operator ?? "管理者"}
-                    </p>
-
-                    <p className="mt-1 text-sm text-slate-600">
-                      進捗：{session.recordedCount} / {session.targetCount} 件
-                      （{progressPercent}%）
-                    </p>
-                  </div>
-
-                  <button
-                    type="button"
-                    onClick={() =>
-                      router.push(`/stocktake/${session.id}`)
-                    }
-                    className="rounded-lg bg-blue-600 px-5 py-3 font-bold text-white hover:bg-blue-700"
-                  >
-                    {session.status === "PAUSED" ? "再開する" : "開く"}
-                  </button>
-                </div>
-              );
-            })}
-          </div>
-        </section>
-      )}
-
-      <section className="rounded-xl bg-white p-8 text-slate-800 shadow">
-        <h2 className="text-2xl font-bold text-slate-900">
-          新しい棚卸を開始
-        </h2>
-
-        <div className="mt-6 space-y-6">
+    <main className="min-h-screen bg-slate-50 p-4 text-slate-900 sm:p-8">
+      <div className="mx-auto max-w-3xl">
+        <header className="mb-6 flex items-center justify-between gap-3">
           <div>
-            <label className="font-semibold" htmlFor="title">
-              棚卸名
-            </label>
-
-            <input
-              id="title"
-              className="mt-2 w-full rounded-lg border border-slate-300 p-3 text-slate-900"
-              name="title"
-              value={form.title}
-              onChange={handleTextChange}
-              placeholder="例：2026年8月 倉庫棚卸"
-            />
+            <h1 className="text-3xl font-black">棚卸開始</h1>
+            <p className="mt-1 text-sm text-slate-600">担当者：{operator || "読み込み中..."}</p>
           </div>
+          <button type="button" onClick={() => router.replace("/")} className="rounded-xl bg-slate-700 px-4 py-3 font-bold text-white">ホームへ戻る</button>
+        </header>
 
-          <div>
-            <label className="font-semibold" htmlFor="operator">
-              担当者
-            </label>
+        {message && <p role="alert" className="mb-5 rounded-xl border border-red-200 bg-red-50 p-4 font-bold text-red-800">{message}</p>}
 
-            <input
-              id="operator"
-              className="mt-2 w-full rounded-lg border border-slate-300 p-3 text-slate-900"
-              name="operator"
-              value={form.operator}
-              onChange={handleTextChange}
-              placeholder="山田 太郎"
-            />
-          </div>
-
-          <div>
-            <p className="font-semibold">棚卸範囲</p>
-
-            <div className="mt-3 grid gap-2 sm:grid-cols-2">
-              {(Object.keys(scopeLabels) as ScopeType[]).map(
-                (scopeType) => (
-                  <button
-                    key={scopeType}
-                    type="button"
-                    onClick={() => handleScopeTypeChange(scopeType)}
-                    className={`rounded-lg border p-4 text-left font-semibold transition ${
-                      form.scopeType === scopeType
-                        ? "border-blue-600 bg-blue-50 text-blue-700"
-                        : "border-slate-300 bg-white text-slate-700 hover:bg-slate-50"
-                    }`}
-                  >
-                    {scopeLabels[scopeType]}
-                  </button>
-                )
-              )}
+        {ownActiveSession ? (
+          <section className="rounded-2xl border border-orange-200 bg-white p-6 shadow-sm">
+            <p className="text-sm font-bold text-orange-700">{ownActiveSession.status === "PAUSED" ? "中断中の棚卸" : "作業中の棚卸"}</p>
+            <h2 className="mt-1 text-2xl font-black">{ownActiveSession.title}</h2>
+            <p className="mt-3 text-slate-600">{ownActiveSession.scopeLabel ?? "全在庫"} ・ {ownActiveSession.recordedCount} / {ownActiveSession.targetCount} 件</p>
+            <button type="button" onClick={resume} disabled={saving} className="mt-5 w-full rounded-xl bg-blue-600 py-3.5 text-lg font-bold text-white disabled:bg-slate-400">
+              {saving ? "処理中..." : ownActiveSession.status === "PAUSED" ? "再開して作業へ" : "棚卸画面を開く"}
+            </button>
+          </section>
+        ) : (
+          <section className="rounded-2xl bg-white p-6 shadow-sm sm:p-8">
+            <h2 className="text-2xl font-black">新しい棚卸を開始</h2>
+            <div className="mt-6 space-y-5">
+              <label className="block font-bold">棚卸名<input value={title} onChange={(event) => setTitle(event.target.value)} className="mt-2 w-full rounded-xl border border-slate-300 p-3 font-normal" placeholder="例：2026年8月 倉庫棚卸" /></label>
+              <label className="block font-bold">担当者<input value={operator} onChange={(event) => setOperator(event.target.value)} className="mt-2 w-full rounded-xl border border-slate-300 p-3 font-normal" /><span className="mt-1 block text-xs font-normal text-slate-500">ログイン名が自動入力されます。必要なら変更できます。</span></label>
+              <div><p className="font-bold">棚卸範囲</p><div className="mt-2 grid grid-cols-2 gap-2">{(Object.keys(scopeLabels) as Scope[]).map((scope) => <button key={scope} type="button" onClick={() => { setScopeType(scope); setScopeValue(""); }} className={`rounded-xl border p-3 text-left font-bold ${scopeType === scope ? "border-blue-600 bg-blue-50 text-blue-700" : "border-slate-200"}`}>{scopeLabels[scope]}</button>)}</div></div>
+              {scopeType !== "ALL" && <label className="block font-bold">{scopeLabels[scopeType]}を選択<select value={scopeValue} onChange={(event) => setScopeValue(event.target.value)} className="mt-2 w-full rounded-xl border border-slate-300 p-3 font-normal"><option value="">選択してください</option>{values.map((value) => <option key={value.value} value={value.value}>{value.label}</option>)}</select></label>}
+              <label className="block font-bold">メモ<textarea value={memo} onChange={(event) => setMemo(event.target.value)} className="mt-2 w-full rounded-xl border border-slate-300 p-3 font-normal" rows={3} /></label>
+              <button type="button" onClick={start} disabled={saving || !operator} className="w-full rounded-2xl bg-blue-600 py-4 text-lg font-black text-white disabled:bg-slate-400">{saving ? "開始中..." : "棚卸を開始する"}</button>
             </div>
-          </div>
-
-          {form.scopeType !== "ALL" && (
-            <div>
-              <label className="font-semibold" htmlFor="scopeValue">
-                {scopeLabels[form.scopeType]}を選択
-              </label>
-
-              <select
-                id="scopeValue"
-                className="mt-2 w-full rounded-lg border border-slate-300 p-3 text-slate-900"
-                value={form.scopeValue}
-                onChange={(e) =>
-                  setForm((previous) => ({
-                    ...previous,
-                    scopeValue: e.target.value,
-                  }))
-                }
-                disabled={optionsLoading}
-              >
-                <option value="">
-                  {optionsLoading ? "読み込み中..." : "選択してください"}
-                </option>
-
-                {scopeOptions.map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {option.label}
-                  </option>
-                ))}
-              </select>
-            </div>
-          )}
-
-          <div>
-            <label className="font-semibold" htmlFor="memo">
-              メモ
-            </label>
-
-            <textarea
-              id="memo"
-              className="mt-2 w-full rounded-lg border border-slate-300 p-3 text-slate-900"
-              rows={4}
-              name="memo"
-              value={form.memo}
-              onChange={handleTextChange}
-              placeholder="必要であれば入力"
-            />
-          </div>
-
-          <button
-            type="button"
-            onClick={startStocktake}
-            disabled={loading || optionsLoading}
-            className="w-full rounded-xl bg-blue-600 py-4 text-lg font-bold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-slate-400"
-          >
-            {loading ? "開始中..." : "棚卸を開始する"}
-          </button>
-        </div>
-      </section>
+          </section>
+        )}
+      </div>
     </main>
   );
 }
