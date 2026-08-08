@@ -6,7 +6,10 @@ export async function GET(request: NextRequest) {
 
   if (!user) {
     return NextResponse.json(
-      { message: "ログインが必要です。" },
+      {
+        code: "AUTH_ME_UNAUTHORIZED",
+        message: "ログイン情報を確認できませんでした。",
+      },
       { status: 401 }
     );
   }
@@ -16,5 +19,6 @@ export async function GET(request: NextRequest) {
     username: user.username,
     displayName: user.displayName,
     role: user.role,
+    mustChangePassword: user.mustChangePassword,
   });
 }

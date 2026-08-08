@@ -67,6 +67,7 @@ export async function POST(request: NextRequest) {
         username: user.username,
         displayName: user.displayName,
         role: user.role,
+        mustChangePassword: false
       }),
       sessionCookieOptions
     );

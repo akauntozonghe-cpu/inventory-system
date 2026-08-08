@@ -21,7 +21,10 @@ export async function POST(request: NextRequest) {
 
   if (!user) {
     return NextResponse.json(
-      { message: "ログインが必要です。" },
+      {
+        code: "AUTH_REQUIRED",
+        message: "ログインが必要です。",
+      },
       { status: 401 }
     );
   }
@@ -32,39 +35,41 @@ export async function POST(request: NextRequest) {
     const title =
       typeof body.title === "string" ? body.title.trim() : "";
 
-    // 画面で入力できる担当者名
+    // 画面で変更可能な担当者名
     const operator =
-      typeof body.operator === "string"
-        ? body.operator.trim()
-        : "";
+      typeof body.operator === "string" ? body.operator.trim() : "";
 
     const memo =
       typeof body.memo === "string" ? body.memo.trim() : "";
 
-    const scopeType: ScopeType = validScopes.includes(body.scopeType)
+    const scopeType: ScopeType = validScopes.includes(
+      body.scopeType as ScopeType
+    )
       ? body.scopeType
       : "ALL";
 
     const scopeValue =
-      typeof body.scopeValue === "string"
-        ? body.scopeValue.trim()
-        : "";
+      typeof body.scopeValue === "string" ? body.scopeValue.trim() : "";
 
     const scopeLabel =
-      typeof body.scopeLabel === "string"
-        ? body.scopeLabel.trim()
-        : "";
+      typeof body.scopeLabel === "string" ? body.scopeLabel.trim() : "";
 
     if (!title) {
       return NextResponse.json(
-        { message: "棚卸名を入力してください。" },
+        {
+          code: "STOCKTAKE_TITLE_REQUIRED",
+          message: "棚卸名を入力してください。",
+        },
         { status: 400 }
       );
     }
 
     if (scopeType !== "ALL" && !scopeValue) {
       return NextResponse.json(
-        { message: "棚卸範囲を選択してください。" },
+        {
+          code: "STOCKTAKE_SCOPE_REQUIRED",
+          message: "棚卸範囲を選択してください。",
+        },
         { status: 400 }
       );
     }
@@ -87,80 +92,82 @@ export async function POST(request: NextRequest) {
       };
     }
 
-    const result = await prisma.$transaction(async (tx) => {
-      const inventories = await tx.inventoryInstance.findMany({
-        where,
-        select: {
-          id: true,
-          quantity: true,
+    const inventories = await prisma.inventoryInstance.findMany({
+      where,
+      select: {
+        id: true,
+        quantity: true,
+      },
+    });
+
+    if (inventories.length === 0) {
+      return NextResponse.json(
+        {
+          code: "STOCKTAKE_TARGET_EMPTY",
+          message: "選択した棚卸範囲に在庫がありません。",
         },
-      });
+        { status: 400 }
+      );
+    }
 
-      if (inventories.length === 0) {
-        throw new Error(
-          "選択した棚卸範囲に在庫がありません。"
-        );
-      }
+    // Neonの接続上限に配慮し、長い対話型トランザクションは使わない
+    const session = await prisma.stocktakeSession.create({
+      data: {
+        title,
 
-      const session = await tx.stocktakeSession.create({
-        data: {
-          title,
+        // 入力欄の担当者名。空欄ならログイン名
+        operator: operator || user.displayName,
 
-          // 担当者名：入力された名前、未入力ならログイン名
-          operator: operator || user.displayName,
+        // 実際に操作したログインユーザー
+        operatorUserId: user.id,
 
-          // 実施者：ログインしたユーザーを必ず記録
-          operatorUserId: user.id,
+        memo: memo || null,
 
-          memo: memo || null,
+        location:
+          scopeType === "LOCATION" ? scopeLabel || null : null,
 
-          location:
-            scopeType === "LOCATION"
-              ? scopeLabel || null
-              : null,
+        scopeType,
 
-          scopeType,
+        scopeValue: scopeType === "ALL" ? null : scopeValue,
 
-          scopeValue:
-            scopeType === "ALL"
-              ? null
-              : scopeValue,
+        scopeLabel:
+          scopeType === "ALL" ? "全在庫" : scopeLabel || null,
+      },
+    });
 
-          scopeLabel:
-            scopeType === "ALL"
-              ? "全在庫"
-              : scopeLabel,
-        },
-      });
-
-      await tx.stocktakeTarget.createMany({
+    try {
+      await prisma.stocktakeTarget.createMany({
         data: inventories.map((inventory) => ({
           sessionId: session.id,
           inventoryInstanceId: inventory.id,
           expectedQuantity: inventory.quantity,
         })),
       });
+    } catch (targetError) {
+      // 対象作成に失敗した中途半端な棚卸は残さない
+      await prisma.stocktakeSession
+        .delete({ where: { id: session.id } })
+        .catch(() => undefined);
 
-      return {
+      throw targetError;
+    }
+
+    return NextResponse.json(
+      {
         ...session,
         targetCount: inventories.length,
-      };
-    });
-
-    return NextResponse.json(result, {
-      status: 201,
-    });
+      },
+      { status: 201 }
+    );
   } catch (error) {
     console.error(error);
 
     return NextResponse.json(
       {
-        message:
-          error instanceof Error
-            ? error.message
-            : "棚卸を開始できませんでした。",
+        code: "STOCKTAKE_START_FAILED",
+        message: "棚卸を開始できませんでした。",
       },
-      { status: 400 }
+      { status: 500 }
     );
   }
 }

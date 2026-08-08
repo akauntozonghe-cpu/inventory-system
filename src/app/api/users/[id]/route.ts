@@ -10,7 +10,10 @@ export async function PATCH(
 
   if (!currentUser || !isAdmin(currentUser)) {
     return NextResponse.json(
-      { message: "管理者権限が必要です。" },
+      {
+        code: "ADMIN_REQUIRED",
+        message: "ユーザー状態の変更は管理者のみ実行できます。",
+      },
       { status: 403 }
     );
   }
@@ -21,22 +24,69 @@ export async function PATCH(
 
     if (typeof body.isActive !== "boolean") {
       return NextResponse.json(
-        { message: "有効・停止の指定が正しくありません。" },
+        {
+          code: "INVALID_USER_STATUS",
+          message: "有効・停止の指定が正しくありません。",
+        },
         { status: 400 }
       );
     }
 
     if (id === currentUser.id && body.isActive === false) {
       return NextResponse.json(
-        { message: "ログイン中の自分自身は停止できません。" },
+        {
+          code: "CANNOT_DISABLE_SELF",
+          message: "ログイン中の自分自身は停止できません。",
+        },
         { status: 400 }
       );
     }
 
-    const user = await prisma.appUser.update({
-      where: {
-        id,
+    const targetUser = await prisma.appUser.findUnique({
+      where: { id },
+      select: {
+        id: true,
+        role: true,
+        isActive: true,
       },
+    });
+
+    if (!targetUser) {
+      return NextResponse.json(
+        {
+          code: "USER_NOT_FOUND",
+          message: "対象のユーザーが見つかりません。",
+        },
+        { status: 404 }
+      );
+    }
+
+    // 最後の有効な管理者を停止しない
+    if (
+      targetUser.role === "ADMIN" &&
+      targetUser.isActive &&
+      body.isActive === false
+    ) {
+      const activeAdminCount = await prisma.appUser.count({
+        where: {
+          role: "ADMIN",
+          isActive: true,
+        },
+      });
+
+      if (activeAdminCount <= 1) {
+        return NextResponse.json(
+          {
+            code: "LAST_ADMIN_PROTECTED",
+            message: "最後の有効な管理者は停止できません。",
+          },
+          { status: 400 }
+        );
+      }
+    }
+
+    const user = await prisma.appUser.update({
+      where: { id },
       data: {
         isActive: body.isActive,
       },
@@ -54,7 +104,10 @@ export async function PATCH(
     console.error(error);
 
     return NextResponse.json(
-      { message: "ユーザー状態を更新できませんでした。" },
+      {
+        code: "USER_STATUS_UPDATE_FAILED",
+        message: "ユーザー状態を更新できませんでした。",
+      },
       { status: 500 }
     );
   }

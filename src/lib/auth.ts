@@ -18,26 +18,29 @@ export type LoggedInUser = {
   username: string;
   displayName: string;
   role: "ADMIN" | "WORKER";
+  mustChangePassword: boolean;
   expiresAt: number;
 };
 
-function secret() {
+function getAuthSecret() {
   const value = process.env.AUTH_SECRET;
 
   if (!value || value.length < 32) {
-    throw new Error("AUTH_SECRET が設定されていません。");
+    throw new Error(
+      "AUTH_SECRET が未設定、または短すぎます。32文字以上を設定してください。"
+    );
   }
 
   return value;
 }
 
 function sign(value: string) {
-  return createHmac("sha256", secret())
+  return createHmac("sha256", getAuthSecret())
     .update(value)
     .digest("base64url");
 }
 
-function sameText(left: string, right: string) {
+function safelyCompare(left: string, right: string) {
   const leftHash = createHash("sha256").update(left).digest();
   const rightHash = createHash("sha256").update(right).digest();
 
@@ -63,7 +66,7 @@ export async function verifyPassword(
 
   const calculatedHash = (await scrypt(password, salt, 64)) as Buffer;
 
-  return sameText(calculatedHash.toString("hex"), savedHash);
+  return safelyCompare(calculatedHash.toString("hex"), savedHash);
 }
 
 export function createSessionToken(
@@ -92,7 +95,7 @@ export function verifySessionToken(
     return null;
   }
 
-  if (!sameText(receivedSignature, sign(encoded))) {
+  if (!safelyCompare(receivedSignature, sign(encoded))) {
     return null;
   }
 
@@ -106,6 +109,7 @@ export function verifySessionToken(
       !user.username ||
       !user.displayName ||
       !user.role ||
+      typeof user.mustChangePassword !== "boolean" ||
       user.expiresAt <= Date.now()
     ) {
       return null;

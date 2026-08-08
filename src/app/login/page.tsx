@@ -3,6 +3,15 @@
 import { FormEvent, useState } from "react";
 import { useRouter } from "next/navigation";
 
+type LoginResult = {
+  id: string;
+  username: string;
+  displayName: string;
+  role: "ADMIN" | "WORKER";
+  mustChangePassword: boolean;
+  message?: string;
+};
+
 export default function LoginPage() {
   const router = useRouter();
 
@@ -13,7 +22,6 @@ export default function LoginPage() {
 
   const login = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-
     setError("");
     setLoading(true);
 
@@ -29,18 +37,18 @@ export default function LoginPage() {
         }),
       });
 
-      const data = (await response.json()) as {
-        message?: string;
-      };
+      const data = (await response.json()) as LoginResult;
 
       if (!response.ok) {
-        throw new Error(
-          data.message ?? "ログインできませんでした。"
-        );
+        throw new Error(data.message ?? "ログインできませんでした。");
       }
 
-      // ログイン後は必ずホームへ
-      router.replace("/");
+      if (data.mustChangePassword) {
+        router.replace("/account/password");
+      } else {
+        router.replace("/");
+      }
+
       router.refresh();
     } catch (error) {
       setError(
@@ -60,9 +68,7 @@ export default function LoginPage() {
           INVENTORY OS
         </p>
 
-        <h1 className="mt-2 text-3xl font-black">
-          ログイン
-        </h1>
+        <h1 className="mt-2 text-3xl font-black">ログイン</h1>
 
         <p className="mt-3 text-sm leading-6 text-slate-600">
           ログインIDとパスワードを入力してください。
@@ -104,7 +110,7 @@ export default function LoginPage() {
           <button
             type="submit"
             disabled={loading}
-            className="w-full rounded-xl bg-blue-600 py-3.5 font-black text-white disabled:bg-slate-400"
+            className="w-full rounded-xl bg-blue-600 py-3.5 font-black text-white transition hover:bg-blue-700 disabled:bg-slate-400"
           >
             {loading ? "ログイン中..." : "ログインする"}
           </button>

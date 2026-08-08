@@ -8,17 +8,20 @@ datasource db {
 }
 
 model AppUser {
-  id           String   @id @default(cuid())
-  username     String   @unique
-  displayName  String
-  passwordHash String
-  role         UserRole @default(WORKER)
-  isActive     Boolean  @default(true)
+  id                 String   @id @default(cuid())
+  username           String   @unique
+  displayName        String
+  passwordHash       String
+  role               UserRole @default(WORKER)
+  isActive           Boolean  @default(true)
+  mustChangePassword Boolean  @default(false)
 
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   stocktakeSessions StocktakeSession[]
+  adminActionLogs   AdminActionLog[] @relation("AdminActionExecutor")
+  errorReports      ErrorReport[]    @relation("ErrorReporter")
 }
 
 model Item {
@@ -48,10 +51,10 @@ model StorageLocation {
 }
 
 model InventoryInstance {
-  id                String @id @default(cuid())
+  id String @id @default(cuid())
 
-  itemId            String
-  item              Item @relation(fields: [itemId], references: [id])
+  itemId String
+  item   Item @relation(fields: [itemId], references: [id])
 
   storageLocationId String?
   storageLocation   StorageLocation? @relation(fields: [storageLocationId], references: [id])
@@ -65,16 +68,17 @@ model InventoryInstance {
   expirationDate      String?
   unit                String?
 
-  quantity        Int
-  actualQuantity  Int?
-  allocationType  AllocationType
-  status          String
+  quantity       Int
+  actualQuantity Int?
+
+  allocationType AllocationType
+  status         String
 
   stocktakeStatus String   @default("未棚卸")
   stocktakeAt     DateTime?
 
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   histories        InventoryHistory[]
   stocktakeRecords StocktakeRecord[]
@@ -84,81 +88,134 @@ model InventoryInstance {
 }
 
 model InventoryHistory {
-  id                  String @id @default(cuid())
+  id String @id @default(cuid())
 
   inventoryInstanceId String
   inventoryInstance   InventoryInstance @relation(fields: [inventoryInstanceId], references: [id])
 
-  changeQuantity      Int
-  action              String
+  changeQuantity Int
+  action         String
 
-  createdAt           DateTime @default(now())
+  createdAt DateTime @default(now())
 }
 
 model StocktakeSession {
-  id          String   @id @default(cuid())
+  id String @id @default(cuid())
 
-  title       String
-  operator    String?  @default("管理者")
+  title    String
+  operator String? @default("管理者")
 
-  // ログインユーザーとの紐付け
   operatorUserId String?
   operatorUser   AppUser? @relation(fields: [operatorUserId], references: [id])
 
-  location    String?
-  memo        String?
+  location String?
+  memo     String?
 
-  scopeType   StocktakeScope @default(ALL)
-  scopeValue  String?
-  scopeLabel  String?
+  scopeType  StocktakeScope @default(ALL)
+  scopeValue String?
+  scopeLabel String?
 
-  status      StocktakeStatus @default(IN_PROGRESS)
+  status StocktakeStatus @default(IN_PROGRESS)
 
   startedAt   DateTime @default(now())
   pausedAt    DateTime?
   completedAt DateTime?
 
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  records     StocktakeRecord[]
-  targets     StocktakeTarget[]
+  records StocktakeRecord[]
+  targets StocktakeTarget[]
 
   @@index([operatorUserId, status])
 }
 
 model StocktakeTarget {
-  id                  String @id @default(cuid())
+  id String @id @default(cuid())
 
-  sessionId           String
-  session             StocktakeSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  sessionId String
+  session   StocktakeSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
 
   inventoryInstanceId String
   inventoryInstance   InventoryInstance @relation(fields: [inventoryInstanceId], references: [id])
 
-  expectedQuantity    Int
+  expectedQuantity Int
 
-  createdAt           DateTime @default(now())
+  createdAt DateTime @default(now())
 
   @@unique([sessionId, inventoryInstanceId])
 }
 
 model StocktakeRecord {
-  id                  String @id @default(cuid())
+  id String @id @default(cuid())
 
-  sessionId           String
-  session             StocktakeSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  sessionId String
+  session   StocktakeSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
 
   inventoryInstanceId String
   inventoryInstance   InventoryInstance @relation(fields: [inventoryInstanceId], references: [id])
 
-  countedQuantity     Int
-  memo                String?
+  countedQuantity Int
+  memo            String?
 
-  createdAt           DateTime @default(now())
-  updatedAt           DateTime @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@unique([sessionId, inventoryInstanceId])
+}
+
+model ErrorReport {
+  id String @id @default(cuid())
+
+  code     String
+  title    String
+  message  String
+  severity ErrorSeverity     @default(ERROR)
+  status   ErrorReportStatus @default(OPEN)
+
+  route     String?
+  sessionId String?
+  detail    Json?
+
+  occurredAt DateTime @default(now())
+  resolvedAt DateTime?
+
+  recoveryStatus   RecoveryStatus @default(NOT_ATTEMPTED)
+  recoveryAttempts Int            @default(0)
+  recoveredAt      DateTime?
+  recoveryNote     String?
+
+  reporterUserId String?
+  reporterUser   AppUser? @relation("ErrorReporter", fields: [reporterUserId], references: [id])
+
+  adminActionLogs AdminActionLog[]
+
+  @@index([status, occurredAt])
+  @@index([sessionId, occurredAt])
+  @@index([code, occurredAt])
+}
+
+model AdminActionLog {
+  id String @id @default(cuid())
+
+  action String
+  detail Json?
+  route  String?
+
+  createdAt DateTime @default(now())
+
+  adminUserId String
+  adminUser   AppUser @relation("AdminActionExecutor", fields: [adminUserId], references: [id])
+
+  errorReportId String?
+  errorReport   ErrorReport? @relation(fields: [errorReportId], references: [id])
+
+  targetUserId    String?
+  targetSessionId String?
+
+  @@index([adminUserId, createdAt])
+  @@index([errorReportId, createdAt])
+  @@index([targetSessionId, createdAt])
 }
 
 enum AllocationType {
@@ -183,4 +240,26 @@ enum StocktakeStatus {
 enum UserRole {
   ADMIN
   WORKER
+}
+
+enum ErrorSeverity {
+  INFO
+  WARNING
+  ERROR
+  CRITICAL
+}
+
+enum ErrorReportStatus {
+  OPEN
+  INVESTIGATING
+  RESOLVED
+  DISMISSED
+}
+
+enum RecoveryStatus {
+  NOT_ATTEMPTED
+  IN_PROGRESS
+  RECOVERED
+  FAILED
+  ADMIN_REQUIRED
 }
