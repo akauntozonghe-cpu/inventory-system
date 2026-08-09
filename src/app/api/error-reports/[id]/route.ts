@@ -1,110 +1,192 @@
-import { NextRequest, NextResponse } from "next/server";
 import {
-  completeAutoRecovery,
-  requireAdminRecovery,
-  startAutoRecovery,
-} from "@/lib/error-report";
+  ErrorReportStatus,
+  RecoveryStatus,
+} from "@prisma/client";
+import { NextRequest, NextResponse } from "next/server";
+import { getLoggedInUser, isAdmin } from "@/lib/auth";
+import { prisma } from "@/lib/prisma";
+import { createAdminActionLog } from "@/lib/error-report";
 
-type RouteContext = {
-  params: Promise<{
-    id: string;
-  }>;
-};
-
-type RecoveryPayload = {
+type UpdatePayload = {
+  reportId?: unknown;
   action?: unknown;
   note?: unknown;
 };
 
-function text(value: unknown, maxLength: number) {
-  return typeof value === "string"
-    ? value.trim().slice(0, maxLength)
-    : "";
+function getText(value: unknown, maxLength: number) {
+  return typeof value === "string" ? value.trim().slice(0, maxLength) : "";
 }
 
-export async function PATCH(
-  req: NextRequest,
-  context: RouteContext
-) {
-  try {
-    const { id } = await context.params;
-    const body = (await req.json()) as RecoveryPayload;
-    const note = text(body.note, 1000);
+async function requireAdmin(request: NextRequest) {
+  const currentUser = getLoggedInUser(request);
 
-    if (!id) {
+  if (!isAdmin(currentUser)) {
+    return null;
+  }
+
+  return currentUser;
+}
+
+export async function GET(request: NextRequest) {
+  try {
+    const currentUser = await requireAdmin(request);
+
+    if (!currentUser) {
       return NextResponse.json(
         {
-          message: "エラーレポートIDがありません。",
+          code: "ADMIN_ERROR_REPORTS_FORBIDDEN_403",
+          message: "エラーレポートを確認する権限がありません。",
         },
+        { status: 403 }
+      );
+    }
+
+    const reports = await prisma.errorReport.findMany({
+      orderBy: {
+        occurredAt: "desc",
+      },
+      take: 100,
+      include: {
+        reporterUser: {
+          select: {
+            id: true,
+            username: true,
+            displayName: true,
+          },
+        },
+        adminActionLogs: {
+          orderBy: {
+            createdAt: "desc",
+          },
+          take: 20,
+          include: {
+            adminUser: {
+              select: {
+                id: true,
+                username: true,
+                displayName: true,
+              },
+            },
+          },
+        },
+      },
+    });
+
+    return NextResponse.json(reports);
+  } catch (error) {
+    console.error("エラーレポート一覧取得エラー", error);
+
+    return NextResponse.json(
+      {
+        code: "ADMIN_ERROR_REPORTS_FETCH_500",
+        message: "エラーレポート一覧を取得できませんでした。",
+      },
+      { status: 500 }
+    );
+  }
+}
+
+export async function PATCH(request: NextRequest) {
+  try {
+    const currentUser = await requireAdmin(request);
+
+    if (!currentUser) {
+      return NextResponse.json(
         {
-          status: 400,
-        }
+          code: "ADMIN_ERROR_REPORTS_FORBIDDEN_403",
+          message: "エラーレポートを操作する権限がありません。",
+        },
+        { status: 403 }
       );
     }
 
-    if (body.action === "START_AUTO_RECOVERY") {
-      const report = await startAutoRecovery(id);
+    const body = (await request.json()) as UpdatePayload;
+    const reportId = getText(body.reportId, 100);
+    const note = getText(body.note, 1000);
 
-      if (!report) {
-        throw new Error("自動復旧開始の記録に失敗しました。");
-      }
+    if (!reportId) {
+      return NextResponse.json(
+        {
+          code: "ADMIN_ERROR_REPORTS_ID_400",
+          message: "対象のエラーレポートを指定してください。",
+        },
+        { status: 400 }
+      );
+    }
+
+    if (body.action === "RESOLVE") {
+      const report = await prisma.errorReport.update({
+        where: {
+          id: reportId,
+        },
+        data: {
+          status: ErrorReportStatus.RESOLVED,
+          recoveryStatus: RecoveryStatus.RECOVERED,
+          resolvedAt: new Date(),
+          recoveredAt: new Date(),
+          recoveryNote: note || "管理者が復旧完了として記録しました。",
+        },
+      });
+
+      await createAdminActionLog({
+        adminUserId: currentUser.id,
+        errorReportId: report.id,
+        action: "ERROR_REPORT_RESOLVED",
+        route: "/admin/error-reports",
+        detail: {
+          note: note || "管理者が復旧完了として記録しました。",
+        },
+      });
 
       return NextResponse.json({
         success: true,
-        status: "IN_PROGRESS",
+        report,
       });
     }
 
-    if (body.action === "AUTO_RECOVERY_SUCCEEDED") {
-      const report = await completeAutoRecovery(
-        id,
-        note || "自動復旧に成功しました。"
-      );
-
-      if (!report) {
-        throw new Error("自動復旧完了の記録に失敗しました。");
-      }
-
-      return NextResponse.json({
-        success: true,
-        status: "RECOVERED",
+    if (body.action === "DISMISS") {
+      const report = await prisma.errorReport.update({
+        where: {
+          id: reportId,
+        },
+        data: {
+          status: ErrorReportStatus.DISMISSED,
+          recoveryNote: note || "管理者が対応不要として記録しました。",
+        },
       });
-    }
 
-    if (body.action === "ADMIN_REQUIRED") {
-      const report = await requireAdminRecovery(
-        id,
-        note || "自動復旧できなかったため、管理者対応が必要です。"
-      );
-
-      if (!report) {
-        throw new Error("管理者対応待ちの記録に失敗しました。");
-      }
+      await createAdminActionLog({
+        adminUserId: currentUser.id,
+        errorReportId: report.id,
+        action: "ERROR_REPORT_DISMISSED",
+        route: "/admin/error-reports",
+        detail: {
+          note: note || "管理者が対応不要として記録しました。",
+        },
+      });
 
       return NextResponse.json({
         success: true,
-        status: "ADMIN_REQUIRED",
+        report,
       });
     }
 
     return NextResponse.json(
       {
-        message: "指定された復旧操作は使用できません。",
+        code: "ADMIN_ERROR_REPORTS_ACTION_400",
+        message: "指定された管理者操作は利用できません。",
       },
-      {
-        status: 400,
-      }
+      { status: 400 }
     );
   } catch (error) {
-    console.error("エラーレポート更新エラー", error);
+    console.error("エラーレポート管理操作エラー", error);
 
     return NextResponse.json(
       {
+        code: "ADMIN_ERROR_REPORTS_UPDATE_500",
         message: "エラーレポートの更新に失敗しました。",
       },
-      {
-        status: 500,
-      }
+      { status: 500 }
     );
   }
 }

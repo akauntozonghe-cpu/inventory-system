@@ -56,7 +56,7 @@ async function createReport(options: {
       return data.id;
     }
   } catch {
-    // 通信断時は一時保存処理を継続する
+    // エラーレポート保存に失敗しても、本来の復旧処理は続ける
   }
 
   return null;
@@ -74,15 +74,18 @@ async function updateReport(
   }
 
   try {
-    await fetch(`/api/error-reports/${encodeURIComponent(reportId)}`, {
-      method: "PATCH",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ action }),
-    });
+    await fetch(
+      `/api/error-reports/${encodeURIComponent(reportId)}`,
+      {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ action }),
+      }
+    );
   } catch {
-    // レポート更新失敗は本来の再試行を止めない
+    // レポート更新の失敗で作業を止めない
   }
 }
 
@@ -107,7 +110,10 @@ export async function recoverAfterFailure<T>(
     try {
       const value = await options.action();
 
-      await updateReport(reportId, "AUTO_RECOVERY_SUCCEEDED");
+      await updateReport(
+        reportId,
+        "AUTO_RECOVERY_SUCCEEDED"
+      );
 
       return {
         success: true,

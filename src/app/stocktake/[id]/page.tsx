@@ -20,6 +20,7 @@ type Inventory = {
   item: {
     name: string;
     janCode: string | null;
+    systemBarcode?: string | null;
     managementCode: string | null;
   };
   storageLocation: {
@@ -46,6 +47,19 @@ type Progress = {
 
 type Confirmation = {
   action: "PAUSE" | "COMPLETE";
+  title: string;
+  message: string;
+} | null;
+
+type SearchFailure = {
+  code: string;
+  message: string;
+  keyword: string;
+  filter: Filter;
+} | null;
+
+type SafetyStop = {
+  code: string;
   title: string;
   message: string;
 } | null;
@@ -90,6 +104,26 @@ function getMessage(data: unknown, fallback: string) {
   return fallback;
 }
 
+function getErrorCode(data: unknown, fallback: string) {
+  if (
+    typeof data === "object" &&
+    data !== null &&
+    "code" in data &&
+    typeof data.code === "string"
+  ) {
+    return data.code;
+  }
+
+  return fallback;
+}
+
+function normalizeCode(value: string | null | undefined) {
+  return (value ?? "")
+    .normalize("NFKC")
+    .replace(/[\s-]/g, "")
+    .toLowerCase();
+}
+
 export default function StocktakePage() {
   const { id: sessionId } = useParams<{ id: string }>();
   const router = useRouter();
@@ -98,6 +132,7 @@ export default function StocktakePage() {
   const quantityRef = useRef<HTMLInputElement>(null);
   const lastActivityRef = useRef(Date.now());
   const scanningRef = useRef(false);
+  const safetyStoppingRef = useRef(false);
 
   const [progress, setProgress] = useState<Progress | null>(null);
   const [items, setItems] = useState<Inventory[]>([]);
@@ -114,11 +149,20 @@ export default function StocktakePage() {
   const [registerDialogOpen, setRegisterDialogOpen] = useState(false);
 
   const [message, setMessage] = useState("");
-  const [confirmation, setConfirmation] = useState<Confirmation>(null);
-  const [pendingSave, setPendingSave] = useState<PendingSave>(null);
+  const [searchFailure, setSearchFailure] =
+    useState<SearchFailure>(null);
+  const [safetyStop, setSafetyStop] = useState<SafetyStop>(null);
+  const [confirmation, setConfirmation] =
+    useState<Confirmation>(null);
+  const [pendingSave, setPendingSave] =
+    useState<PendingSave>(null);
   const [retryingSave, setRetryingSave] = useState(false);
 
-  const canEdit = progress?.session.status === "IN_PROGRESS";
+  const canEdit =
+    progress?.session.status === "IN_PROGRESS" &&
+    !safetyStop &&
+    !searchFailure &&
+    !pendingSave;
 
   const {
     pendingCount,
@@ -144,47 +188,119 @@ export default function StocktakePage() {
     setProgress(data as Progress);
   }, [sessionId]);
 
+  const requestItems = useCallback(
+    async (
+      nextKeyword: string,
+      nextFilter: Filter
+    ): Promise<Inventory[]> => {
+      const response = await fetch(
+        `/api/inventory/search?sessionId=${encodeURIComponent(
+          sessionId
+        )}&q=${encodeURIComponent(
+          nextKeyword
+        )}&filter=${nextFilter}`,
+        { cache: "no-store" }
+      );
+
+      const data: unknown = await response.json();
+
+      if (!response.ok) {
+        const error = new Error(
+          getMessage(data, "在庫検索に失敗しました。")
+        ) as Error & { code?: string };
+
+        error.code = getErrorCode(
+          data,
+          "INVENTORY_SEARCH_500"
+        );
+
+        throw error;
+      }
+
+      if (!Array.isArray(data)) {
+        const error = new Error(
+          "検索結果の形式が正しくありません。"
+        ) as Error & { code?: string };
+
+        error.code = "INVENTORY_SEARCH_INVALID_RESPONSE";
+
+        throw error;
+      }
+
+      return data as Inventory[];
+    },
+    [sessionId]
+  );
+
   const fetchItems = useCallback(
     async (
       nextKeyword = "",
       nextFilter: Filter = "UNRECORDED"
-    ) => {
+    ): Promise<Inventory[] | null> => {
       setLoadingItems(true);
+      setSearchFailure(null);
 
       try {
-        const response = await fetch(
-          `/api/inventory/search?sessionId=${encodeURIComponent(
-            sessionId
-          )}&q=${encodeURIComponent(nextKeyword)}&filter=${nextFilter}`,
-          { cache: "no-store" }
-        );
+        const result = await recoverAfterFailure({
+          code: "INVENTORY_SEARCH_500",
+          title: "在庫検索を実行できませんでした",
+          message: "在庫検索の通信または検索処理で異常を検知しました。",
+          route: window.location.pathname,
+          sessionId,
+          detail: {
+            keyword: nextKeyword,
+            filter: nextFilter,
+          },
+          action: () =>
+            requestItems(nextKeyword, nextFilter),
+        });
 
-        const data: unknown = await response.json();
+        if (!result.success || !result.value) {
+          setItems([]);
+          setSelected(null);
+          setQuantity("");
+          setSearchFailure({
+            code: "INVENTORY_SEARCH_500",
+            message:
+              "検索を自動で再試行しましたが、復旧できませんでした。",
+            keyword: nextKeyword,
+            filter: nextFilter,
+          });
 
-        if (!response.ok) {
-          throw new Error(
-            getMessage(data, "棚卸対象の一覧を取得できませんでした。")
-          );
+          return null;
         }
 
-        if (!Array.isArray(data)) {
-          throw new Error("棚卸対象の形式が正しくありません。");
-        }
-
-        setItems(data as Inventory[]);
+        setItems(result.value);
+        return result.value;
       } catch (error) {
-        setItems([]);
-
-        setMessage(
+        const message =
           error instanceof Error
             ? error.message
-            : "棚卸対象を取得できませんでした。"
-        );
+            : "在庫検索に失敗しました。";
+
+        const code =
+          error instanceof Error &&
+          "code" in error &&
+          typeof error.code === "string"
+            ? error.code
+            : "INVENTORY_SEARCH_500";
+
+        setItems([]);
+        setSelected(null);
+        setQuantity("");
+        setSearchFailure({
+          code,
+          message,
+          keyword: nextKeyword,
+          filter: nextFilter,
+        });
+
+        return null;
       } finally {
         setLoadingItems(false);
       }
     },
-    [sessionId]
+    [requestItems, sessionId]
   );
 
   const updateSessionStatus = useCallback(
@@ -197,6 +313,7 @@ export default function StocktakePage() {
             "Content-Type": "application/json",
           },
           body: JSON.stringify({ action }),
+          keepalive: true,
         }
       );
 
@@ -204,22 +321,67 @@ export default function StocktakePage() {
 
       if (!response.ok) {
         throw new Error(
-          getMessage(data, "棚卸状態を更新できませんでした。")
+          getMessage(
+            data,
+            "棚卸状態を更新できませんでした。"
+          )
         );
       }
     },
     [sessionId]
   );
 
+  const pauseForSafety = useCallback(
+    async (
+      code: string,
+      title: string,
+      detail: string
+    ) => {
+      if (safetyStoppingRef.current) {
+        return;
+      }
+
+      safetyStoppingRef.current = true;
+      scanningRef.current = true;
+
+      setSingleCameraOpen(false);
+      setScannerOpen(false);
+      setRegisterDialogOpen(false);
+      setSelected(null);
+      setQuantity("");
+
+      setSafetyStop({
+        code,
+        title,
+        message: detail,
+      });
+
+      try {
+        await updateSessionStatus("PAUSE");
+      } catch {
+        // 通信断時でも入力を停止し、利用者の操作は保護する
+      }
+
+      window.setTimeout(() => {
+        router.replace("/stocktake/start");
+      }, 2200);
+    },
+    [router, updateSessionStatus]
+  );
+
   const selectItem = useCallback(
     (item: Inventory) => {
       if (!canEdit) {
-        setMessage("棚卸は中断中または完了済みです。再開してください。");
+        setMessage(
+          "棚卸作業は停止中です。再開またはエラー対応をしてください。"
+        );
         return;
       }
 
       setSelected(item);
-      setQuantity(String(item.countedQuantity ?? item.expectedQuantity));
+      setQuantity(
+        String(item.countedQuantity ?? item.expectedQuantity)
+      );
       setMessage("");
 
       requestAnimationFrame(() => {
@@ -232,7 +394,8 @@ export default function StocktakePage() {
 
   const finishSaveUi = useCallback(
     (item: Inventory, countedQuantity: number) => {
-      const difference = countedQuantity - item.expectedQuantity;
+      const difference =
+        countedQuantity - item.expectedQuantity;
 
       setSelected(null);
       setQuantity("");
@@ -240,8 +403,10 @@ export default function StocktakePage() {
 
       setMessage(
         difference === 0
-          ? "保存しました。一致しています。"
-          : `保存しました。差異：${difference > 0 ? "+" : ""}${difference}`
+          ? "棚卸を保存しました。一致しています。"
+          : `棚卸を保存しました。差異：${
+              difference > 0 ? "+" : ""
+            }${difference}`
       );
 
       void fetchProgress();
@@ -257,30 +422,48 @@ export default function StocktakePage() {
   );
 
   useEffect(() => {
-    void fetchProgress().catch((error) => {
-      setMessage(
-        error instanceof Error
-          ? error.message
-          : "棚卸進捗を取得できませんでした。"
+    void fetchProgress().catch(() => {
+      void pauseForSafety(
+        "STOCKTAKE_PROGRESS_500",
+        "棚卸情報を確認できませんでした",
+        "安全のため棚卸作業を停止しました。保存済みの棚卸データは保護されています。"
       );
     });
-  }, [fetchProgress]);
+  }, [fetchProgress, pauseForSafety]);
 
   useEffect(() => {
     void fetchItems("", filter);
   }, [fetchItems, filter]);
 
   useEffect(() => {
-    if (!canEdit || selected || scannerOpen || singleCameraOpen) {
+    if (
+      !canEdit ||
+      selected ||
+      scannerOpen ||
+      singleCameraOpen
+    ) {
       return;
     }
 
     const timer = window.setInterval(() => {
-      void fetchProgress().catch(() => undefined);
+      void fetchProgress().catch(() => {
+        void pauseForSafety(
+          "STOCKTAKE_PROGRESS_500",
+          "棚卸情報を確認できませんでした",
+          "安全のため棚卸作業を停止しました。"
+        );
+      });
     }, 15000);
 
     return () => window.clearInterval(timer);
-  }, [canEdit, fetchProgress, scannerOpen, selected, singleCameraOpen]);
+  }, [
+    canEdit,
+    fetchProgress,
+    pauseForSafety,
+    scannerOpen,
+    selected,
+    singleCameraOpen,
+  ]);
 
   useEffect(() => {
     if (!canEdit) {
@@ -291,14 +474,14 @@ export default function StocktakePage() {
       lastActivityRef.current = Date.now();
     };
 
-    const eventNames: Array<keyof WindowEventMap> = [
+    const events: Array<keyof WindowEventMap> = [
       "pointerdown",
       "keydown",
       "touchstart",
       "input",
     ];
 
-    eventNames.forEach((eventName) => {
+    events.forEach((eventName) => {
       window.addEventListener(eventName, markActivity, {
         passive: true,
       });
@@ -309,41 +492,67 @@ export default function StocktakePage() {
         return;
       }
 
-      setMessage(
-        "30分間操作がなかったため、棚卸を安全に中断します。"
+      void pauseForSafety(
+        "STOCKTAKE_IDLE_30MIN",
+        "操作がないため棚卸を中断しました",
+        "30分間操作がなかったため、安全のため棚卸を中断しました。開始画面から再開できます。"
       );
-
-      void updateSessionStatus("PAUSE").finally(() => {
-        window.setTimeout(() => {
-          router.replace("/stocktake/start");
-        }, 1500);
-      });
     }, 15000);
 
     return () => {
-      eventNames.forEach((eventName) => {
+      events.forEach((eventName) => {
         window.removeEventListener(eventName, markActivity);
       });
 
       window.clearInterval(timer);
     };
-  }, [canEdit, router, updateSessionStatus]);
+  }, [canEdit, pauseForSafety]);
+
+  useEffect(() => {
+    if (!canEdit) {
+      return;
+    }
+
+    window.history.pushState(
+      { stocktakeSessionId: sessionId },
+      "",
+      window.location.href
+    );
+
+    const handlePopState = () => {
+      window.history.pushState(
+        { stocktakeSessionId: sessionId },
+        "",
+        window.location.href
+      );
+
+      void pauseForSafety(
+        "STOCKTAKE_BROWSER_BACK",
+        "ブラウザの戻る操作を検知しました",
+        "データの不整合を防ぐため棚卸を中断しました。保存済みの棚卸データは保護されています。"
+      );
+    };
+
+    const handleBeforeUnload = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+      event.returnValue = "";
+    };
+
+    window.addEventListener("popstate", handlePopState);
+    window.addEventListener("beforeunload", handleBeforeUnload);
+
+    return () => {
+      window.removeEventListener("popstate", handlePopState);
+      window.removeEventListener(
+        "beforeunload",
+        handleBeforeUnload
+      );
+    };
+  }, [canEdit, pauseForSafety, sessionId]);
 
   const scanBarcode = useCallback(
     async (barcode: string, autoSelect: boolean) => {
-      if (scanningRef.current) {
-        return;
-      }
-
-      if (!canEdit) {
-        setMessage("棚卸は中断中または完了済みです。再開してください。");
-        return;
-      }
-
-      if (selected) {
-        setMessage(
-          "数量入力中です。保存または戻るを押してから次の商品を読み取ってください。"
-        );
+      if (scanningRef.current || !canEdit || selected) {
         return;
       }
 
@@ -358,31 +567,23 @@ export default function StocktakePage() {
       setMessage("");
 
       try {
-        const response = await fetch(
-          `/api/inventory/search?sessionId=${encodeURIComponent(
-            sessionId
-          )}&q=${encodeURIComponent(value)}&filter=ALL`,
-          { cache: "no-store" }
-        );
+        const results = await fetchItems(value, "ALL");
 
-        const data: unknown = await response.json();
-
-        if (!response.ok) {
-          throw new Error(
-            getMessage(data, "バーコード検索に失敗しました。")
-          );
+        if (!results) {
+          return;
         }
 
-        if (!Array.isArray(data)) {
-          throw new Error("バーコード検索結果の形式が正しくありません。");
-        }
+        const normalizedValue = normalizeCode(value);
 
-        const results = data as Inventory[];
-
-        const exactMatches = results.filter(
-          (item) =>
-            item.item.janCode === value ||
-            item.item.managementCode === value
+        const exactMatches = results.filter((item) =>
+          [
+            item.item.janCode,
+            item.item.systemBarcode,
+            item.item.managementCode,
+          ].some(
+            (code) =>
+              normalizeCode(code) === normalizedValue
+          )
         );
 
         const scannedItem =
@@ -391,8 +592,6 @@ export default function StocktakePage() {
             : results.length === 1
               ? results[0]
               : null;
-
-        setItems(results);
 
         if (scannedItem && autoSelect) {
           selectItem(scannedItem);
@@ -407,7 +606,7 @@ export default function StocktakePage() {
 
         if (results.length === 0) {
           setMessage(
-            "該当商品がありません。未登録商品として追加できます。"
+            "該当する棚卸対象がありません。未登録商品の登録ができます。"
           );
           return;
         }
@@ -415,19 +614,13 @@ export default function StocktakePage() {
         setMessage(
           `${results.length}件見つかりました。商品を選んでください。`
         );
-      } catch (error) {
-        setMessage(
-          error instanceof Error
-            ? error.message
-            : "バーコード検索に失敗しました。"
-        );
       } finally {
         window.setTimeout(() => {
           scanningRef.current = false;
         }, 700);
       }
     },
-    [canEdit, selected, selectItem, sessionId]
+    [canEdit, fetchItems, selected, selectItem]
   );
 
   const save = async () => {
@@ -540,28 +733,20 @@ export default function StocktakePage() {
       return;
     }
 
-    try {
-      await saveInstant({
-        inventoryInstanceId: pendingSave.item.id,
-        countedQuantity: pendingSave.countedQuantity,
-        errorCode: pendingSave.errorCode,
-      });
+    await saveInstant({
+      inventoryInstanceId: pendingSave.item.id,
+      countedQuantity: pendingSave.countedQuantity,
+      errorCode: pendingSave.errorCode,
+    });
 
-      setSelected(null);
-      setQuantity("");
-      setKeyword("");
-      setPendingSave(null);
+    setSelected(null);
+    setQuantity("");
+    setKeyword("");
+    setPendingSave(null);
 
-      setMessage(
-        "端末に一時保存しました。通信が復旧すると自動的に保存されます。"
-      );
-    } catch (error) {
-      setMessage(
-        error instanceof Error
-          ? error.message
-          : "一時保存に失敗しました。"
-      );
-    }
+    setMessage(
+      "端末に一時保存しました。通信が復旧したら同期できます。"
+    );
   };
 
   const changeQuantity = (amount: number) => {
@@ -588,7 +773,7 @@ export default function StocktakePage() {
       await updateSessionStatus("PAUSE");
 
       setMessage(
-        "棚卸を中断しました。開始画面へ戻ります。"
+        "棚卸を中断しました。開始画面から再開できます。"
       );
 
       window.setTimeout(() => {
@@ -607,6 +792,7 @@ export default function StocktakePage() {
     try {
       await updateSessionStatus("RESUME");
       await fetchProgress();
+      await fetchItems("", filter);
 
       setMessage("棚卸を再開しました。");
 
@@ -631,15 +817,19 @@ export default function StocktakePage() {
       item: {
         name: result.item.name,
         janCode: result.item.janCode,
+        systemBarcode: null,
         managementCode: null,
       },
       storageLocation: null,
     };
 
     setRegisterDialogOpen(false);
+    setSearchFailure(null);
     setItems([registeredItem]);
     setKeyword("");
-    setMessage("商品を登録し、今回の棚卸対象へ追加しました。");
+    setMessage(
+      "商品を登録し、今回の棚卸対象へ追加しました。"
+    );
 
     void fetchProgress();
     selectItem(registeredItem);
@@ -667,7 +857,7 @@ export default function StocktakePage() {
               {progress?.session.status === "PAUSED"
                 ? "中断中"
                 : progress?.session.status === "COMPLETED"
-                  ? "完了済み"
+                  ? "確定済み"
                   : "棚卸中"}
             </p>
           </div>
@@ -691,7 +881,7 @@ export default function StocktakePage() {
                       action: "PAUSE",
                       title: "棚卸を中断しますか？",
                       message:
-                        "保存済みの棚卸データは保持されます。再開は開始画面から行えます。",
+                        "保存済みの棚卸データは残ります。開始画面から再開できます。",
                     })
                   }
                   className="shrink-0 rounded-xl bg-orange-500 px-3 py-2 text-sm font-bold text-white"
@@ -706,7 +896,7 @@ export default function StocktakePage() {
                       action: "COMPLETE",
                       title: "棚卸を終了しますか？",
                       message:
-                        "次の画面で結果を確認し、確定処理を行います。",
+                        "次の画面で結果を確認し、確定できます。",
                     })
                   }
                   className="shrink-0 rounded-xl bg-blue-600 px-3 py-2 text-sm font-bold text-white"
@@ -782,10 +972,43 @@ export default function StocktakePage() {
           </section>
         )}
 
-        {message && (
+        {message && !searchFailure && (
           <p className="mb-4 rounded-2xl bg-blue-50 px-4 py-3 text-sm text-blue-800">
             {message}
           </p>
+        )}
+
+        {searchFailure && (
+          <section className="mb-4 rounded-3xl border border-red-200 bg-red-50 p-5">
+            <p className="text-sm font-bold text-red-600">
+              システムエラー
+            </p>
+
+            <h2 className="mt-1 text-xl font-bold">
+              在庫検索を完了できませんでした
+            </h2>
+
+            <p className="mt-3 text-sm leading-6 text-slate-700">
+              {searchFailure.message}
+            </p>
+
+            <p className="mt-3 text-sm font-bold text-slate-600">
+              エラーコード：{searchFailure.code}
+            </p>
+
+            <button
+              type="button"
+              onClick={() =>
+                void fetchItems(
+                  searchFailure.keyword,
+                  searchFailure.filter
+                )
+              }
+              className="mt-5 rounded-2xl bg-blue-600 px-5 py-3 font-bold text-white"
+            >
+              検索を再試行する
+            </button>
+          </section>
         )}
 
         <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_430px]">
@@ -796,14 +1019,16 @@ export default function StocktakePage() {
                   ref={searchRef}
                   disabled={!canEdit}
                   value={keyword}
-                  onChange={(event) => setKeyword(event.target.value)}
+                  onChange={(event) =>
+                    setKeyword(event.target.value)
+                  }
                   onKeyDown={(event) => {
                     if (event.key === "Enter") {
                       event.preventDefault();
                       void scanBarcode(keyword, false);
                     }
                   }}
-                  placeholder="JAN・バーコード・商品名で検索"
+                  placeholder="JAN・システムバーコード・商品名で検索"
                   className="min-w-0 flex-1 rounded-2xl border-2 border-slate-300 px-4 py-3 outline-none focus:border-blue-600 disabled:bg-slate-100"
                 />
 
@@ -844,7 +1069,11 @@ export default function StocktakePage() {
             <div className="mt-4 space-y-3">
               {loadingItems ? (
                 <div className="rounded-3xl bg-white p-6 text-slate-500 shadow-sm">
-                  読み込み中...
+                  読み込み中…
+                </div>
+              ) : searchFailure ? (
+                <div className="rounded-3xl bg-white p-6 text-center text-slate-500 shadow-sm">
+                  エラー対応中のため、検索結果は表示しません。
                 </div>
               ) : items.length === 0 ? (
                 <div className="rounded-3xl bg-white p-6 text-center shadow-sm">
@@ -870,14 +1099,16 @@ export default function StocktakePage() {
                   const itemDifference =
                     item.countedQuantity === null
                       ? null
-                      : item.countedQuantity - item.expectedQuantity;
+                      : item.countedQuantity -
+                        item.expectedQuantity;
 
                   const label = !item.isRecorded
                     ? "未棚卸"
                     : itemDifference === 0
                       ? "一致"
                       : `差異 ${
-                          itemDifference !== null && itemDifference > 0
+                          itemDifference !== null &&
+                          itemDifference > 0
                             ? "+"
                             : ""
                         }${itemDifference ?? 0}`;
@@ -907,7 +1138,8 @@ export default function StocktakePage() {
                           </p>
 
                           <p className="text-sm text-slate-600">
-                            保管場所：{item.storageLocation?.name ?? "未設定"}
+                            保管場所：
+                            {item.storageLocation?.name ?? "未設定"}
                           </p>
 
                           <p className="mt-3 text-lg font-bold text-blue-600">
@@ -952,6 +1184,7 @@ export default function StocktakePage() {
                       setSelected(null);
                       setQuantity("");
                     }}
+                    disabled={saving}
                     className="h-fit rounded-xl bg-slate-100 px-3 py-2 text-sm font-bold"
                   >
                     戻る
@@ -979,7 +1212,9 @@ export default function StocktakePage() {
                     inputMode="numeric"
                     value={quantity}
                     disabled={saving}
-                    onChange={(event) => setQuantity(event.target.value)}
+                    onChange={(event) =>
+                      setQuantity(event.target.value)
+                    }
                     onKeyDown={(event) => {
                       if (event.key === "Enter") {
                         void save();
@@ -1015,7 +1250,7 @@ export default function StocktakePage() {
                   disabled={saving}
                   className="mt-5 w-full rounded-2xl bg-blue-600 py-4 text-lg font-bold text-white disabled:bg-slate-400"
                 >
-                  {saving ? "保存中..." : "棚卸を保存"}
+                  {saving ? "保存中…" : "棚卸を保存"}
                 </button>
               </section>
             ) : (
@@ -1078,9 +1313,35 @@ export default function StocktakePage() {
                 onClick={() => void confirmAction()}
                 className="flex-1 rounded-2xl bg-blue-600 py-3 font-bold text-white"
               >
-                確認する
+                同意する
               </button>
             </div>
+          </section>
+        </div>
+      )}
+
+      {safetyStop && (
+        <div className="fixed inset-0 z-[90] grid place-items-center bg-slate-950/75 p-5">
+          <section className="w-full max-w-md rounded-3xl bg-white p-6 shadow-2xl">
+            <p className="text-sm font-bold text-red-600">
+              システム保護エラー
+            </p>
+
+            <h2 className="mt-2 text-2xl font-bold">
+              {safetyStop.title}
+            </h2>
+
+            <p className="mt-4 leading-7 text-slate-700">
+              {safetyStop.message}
+            </p>
+
+            <p className="mt-5 rounded-xl bg-slate-100 p-3 text-sm font-bold">
+              エラーコード：{safetyStop.code}
+            </p>
+
+            <p className="mt-5 text-sm text-slate-500">
+              開始画面へ戻ります…
+            </p>
           </section>
         </div>
       )}
@@ -1101,7 +1362,7 @@ export default function StocktakePage() {
           className="fixed bottom-5 right-5 z-40 rounded-full bg-amber-500 px-4 py-3 text-sm font-bold text-white shadow-lg"
         >
           {syncingInstantRecords
-            ? "一時保存データを同期中..."
+            ? "一時保存データを同期中…"
             : `一時保存データ ${pendingCount}件`}
         </button>
       )}

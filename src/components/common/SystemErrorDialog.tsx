@@ -1,6 +1,6 @@
 "use client";
 
-import { ReactNode, useRef, useState } from "react";
+import { type ReactNode, useRef, useState } from "react";
 
 type AdminAuthResult = {
   success: boolean;
@@ -15,13 +15,24 @@ type SystemErrorDialogProps = {
   message: string;
   retrying?: boolean;
   onRetry: () => void;
-  onInstantSave: () => void;
-  onAdminAuthenticate?: (
-    username: string,
-    password: string
-  ) => Promise<AdminAuthResult>;
+  onInstantSave?: () => void;
+  errorReportId?: string;
+  sessionId?: string;
   adminContent?: ReactNode;
 };
+
+function getMessage(data: unknown, fallback: string) {
+  if (
+    data &&
+    typeof data === "object" &&
+    "message" in data &&
+    typeof data.message === "string"
+  ) {
+    return data.message;
+  }
+
+  return fallback;
+}
 
 export default function SystemErrorDialog({
   open,
@@ -32,7 +43,8 @@ export default function SystemErrorDialog({
   retrying = false,
   onRetry,
   onInstantSave,
-  onAdminAuthenticate,
+  errorReportId,
+  sessionId,
   adminContent,
 }: SystemErrorDialogProps) {
   const [showAdminLogin, setShowAdminLogin] = useState(false);
@@ -52,9 +64,7 @@ export default function SystemErrorDialog({
     const now = Date.now();
 
     titleClickTimes.current = [
-      ...titleClickTimes.current.filter(
-        (time) => now - time < 1200
-      ),
+      ...titleClickTimes.current.filter((time) => now - time < 1200),
       now,
     ];
 
@@ -65,30 +75,51 @@ export default function SystemErrorDialog({
     }
   };
 
-  const authenticateAdmin = async () => {
-    if (!onAdminAuthenticate) {
-      setAdminError("管理者認証処理を準備中です。");
-      return;
-    }
-
+  const authenticateAdmin = async (): Promise<AdminAuthResult> => {
     if (!adminUsername.trim() || !adminPassword) {
-      setAdminError("管理者IDとパスワードを入力してください。");
-      return;
+      return {
+        success: false,
+        message: "管理者IDとパスワードを入力してください。",
+      };
     }
 
+    const response = await fetch("/admin/re-auth", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        username: adminUsername.trim(),
+        password: adminPassword,
+        errorReportId,
+        sessionId,
+        route: window.location.pathname,
+      }),
+    });
+
+    const data: unknown = await response.json();
+
+    if (!response.ok) {
+      return {
+        success: false,
+        message: getMessage(data, "管理者認証に失敗しました。"),
+      };
+    }
+
+    return {
+      success: true,
+    };
+  };
+
+  const handleAdminAuthentication = async () => {
     setAuthenticating(true);
     setAdminError("");
 
     try {
-      const result = await onAdminAuthenticate(
-        adminUsername.trim(),
-        adminPassword
-      );
+      const result = await authenticateAdmin();
 
       if (!result.success) {
-        setAdminError(
-          result.message ?? "管理者認証に失敗しました。"
-        );
+        setAdminError(result.message ?? "管理者認証に失敗しました。");
         return;
       }
 
@@ -118,36 +149,24 @@ export default function SystemErrorDialog({
           システムエラー
         </button>
 
-        <h2 className="mt-3 text-2xl font-bold sm:text-3xl">
-          {title}
-        </h2>
+        <h2 className="mt-3 text-2xl font-bold sm:text-3xl">{title}</h2>
 
         <dl className="mt-5 space-y-3 rounded-2xl bg-slate-50 p-4 text-sm sm:text-base">
           <div>
-            <dt className="font-semibold text-slate-500">
-              エラーコード
-            </dt>
+            <dt className="font-semibold text-slate-500">エラーコード</dt>
             <dd className="mt-1 break-all font-mono font-bold text-slate-900">
               {code}
             </dd>
           </div>
 
           <div>
-            <dt className="font-semibold text-slate-500">
-              エラー事象
-            </dt>
-            <dd className="mt-1 font-medium text-slate-900">
-              {event}
-            </dd>
+            <dt className="font-semibold text-slate-500">エラー事象</dt>
+            <dd className="mt-1 font-medium text-slate-900">{event}</dd>
           </div>
 
           <div>
-            <dt className="font-semibold text-slate-500">
-              ご案内
-            </dt>
-            <dd className="mt-1 leading-6 text-slate-700">
-              {message}
-            </dd>
+            <dt className="font-semibold text-slate-500">状況</dt>
+            <dd className="mt-1 leading-6 text-slate-700">{message}</dd>
           </div>
         </dl>
 
@@ -157,36 +176,36 @@ export default function SystemErrorDialog({
               type="button"
               onClick={onRetry}
               disabled={retrying}
-              className="rounded-xl bg-blue-600 px-4 py-3 font-bold text-white transition hover:bg-blue-700 disabled:bg-slate-400"
+              className="rounded-xl bg-blue-600 px-4 py-3 font-bold text-white hover:bg-blue-700 disabled:bg-slate-400"
             >
-              {retrying ? "再試行中..." : "再試行する"}
+              {retrying ? "再試行中…" : "再試行する"}
             </button>
 
-            <button
-              type="button"
-              onClick={onInstantSave}
-              disabled={retrying}
-              className="rounded-xl bg-amber-500 px-4 py-3 font-bold text-white transition hover:bg-amber-600 disabled:bg-slate-400"
-            >
-              インスタント保存
-            </button>
+            {onInstantSave && (
+              <button
+                type="button"
+                onClick={onInstantSave}
+                disabled={retrying}
+                className="rounded-xl bg-amber-500 px-4 py-3 font-bold text-white hover:bg-amber-600 disabled:bg-slate-400"
+              >
+                インスタント保存
+              </button>
+            )}
           </div>
         )}
 
         {showAdminLogin && !adminAuthenticated && (
           <div className="mt-6 rounded-2xl border border-slate-200 bg-slate-50 p-4">
-            <h3 className="text-lg font-bold">
-              管理者認証
-            </h3>
+            <h3 className="text-lg font-bold">管理者認証</h3>
 
             <p className="mt-1 text-sm text-slate-600">
-              このエラーに必要な復旧操作を表示します。
+              このエラーへの管理者対応を表示します。
             </p>
 
             <input
               className="mt-4 w-full rounded-xl border border-slate-300 bg-white px-4 py-3"
               value={adminUsername}
-              onChange={(e) => setAdminUsername(e.target.value)}
+              onChange={(event) => setAdminUsername(event.target.value)}
               placeholder="管理者ID"
               autoComplete="username"
             />
@@ -195,12 +214,12 @@ export default function SystemErrorDialog({
               type="password"
               className="mt-3 w-full rounded-xl border border-slate-300 bg-white px-4 py-3"
               value={adminPassword}
-              onChange={(e) => setAdminPassword(e.target.value)}
+              onChange={(event) => setAdminPassword(event.target.value)}
               placeholder="管理者パスワード"
               autoComplete="current-password"
-              onKeyDown={(e) => {
-                if (e.key === "Enter") {
-                  void authenticateAdmin();
+              onKeyDown={(event) => {
+                if (event.key === "Enter") {
+                  void handleAdminAuthentication();
                 }
               }}
             />
@@ -213,25 +232,24 @@ export default function SystemErrorDialog({
 
             <button
               type="button"
-              onClick={() => void authenticateAdmin()}
+              onClick={() => void handleAdminAuthentication()}
               disabled={authenticating}
-              className="mt-4 w-full rounded-xl bg-slate-900 px-4 py-3 font-bold text-white transition hover:bg-slate-700 disabled:bg-slate-400"
+              className="mt-4 w-full rounded-xl bg-slate-900 px-4 py-3 font-bold text-white hover:bg-slate-700 disabled:bg-slate-400"
             >
-              {authenticating ? "確認中..." : "認証して対応を開く"}
+              {authenticating ? "認証中…" : "認証して対応を開く"}
             </button>
           </div>
         )}
 
         {adminAuthenticated && (
           <div className="mt-6 rounded-2xl border border-emerald-200 bg-emerald-50 p-4">
-            <p className="font-bold text-emerald-800">
-              管理者認証済み
-            </p>
+            <p className="font-bold text-emerald-800">管理者認証済み</p>
 
             <div className="mt-4">
               {adminContent ?? (
-                <p className="text-sm text-slate-700">
-                  このエラーに対応できる操作を準備しています。
+                <p className="text-sm leading-6 text-slate-700">
+                  管理者認証を記録しました。詳細なレポート確認は管理画面の
+                  「エラーレポート」から行えます。
                 </p>
               )}
             </div>

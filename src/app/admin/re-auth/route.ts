@@ -1,9 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
+import { getLoggedInUser, verifyPassword } from "@/lib/auth";
+import { createAdminActionLog } from "@/lib/error-report";
 import { prisma } from "@/lib/prisma";
-import {
-  createAdminActionLog,
-} from "@/lib/error-report";
-import { verifyPassword } from "@/lib/auth";
 
 type RequestBody = {
   username?: unknown;
@@ -13,31 +11,41 @@ type RequestBody = {
   sessionId?: unknown;
 };
 
-function text(value: unknown, maxLength: number) {
-  return typeof value === "string"
-    ? value.trim().slice(0, maxLength)
-    : "";
+function getText(value: unknown, maxLength: number) {
+  return typeof value === "string" ? value.trim().slice(0, maxLength) : "";
 }
 
-export async function POST(req: NextRequest) {
+export async function POST(request: NextRequest) {
   try {
-    const body = (await req.json()) as RequestBody;
+    const currentUser = getLoggedInUser(request);
 
-    const username = text(body.username, 100);
-    const password = text(body.password, 200);
-    const errorReportId = text(body.errorReportId, 100) || undefined;
-    const route = text(body.route, 500) || undefined;
-    const sessionId = text(body.sessionId, 100) || undefined;
+    if (!currentUser) {
+      return NextResponse.json(
+        {
+          success: false,
+          code: "ADMIN_REAUTH_AUTH_401",
+          message: "ログイン情報を確認できませんでした。",
+        },
+        { status: 401 }
+      );
+    }
+
+    const body = (await request.json()) as RequestBody;
+
+    const username = getText(body.username, 100);
+    const password = getText(body.password, 200);
+    const errorReportId = getText(body.errorReportId, 100) || undefined;
+    const route = getText(body.route, 500) || undefined;
+    const sessionId = getText(body.sessionId, 100) || undefined;
 
     if (!username || !password) {
       return NextResponse.json(
         {
           success: false,
+          code: "ADMIN_REAUTH_INPUT_400",
           message: "管理者IDとパスワードを入力してください。",
         },
-        {
-          status: 400,
-        }
+        { status: 400 }
       );
     }
 
@@ -47,6 +55,7 @@ export async function POST(req: NextRequest) {
       },
       select: {
         id: true,
+        username: true,
         displayName: true,
         passwordHash: true,
         role: true,
@@ -64,11 +73,10 @@ export async function POST(req: NextRequest) {
       return NextResponse.json(
         {
           success: false,
+          code: "ADMIN_REAUTH_INVALID_401",
           message: "管理者IDまたはパスワードが一致しません。",
         },
-        {
-          status: 401,
-        }
+        { status: 401 }
       );
     }
 
@@ -79,7 +87,9 @@ export async function POST(req: NextRequest) {
       errorReportId,
       targetSessionId: sessionId,
       detail: {
-        reason: "エラー画面からの管理者認証",
+        authenticatedBy: currentUser.id,
+        authenticatedByName: currentUser.displayName,
+        reason: "エラー画面からの管理者再認証",
       },
     });
 
@@ -87,6 +97,7 @@ export async function POST(req: NextRequest) {
       success: true,
       admin: {
         id: adminUser.id,
+        username: adminUser.username,
         displayName: adminUser.displayName,
       },
     });
@@ -96,11 +107,10 @@ export async function POST(req: NextRequest) {
     return NextResponse.json(
       {
         success: false,
+        code: "ADMIN_REAUTH_500",
         message: "管理者認証を確認できませんでした。",
       },
-      {
-        status: 500,
-      }
+      { status: 500 }
     );
   }
 }
