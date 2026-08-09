@@ -18,6 +18,10 @@ type SystemErrorDialogProps = {
   onInstantSave?: () => void;
   errorReportId?: string;
   sessionId?: string;
+  onAdminAuthenticate?: (
+    username: string,
+    password: string
+  ) => Promise<AdminAuthResult>;
   adminContent?: ReactNode;
 };
 
@@ -45,6 +49,7 @@ export default function SystemErrorDialog({
   onInstantSave,
   errorReportId,
   sessionId,
+  onAdminAuthenticate,
   adminContent,
 }: SystemErrorDialogProps) {
   const [showAdminLogin, setShowAdminLogin] = useState(false);
@@ -75,14 +80,7 @@ export default function SystemErrorDialog({
     }
   };
 
-  const authenticateAdmin = async (): Promise<AdminAuthResult> => {
-    if (!adminUsername.trim() || !adminPassword) {
-      return {
-        success: false,
-        message: "管理者IDとパスワードを入力してください。",
-      };
-    }
-
+  const authenticateInternally = async (): Promise<AdminAuthResult> => {
     const response = await fetch("/admin/re-auth", {
       method: "POST",
       headers: {
@@ -112,11 +110,18 @@ export default function SystemErrorDialog({
   };
 
   const handleAdminAuthentication = async () => {
+    if (!adminUsername.trim() || !adminPassword) {
+      setAdminError("管理者IDとパスワードを入力してください。");
+      return;
+    }
+
     setAuthenticating(true);
     setAdminError("");
 
     try {
-      const result = await authenticateAdmin();
+      const result = onAdminAuthenticate
+        ? await onAdminAuthenticate(adminUsername.trim(), adminPassword)
+        : await authenticateInternally();
 
       if (!result.success) {
         setAdminError(result.message ?? "管理者認証に失敗しました。");
@@ -199,7 +204,7 @@ export default function SystemErrorDialog({
             <h3 className="text-lg font-bold">管理者認証</h3>
 
             <p className="mt-1 text-sm text-slate-600">
-              このエラーへの管理者対応を表示します。
+              このエラーに必要な管理者対応を表示します。
             </p>
 
             <input
@@ -248,8 +253,8 @@ export default function SystemErrorDialog({
             <div className="mt-4">
               {adminContent ?? (
                 <p className="text-sm leading-6 text-slate-700">
-                  管理者認証を記録しました。詳細なレポート確認は管理画面の
-                  「エラーレポート」から行えます。
+                  管理者認証を記録しました。詳細は管理画面の
+                  「エラーレポート」から確認できます。
                 </p>
               )}
             </div>

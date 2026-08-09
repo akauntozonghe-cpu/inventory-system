@@ -1,10 +1,23 @@
 import { NextRequest, NextResponse } from "next/server";
+import { getLoggedInUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 
 export async function GET(
-  _request: NextRequest,
+  request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const user = getLoggedInUser(request);
+
+  if (!user) {
+    return NextResponse.json(
+      {
+        code: "RESULT_AUTH_401",
+        message: "ログイン情報を確認できませんでした。",
+      },
+      { status: 401 }
+    );
+  }
+
   try {
     const { id } = await params;
 
@@ -19,23 +32,30 @@ export async function GET(
 
     if (!session) {
       return NextResponse.json(
-        { message: "棚卸セッションが見つかりません" },
+        {
+          code: "RESULT_SESSION_404",
+          message: "棚卸セッションが見つかりません。",
+        },
         { status: 404 }
       );
     }
 
     const [targets, records] = await Promise.all([
       prisma.stocktakeTarget.findMany({
-        where: { sessionId: id },
-        select: {
-          inventoryInstanceId: true,
-          expectedQuantity: true,
+        where: {
+          sessionId: id,
+        },
+        orderBy: {
+          createdAt: "asc",
+        },
+        include: {
           inventoryInstance: {
-            select: {
+            include: {
               item: {
                 select: {
                   name: true,
                   janCode: true,
+                  systemBarcode: true,
                 },
               },
               storageLocation: {
@@ -47,8 +67,11 @@ export async function GET(
           },
         },
       }),
+
       prisma.stocktakeRecord.findMany({
-        where: { sessionId: id },
+        where: {
+          sessionId: id,
+        },
         select: {
           inventoryInstanceId: true,
           countedQuantity: true,
@@ -56,21 +79,25 @@ export async function GET(
       }),
     ]);
 
-    const recordByInventoryId = new Map(
-      records.map((record) => [
+    const countedByInventoryId = new Map<string, number>();
+
+    for (const record of records) {
+      countedByInventoryId.set(
         record.inventoryInstanceId,
-        record.countedQuantity,
-      ])
-    );
+        record.countedQuantity
+      );
+    }
 
     const items = targets.map((target) => {
       const countedQuantity =
-        recordByInventoryId.get(target.inventoryInstanceId) ?? null;
+        countedByInventoryId.get(target.inventoryInstanceId) ?? null;
 
       return {
         id: target.inventoryInstanceId,
         name: target.inventoryInstance.item.name,
-        janCode: target.inventoryInstance.item.janCode,
+        janCode:
+          target.inventoryInstance.item.janCode ??
+          target.inventoryInstance.item.systemBarcode,
         location:
           target.inventoryInstance.storageLocation?.name ?? "未設定",
         expectedQuantity: target.expectedQuantity,
@@ -91,7 +118,9 @@ export async function GET(
     ).length;
 
     const differenceCount = recordedItems.filter(
-      (item) => item.difference !== 0
+      (item) =>
+        item.difference !== null &&
+        item.difference !== 0
     ).length;
 
     return NextResponse.json({
@@ -106,10 +135,23 @@ export async function GET(
       items,
     });
   } catch (error) {
-    console.error(error);
+    console.error("GET /api/stocktake/session/[id]/result", error);
+
+    const prismaErrorCode =
+      typeof error === "object" &&
+      error !== null &&
+      "code" in error &&
+      typeof error.code === "string"
+        ? error.code
+        : null;
 
     return NextResponse.json(
-      { message: "棚卸結果の取得に失敗しました" },
+      {
+        code: prismaErrorCode
+          ? `RESULT_DATABASE_${prismaErrorCode}`
+          : "RESULT_FETCH_500",
+        message: "棚卸結果の取得に失敗しました。",
+      },
       { status: 500 }
     );
   }

@@ -1,87 +1,261 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
+
+type CurrentUser = {
+  id: string;
+  username: string;
+  displayName: string;
+  role: "ADMIN" | "WORKER";
+  mustChangePassword?: boolean;
+};
+
+type SettingMenu = {
+  href: string;
+  icon: string;
+  title: string;
+  description: string;
+  adminOnly?: boolean;
+  danger?: boolean;
+};
+
+const settingMenus: SettingMenu[] = [
+  {
+    href: "/account/password",
+    icon: "🔐",
+    title: "パスワード変更",
+    description:
+      "現在ログインしている自分のパスワードを変更します。",
+  },
+  {
+    href: "/admin/users",
+    icon: "👥",
+    title: "ユーザー管理",
+    description:
+      "ユーザーの登録・停止・パスワード再発行を行います。",
+    adminOnly: true,
+  },
+  {
+    href: "/locations",
+    icon: "📍",
+    title: "保管場所管理",
+    description:
+      "棚・倉庫・引き出しなどの保管場所を登録・整理します。",
+    adminOnly: true,
+  },
+  {
+    href: "/admin/error-reports",
+    icon: "🛡️",
+    title: "エラー報告・復旧",
+    description:
+      "自動復旧できなかったシステムエラーを確認・対応します。",
+    adminOnly: true,
+  },
+  {
+    href: "/reset",
+    icon: "⚠️",
+    title: "データ初期化",
+    description:
+      "テストデータなどを初期化します。実行前に内容を確認してください。",
+    adminOnly: true,
+    danger: true,
+  },
+];
 
 export default function SettingsPage() {
-  const [currentPass, setCurrentPass] = useState("");
-  const [newPass, setNewPass] = useState("");
-  const [savedPass, setSavedPass] = useState("2580");
+  const router = useRouter();
+
+  const [user, setUser] = useState<CurrentUser | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
 
   useEffect(() => {
-    const pass = localStorage.getItem("adminPass");
+    const loadUser = async () => {
+      try {
+        const response = await fetch("/api/auth/me", {
+          cache: "no-store",
+        });
 
-    if (pass) {
-      setSavedPass(pass);
-    } else {
-      localStorage.setItem("adminPass", "2580");
-    }
-  }, []);
+        if (response.status === 401) {
+          router.replace("/login");
+          return;
+        }
 
-  const save = () => {
-    if (currentPass !== savedPass) {
-      alert("現在のパスコードが違います。");
-      return;
-    }
+        if (!response.ok) {
+          throw new Error("ログイン情報を確認できませんでした。");
+        }
 
-    if (newPass.length < 4) {
-      alert("4桁以上で入力してください。");
-      return;
-    }
+        setUser((await response.json()) as CurrentUser);
+      } catch (caughtError) {
+        setError(
+          caughtError instanceof Error
+            ? caughtError.message
+            : "設定情報を取得できませんでした。"
+        );
+      } finally {
+        setLoading(false);
+      }
+    };
 
-    localStorage.setItem("adminPass", newPass);
+    void loadUser();
+  }, [router]);
 
-    alert("パスコードを変更しました。");
+  if (loading) {
+    return (
+      <main className="grid min-h-screen place-items-center bg-slate-100">
+        <p className="font-bold text-slate-600">設定を読み込み中…</p>
+      </main>
+    );
+  }
 
-    setSavedPass(newPass);
-    setCurrentPass("");
-    setNewPass("");
-  };
+  if (error) {
+    return (
+      <main className="grid min-h-screen place-items-center bg-slate-100 p-5">
+        <section className="w-full max-w-md rounded-3xl bg-white p-6 shadow-sm">
+          <p className="text-sm font-bold text-red-600">
+            設定を開けません
+          </p>
+
+          <p className="mt-3 text-slate-700">{error}</p>
+
+          <Link
+            href="/"
+            className="mt-6 block rounded-xl bg-slate-800 px-4 py-3 text-center font-bold text-white"
+          >
+            ホームへ戻る
+          </Link>
+        </section>
+      </main>
+    );
+  }
+
+  if (!user) {
+    return null;
+  }
+
+  const visibleMenus = settingMenus.filter(
+    (menu) => !menu.adminOnly || user.role === "ADMIN"
+  );
 
   return (
-    <main className="min-h-screen bg-gray-100 p-8">
-      <div className="mx-auto max-w-xl rounded-2xl bg-white p-8 shadow">
-
-        <h1 className="mb-6 text-3xl font-bold">
-          ⚙ システム設定
-        </h1>
-
-        <div className="space-y-5">
-
+    <main className="min-h-screen bg-slate-100 p-4 sm:p-8">
+      <div className="mx-auto max-w-5xl">
+        <header className="flex flex-col gap-5 sm:flex-row sm:items-start sm:justify-between">
           <div>
-            <label className="mb-2 block font-bold">
-              現在のパスコード
-            </label>
+            <p className="text-sm font-bold tracking-widest text-blue-600">
+              ACCOUNT SETTINGS
+            </p>
 
-            <input
-              type="password"
-              value={currentPass}
-              onChange={(e) => setCurrentPass(e.target.value)}
-              className="w-full rounded-lg border p-3"
-            />
+            <h1 className="mt-1 text-3xl font-black text-slate-900">
+              設定
+            </h1>
+
+            <p className="mt-2 text-slate-600">
+              アカウントとシステムの設定を管理します。
+            </p>
           </div>
 
-          <div>
-            <label className="mb-2 block font-bold">
-              新しいパスコード
-            </label>
-
-            <input
-              type="password"
-              value={newPass}
-              onChange={(e) => setNewPass(e.target.value)}
-              className="w-full rounded-lg border p-3"
-            />
-          </div>
-
-          <button
-            onClick={save}
-            className="w-full rounded-xl bg-blue-600 py-3 text-white"
+          <Link
+            href="/"
+            className="rounded-xl bg-slate-800 px-4 py-3 text-center font-bold text-white transition hover:bg-slate-700"
           >
-            保存
-          </button>
+            ホームへ戻る
+          </Link>
+        </header>
 
-        </div>
+        <section className="mt-8 rounded-2xl bg-white p-5 shadow-sm">
+          <p className="text-sm font-bold text-slate-500">
+            現在ログイン中
+          </p>
 
+          <div className="mt-2 flex flex-wrap items-center gap-3">
+            <p className="text-2xl font-black text-slate-900">
+              {user.displayName}
+            </p>
+
+            <span
+              className={`rounded-full px-3 py-1 text-sm font-bold ${
+                user.role === "ADMIN"
+                  ? "bg-red-100 text-red-700"
+                  : "bg-blue-100 text-blue-700"
+              }`}
+            >
+              {user.role === "ADMIN" ? "管理者" : "作業者"}
+            </span>
+          </div>
+
+          <p className="mt-2 text-sm text-slate-600">
+            ログインID：{user.username}
+          </p>
+        </section>
+
+        {user.role === "ADMIN" && (
+          <section className="mt-5 rounded-2xl border border-red-200 bg-red-50 p-5">
+            <p className="font-bold text-red-800">
+              管理者設定について
+            </p>
+
+            <p className="mt-2 text-sm leading-6 text-red-700">
+              管理者はユーザー・保管場所・エラー報告・データ初期化を操作できます。
+              他の利用者の作業へ影響する場合があるため、内容を確認してから実行してください。
+            </p>
+          </section>
+        )}
+
+        <section className="mt-6 grid gap-5 sm:grid-cols-2">
+          {visibleMenus.map((menu) => (
+            <Link key={menu.href} href={menu.href}>
+              <article
+                className={`h-full rounded-2xl bg-white p-6 shadow-sm transition hover:-translate-y-1 hover:shadow-lg ${
+                  menu.danger
+                    ? "ring-1 ring-red-200"
+                    : ""
+                }`}
+              >
+                <div className="flex items-start gap-4">
+                  <div
+                    className={`grid h-14 w-14 shrink-0 place-items-center rounded-xl text-3xl ${
+                      menu.danger
+                        ? "bg-red-100"
+                        : "bg-slate-100"
+                    }`}
+                  >
+                    {menu.icon}
+                  </div>
+
+                  <div>
+                    <h2
+                      className={`text-xl font-black ${
+                        menu.danger
+                          ? "text-red-700"
+                          : "text-slate-900"
+                      }`}
+                    >
+                      {menu.title}
+                    </h2>
+
+                    <p className="mt-2 leading-6 text-slate-600">
+                      {menu.description}
+                    </p>
+                  </div>
+                </div>
+              </article>
+            </Link>
+          ))}
+        </section>
+
+        {user.role === "ADMIN" && (
+          <div className="mt-8">
+            <Link
+              href="/admin"
+              className="inline-flex rounded-xl bg-slate-800 px-5 py-3 font-bold text-white transition hover:bg-slate-700"
+            >
+              管理者モードを開く
+            </Link>
+          </div>
+        )}
       </div>
     </main>
   );

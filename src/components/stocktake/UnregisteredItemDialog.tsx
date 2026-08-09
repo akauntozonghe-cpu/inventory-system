@@ -7,16 +7,22 @@ type Location = {
   name: string;
 };
 
-type RegisteredInventory = {
+type RegisteredTarget = {
+  id: string;
+  expectedQuantity: number;
+  isRecorded: boolean;
+  countedQuantity: number | null;
   item: {
     id: string;
     name: string;
     janCode: string | null;
+    systemBarcode: string | null;
+    managementCode: string | null;
   };
-  inventory: {
+  storageLocation: {
     id: string;
-    quantity: number;
-  };
+    name: string;
+  } | null;
 };
 
 type UnregisteredItemDialogProps = {
@@ -24,13 +30,13 @@ type UnregisteredItemDialogProps = {
   sessionId: string;
   initialJanCode: string;
   onClose: () => void;
-  onRegistered: (result: RegisteredInventory) => void;
+  onRegistered: (target: RegisteredTarget) => void;
 };
 
 function getMessage(data: unknown, fallback: string) {
   if (
+    data &&
     typeof data === "object" &&
-    data !== null &&
     "message" in data &&
     typeof data.message === "string"
   ) {
@@ -38,6 +44,10 @@ function getMessage(data: unknown, fallback: string) {
   }
 
   return fallback;
+}
+
+function isSystemBarcode(value: string) {
+  return value.trim().toUpperCase().startsWith("SYS-");
 }
 
 export default function UnregisteredItemDialog({
@@ -55,6 +65,7 @@ export default function UnregisteredItemDialog({
   const [form, setForm] = useState({
     name: "",
     janCode: "",
+    systemBarcode: "",
     managementCode: "",
     manufacturer: "",
     majorCategory: "",
@@ -71,9 +82,13 @@ export default function UnregisteredItemDialog({
       return;
     }
 
+    const barcode = initialJanCode.trim();
+
+    setMessage("");
     setForm((previous) => ({
       ...previous,
-      janCode: initialJanCode,
+      janCode: isSystemBarcode(barcode) ? "" : barcode,
+      systemBarcode: isSystemBarcode(barcode) ? barcode : "",
     }));
   }, [initialJanCode, open]);
 
@@ -124,6 +139,13 @@ export default function UnregisteredItemDialog({
     }));
   };
 
+  const close = () => {
+    if (!saving) {
+      setMessage("");
+      onClose();
+    }
+  };
+
   const submit = async () => {
     if (!form.name.trim()) {
       setMessage("商品名を入力してください。");
@@ -138,7 +160,7 @@ export default function UnregisteredItemDialog({
     const quantity = Number(form.quantity);
 
     if (!Number.isInteger(quantity) || quantity < 0) {
-      setMessage("数量は0以上の整数で入力してください。");
+      setMessage("在庫数は0以上の整数で入力してください。");
       return;
     }
 
@@ -160,17 +182,23 @@ export default function UnregisteredItemDialog({
 
       const data: unknown = await response.json();
 
-      if (!response.ok) {
+      if (
+        !response.ok ||
+        !data ||
+        typeof data !== "object" ||
+        !("target" in data)
+      ) {
         throw new Error(
-          getMessage(data, "未登録商品の保存に失敗しました。")
+          getMessage(data, "未登録商品の登録に失敗しました。")
         );
       }
 
-      onRegistered(data as RegisteredInventory);
+      onRegistered(data.target as RegisteredTarget);
 
       setForm({
         name: "",
         janCode: "",
+        systemBarcode: "",
         managementCode: "",
         manufacturer: "",
         majorCategory: "",
@@ -185,7 +213,7 @@ export default function UnregisteredItemDialog({
       setMessage(
         error instanceof Error
           ? error.message
-          : "未登録商品の保存に失敗しました。"
+          : "未登録商品の登録に失敗しました。"
       );
     } finally {
       setSaving(false);
@@ -194,27 +222,25 @@ export default function UnregisteredItemDialog({
 
   return (
     <div className="fixed inset-0 z-[70] overflow-y-auto bg-slate-950/70 p-4 sm:p-8">
-      <section className="mx-auto my-4 w-full max-w-2xl rounded-3xl bg-white p-5 shadow-2xl sm:p-7">
+      <section className="mx-auto my-4 w-full max-w-2xl rounded-3xl bg-white p-5 text-slate-900 shadow-2xl sm:p-7">
         <div className="flex items-start justify-between gap-4">
           <div>
             <p className="text-sm font-bold text-blue-600">
               棚卸中の商品登録
             </p>
 
-            <h2 className="mt-1 text-2xl font-bold">
-              未登録商品を追加
-            </h2>
+            <h2 className="mt-1 text-2xl font-bold">未登録商品を追加</h2>
 
-            <p className="mt-2 text-sm text-slate-600">
-              登録後は、このまま棚卸対象へ追加されます。
+            <p className="mt-2 text-sm leading-6 text-slate-600">
+              登録後は、今回の棚卸対象へ即時追加され、そのまま数量入力へ進みます。
             </p>
           </div>
 
           <button
             type="button"
-            onClick={onClose}
+            onClick={close}
             disabled={saving}
-            className="rounded-xl bg-slate-100 px-3 py-2 text-sm font-bold"
+            className="rounded-xl bg-slate-100 px-3 py-2 text-sm font-bold hover:bg-slate-200 disabled:opacity-50"
           >
             閉じる
           </button>
@@ -228,7 +254,9 @@ export default function UnregisteredItemDialog({
 
         <div className="mt-6 grid gap-4 sm:grid-cols-2">
           <label className="sm:col-span-2">
-            <span className="text-sm font-bold">商品名 *</span>
+            <span className="text-sm font-bold">
+              商品名 <span className="text-red-600">*</span>
+            </span>
 
             <input
               value={form.name}
@@ -245,9 +273,26 @@ export default function UnregisteredItemDialog({
               value={form.janCode}
               onChange={(event) => update("janCode", event.target.value)}
               inputMode="numeric"
-              placeholder="バーコード読取り値"
+              placeholder="JANがあれば入力"
               className="mt-2 w-full rounded-xl border border-slate-300 px-4 py-3 outline-none focus:border-blue-600"
             />
+          </label>
+
+          <label>
+            <span className="text-sm font-bold">システムバーコード</span>
+
+            <input
+              value={form.systemBarcode}
+              onChange={(event) =>
+                update("systemBarcode", event.target.value.toUpperCase())
+              }
+              placeholder="JANがなければ自動発行"
+              className="mt-2 w-full rounded-xl border border-slate-300 px-4 py-3 outline-none focus:border-blue-600"
+            />
+
+            <span className="mt-1 block text-xs text-slate-500">
+              空欄なら、JANがない商品にだけ自動で発行します。
+            </span>
           </label>
 
           <label>
@@ -268,21 +313,8 @@ export default function UnregisteredItemDialog({
 
             <input
               value={form.manufacturer}
-              onChange={(event) =>
-                update("manufacturer", event.target.value)
-              }
+              onChange={(event) => update("manufacturer", event.target.value)}
               placeholder="任意"
-              className="mt-2 w-full rounded-xl border border-slate-300 px-4 py-3 outline-none focus:border-blue-600"
-            />
-          </label>
-
-          <label>
-            <span className="text-sm font-bold">単位</span>
-
-            <input
-              value={form.unit}
-              onChange={(event) => update("unit", event.target.value)}
-              placeholder="個"
               className="mt-2 w-full rounded-xl border border-slate-300 px-4 py-3 outline-none focus:border-blue-600"
             />
           </label>
@@ -314,7 +346,20 @@ export default function UnregisteredItemDialog({
           </label>
 
           <label>
-            <span className="text-sm font-bold">保管場所 *</span>
+            <span className="text-sm font-bold">単位</span>
+
+            <input
+              value={form.unit}
+              onChange={(event) => update("unit", event.target.value)}
+              placeholder="個"
+              className="mt-2 w-full rounded-xl border border-slate-300 px-4 py-3 outline-none focus:border-blue-600"
+            />
+          </label>
+
+          <label>
+            <span className="text-sm font-bold">
+              保管場所 <span className="text-red-600">*</span>
+            </span>
 
             <select
               value={form.storageLocationId}
@@ -326,7 +371,7 @@ export default function UnregisteredItemDialog({
             >
               <option value="">
                 {loadingLocations
-                  ? "保管場所を読み込み中..."
+                  ? "保管場所を読み込み中…"
                   : "選択してください"}
               </option>
 
@@ -339,7 +384,9 @@ export default function UnregisteredItemDialog({
           </label>
 
           <label>
-            <span className="text-sm font-bold">登録時の実在庫 *</span>
+            <span className="text-sm font-bold">
+              登録時の在庫数 <span className="text-red-600">*</span>
+            </span>
 
             <input
               type="number"
@@ -380,9 +427,11 @@ export default function UnregisteredItemDialog({
           type="button"
           onClick={() => void submit()}
           disabled={saving || loadingLocations}
-          className="mt-7 w-full rounded-2xl bg-blue-600 py-4 text-lg font-bold text-white disabled:bg-slate-400"
+          className="mt-7 w-full rounded-2xl bg-blue-600 py-4 text-lg font-bold text-white hover:bg-blue-700 disabled:bg-slate-400"
         >
-          {saving ? "登録中..." : "商品を登録して棚卸へ追加"}
+          {saving
+            ? "登録中…"
+            : "商品を登録して棚卸入力へ進む"}
         </button>
       </section>
     </div>

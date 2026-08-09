@@ -14,21 +14,28 @@ type CurrentUser = {
 const menus = [
   {
     title: "棚卸開始",
-    description: "新しい棚卸を開始・再開します",
+    description: "新しい棚卸を開始・中断した棚卸を再開します",
     href: "/stocktake/start",
     icon: "📦",
     color: "bg-blue-500",
   },
   {
+    title: "商品登録",
+    description: "商品情報と初期在庫をまとめて登録します",
+    href: "/add",
+    icon: "➕",
+    color: "bg-emerald-500",
+  },
+  {
     title: "在庫検索",
-    description: "JAN・商品名などで在庫を検索",
+    description: "JAN・システムバーコード・商品名で検索します",
     href: "/inventory-search",
     icon: "🔎",
-    color: "bg-green-500",
+    color: "bg-cyan-500",
   },
   {
     title: "商品一覧",
-    description: "登録済みの商品を確認します",
+    description: "登録済みの商品を確認・編集します",
     href: "/items",
     icon: "📋",
     color: "bg-orange-500",
@@ -51,14 +58,16 @@ export default function HomePage() {
   useEffect(() => {
     const loadUser = async () => {
       try {
-        const response = await fetch("/api/auth/me");
+        const response = await fetch("/api/auth/me", {
+          cache: "no-store",
+        });
 
         if (!response.ok) {
           router.replace("/login");
           return;
         }
 
-        setUser(await response.json());
+        setUser((await response.json()) as CurrentUser);
       } finally {
         setLoading(false);
       }
@@ -79,7 +88,7 @@ export default function HomePage() {
   if (loading) {
     return (
       <main className="grid min-h-screen place-items-center bg-slate-100">
-        <p className="font-bold text-slate-600">読み込み中...</p>
+        <p className="font-bold text-slate-600">読み込み中…</p>
       </main>
     );
   }
@@ -98,15 +107,19 @@ export default function HomePage() {
             </h1>
 
             <p className="mt-2 text-slate-600">
-              棚卸・検索・在庫管理
+              棚卸・商品登録・在庫検索
             </p>
           </div>
 
           <div className="flex flex-wrap items-center gap-3">
             <div className="rounded-xl bg-white px-4 py-3 shadow-sm">
-              <p className="text-xs font-bold text-slate-500">ログイン中</p>
+              <p className="text-xs font-bold text-slate-500">
+                ログイン中
+              </p>
+
               <p className="font-black text-slate-900">
                 {user?.displayName ?? "-"}
+
                 {user?.role === "ADMIN" && (
                   <span className="ml-2 rounded-full bg-blue-50 px-2 py-1 text-xs text-blue-700">
                     管理者
@@ -134,7 +147,7 @@ export default function HomePage() {
           </div>
         </header>
 
-        <section className="mt-8 grid grid-cols-1 gap-5 sm:grid-cols-2 xl:grid-cols-4">
+        <section className="mt-8 grid grid-cols-1 gap-5 sm:grid-cols-2 xl:grid-cols-3">
           {menus.map((menu) => (
             <Link key={menu.href} href={menu.href}>
               <article className="h-full rounded-2xl bg-white p-6 shadow-sm transition hover:-translate-y-1 hover:shadow-lg">
@@ -148,7 +161,9 @@ export default function HomePage() {
                   {menu.title}
                 </h2>
 
-                <p className="mt-2 text-slate-600">{menu.description}</p>
+                <p className="mt-2 text-slate-600">
+                  {menu.description}
+                </p>
               </article>
             </Link>
           ))}
@@ -157,17 +172,23 @@ export default function HomePage() {
         <section className="mt-8 grid grid-cols-1 gap-5 md:grid-cols-3">
           <div className="rounded-2xl bg-white p-6 shadow-sm">
             <p className="font-bold text-slate-500">登録商品数</p>
-            <p className="mt-3 text-4xl font-black text-slate-900">--</p>
+            <p className="mt-3 text-4xl font-black text-slate-900">
+              --
+            </p>
           </div>
 
           <div className="rounded-2xl bg-white p-6 shadow-sm">
             <p className="font-bold text-slate-500">進行中棚卸</p>
-            <p className="mt-3 text-4xl font-black text-slate-900">--</p>
+            <p className="mt-3 text-4xl font-black text-slate-900">
+              --
+            </p>
           </div>
 
           <div className="rounded-2xl bg-white p-6 shadow-sm">
             <p className="font-bold text-slate-500">今日の棚卸</p>
-            <p className="mt-3 text-4xl font-black text-slate-900">--</p>
+            <p className="mt-3 text-4xl font-black text-slate-900">
+              --
+            </p>
           </div>
         </section>
       </div>
