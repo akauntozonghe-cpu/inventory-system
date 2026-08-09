@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import BarcodeCamera from "@/components/stocktake/BarcodeCamera";
 import SystemErrorDialog from "@/components/common/SystemErrorDialog";
+import UnregisteredItemDialog from "@/components/stocktake/UnregisteredItemDialog";
 import { useInstantStocktake } from "@/hooks/useInstantStocktake";
 import { recoverAfterFailure } from "@/lib/client-error-recovery";
 import { saveStocktakeRecord } from "@/lib/stocktake-record-client";
@@ -57,6 +58,18 @@ type PendingSave = {
   errorMessage: string;
 } | null;
 
+type RegisteredInventory = {
+  item: {
+    id: string;
+    name: string;
+    janCode: string | null;
+  };
+  inventory: {
+    id: string;
+    quantity: number;
+  };
+};
+
 const filters: Array<[Filter, string]> = [
   ["UNRECORDED", "未棚卸のみ"],
   ["RECORDED", "棚卸済み"],
@@ -84,6 +97,7 @@ export default function StocktakePage() {
   const searchRef = useRef<HTMLInputElement>(null);
   const quantityRef = useRef<HTMLInputElement>(null);
   const lastActivityRef = useRef(Date.now());
+  const scanningRef = useRef(false);
 
   const [progress, setProgress] = useState<Progress | null>(null);
   const [items, setItems] = useState<Inventory[]>([]);
@@ -97,6 +111,7 @@ export default function StocktakePage() {
   const [saving, setSaving] = useState(false);
   const [singleCameraOpen, setSingleCameraOpen] = useState(false);
   const [scannerOpen, setScannerOpen] = useState(false);
+  const [registerDialogOpen, setRegisterDialogOpen] = useState(false);
 
   const [message, setMessage] = useState("");
   const [confirmation, setConfirmation] = useState<Confirmation>(null);
@@ -163,7 +178,7 @@ export default function StocktakePage() {
         setMessage(
           error instanceof Error
             ? error.message
-            : "一覧を取得できませんでした。"
+            : "棚卸対象を取得できませんでした。"
         );
       } finally {
         setLoadingItems(false);
@@ -194,6 +209,25 @@ export default function StocktakePage() {
       }
     },
     [sessionId]
+  );
+
+  const selectItem = useCallback(
+    (item: Inventory) => {
+      if (!canEdit) {
+        setMessage("棚卸は中断中または完了済みです。再開してください。");
+        return;
+      }
+
+      setSelected(item);
+      setQuantity(String(item.countedQuantity ?? item.expectedQuantity));
+      setMessage("");
+
+      requestAnimationFrame(() => {
+        quantityRef.current?.focus();
+        quantityRef.current?.select();
+      });
+    },
+    [canEdit]
   );
 
   const finishSaveUi = useCallback(
@@ -295,27 +329,12 @@ export default function StocktakePage() {
     };
   }, [canEdit, router, updateSessionStatus]);
 
-  const selectItem = useCallback(
-    (item: Inventory) => {
-      if (!canEdit) {
-        setMessage("棚卸は中断中または完了済みです。再開してください。");
+  const scanBarcode = useCallback(
+    async (barcode: string, autoSelect: boolean) => {
+      if (scanningRef.current) {
         return;
       }
 
-      setSelected(item);
-      setQuantity(String(item.countedQuantity ?? item.expectedQuantity));
-      setMessage("");
-
-      requestAnimationFrame(() => {
-        quantityRef.current?.focus();
-        quantityRef.current?.select();
-      });
-    },
-    [canEdit]
-  );
-
-  const scanBarcode = useCallback(
-    async (barcode: string, autoSelect: boolean) => {
       if (!canEdit) {
         setMessage("棚卸は中断中または完了済みです。再開してください。");
         return;
@@ -334,6 +353,7 @@ export default function StocktakePage() {
         return;
       }
 
+      scanningRef.current = true;
       setKeyword(value);
       setMessage("");
 
@@ -386,12 +406,14 @@ export default function StocktakePage() {
         }
 
         if (results.length === 0) {
-          setMessage("該当する棚卸対象が見つかりません。");
+          setMessage(
+            "該当商品がありません。未登録商品として追加できます。"
+          );
           return;
         }
 
         setMessage(
-          `${results.length}件見つかりました。対象商品を選んでください。`
+          `${results.length}件見つかりました。商品を選んでください。`
         );
       } catch (error) {
         setMessage(
@@ -399,6 +421,10 @@ export default function StocktakePage() {
             ? error.message
             : "バーコード検索に失敗しました。"
         );
+      } finally {
+        window.setTimeout(() => {
+          scanningRef.current = false;
+        }, 700);
       }
     },
     [canEdit, selected, selectItem, sessionId]
@@ -594,6 +620,29 @@ export default function StocktakePage() {
           : "棚卸を再開できませんでした。"
       );
     }
+  };
+
+  const registered = (result: RegisteredInventory) => {
+    const registeredItem: Inventory = {
+      id: result.inventory.id,
+      expectedQuantity: result.inventory.quantity,
+      isRecorded: false,
+      countedQuantity: null,
+      item: {
+        name: result.item.name,
+        janCode: result.item.janCode,
+        managementCode: null,
+      },
+      storageLocation: null,
+    };
+
+    setRegisterDialogOpen(false);
+    setItems([registeredItem]);
+    setKeyword("");
+    setMessage("商品を登録し、今回の棚卸対象へ追加しました。");
+
+    void fetchProgress();
+    selectItem(registeredItem);
   };
 
   const difference = selected
@@ -798,8 +847,23 @@ export default function StocktakePage() {
                   読み込み中...
                 </div>
               ) : items.length === 0 ? (
-                <div className="rounded-3xl bg-white p-6 text-slate-500 shadow-sm">
-                  該当する棚卸対象がありません。
+                <div className="rounded-3xl bg-white p-6 text-center shadow-sm">
+                  <p className="text-slate-600">
+                    該当する棚卸対象がありません。
+                  </p>
+
+                  <button
+                    type="button"
+                    disabled={!canEdit}
+                    onClick={() => {
+                      setSingleCameraOpen(false);
+                      setScannerOpen(false);
+                      setRegisterDialogOpen(true);
+                    }}
+                    className="mt-4 rounded-2xl bg-blue-600 px-5 py-3 font-bold text-white disabled:bg-slate-400"
+                  >
+                    ＋ 未登録商品を登録
+                  </button>
                 </div>
               ) : (
                 items.map((item) => {
@@ -1020,6 +1084,14 @@ export default function StocktakePage() {
           </section>
         </div>
       )}
+
+      <UnregisteredItemDialog
+        open={registerDialogOpen}
+        sessionId={sessionId}
+        initialJanCode={keyword}
+        onClose={() => setRegisterDialogOpen(false)}
+        onRegistered={registered}
+      />
 
       {pendingCount > 0 && (
         <button

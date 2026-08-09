@@ -29,6 +29,7 @@ model Item {
   managementCode      String?  @unique
   managementGroupCode String?
   janCode             String?
+  systemBarcode       String?  @unique
   name                String
   manufacturer        String?
   majorCategory       String?
