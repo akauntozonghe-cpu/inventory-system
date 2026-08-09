@@ -1,58 +1,37 @@
 "use client";
 
-export type RecoveryOptions<T> = {
+type RecoveryOptions<T> = {
   code: string;
   title: string;
   message: string;
-  severity?: "INFO" | "WARNING" | "ERROR" | "CRITICAL";
   route?: string;
   sessionId?: string;
   detail?: Record<string, unknown>;
-
-  /**
-   * 復旧時に再実行する処理。
-   * 例：保存API、進捗取得API、カメラ再起動など。
-   */
   action: () => Promise<T>;
-
-  /**
-   * 自動再試行回数。初期値は3回。
-   */
-  retries?: number;
-
-  /**
-   * 再試行までの待ち時間。初期値は700ms。
-   */
+  maxRetries?: number;
   retryDelayMs?: number;
 };
 
-export type RecoveryResult<T> =
-  | {
-      success: true;
-      value: T;
-      attempts: number;
-      reportId: string | null;
-    }
-  | {
-      success: false;
-      error: Error;
-      attempts: number;
-      reportId: string | null;
-    };
-
-type ErrorReportResponse = {
-  reportId?: string;
+type RecoveryResult<T> = {
+  success: boolean;
+  value?: T;
+  reportId: string | null;
 };
 
-function sleep(milliseconds: number) {
+function wait(ms: number) {
   return new Promise<void>((resolve) => {
-    window.setTimeout(resolve, milliseconds);
+    window.setTimeout(resolve, ms);
   });
 }
 
-async function createReport(
-  options: Omit<RecoveryOptions<unknown>, "action">
-) {
+async function createReport(options: {
+  code: string;
+  title: string;
+  message: string;
+  route?: string;
+  sessionId?: string;
+  detail?: Record<string, unknown>;
+}) {
   try {
     const response = await fetch("/api/error-reports", {
       method: "POST",
@@ -60,122 +39,92 @@ async function createReport(
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        code: options.code,
-        title: options.title,
-        message: options.message,
-        severity: options.severity ?? "ERROR",
-        route: options.route ?? window.location.pathname,
-        sessionId: options.sessionId,
-        detail: options.detail,
+        ...options,
+        severity: "ERROR",
       }),
     });
 
-    if (!response.ok) {
-      return null;
+    const data: unknown = await response.json();
+
+    if (
+      response.ok &&
+      typeof data === "object" &&
+      data !== null &&
+      "id" in data &&
+      typeof data.id === "string"
+    ) {
+      return data.id;
     }
-
-    const data = (await response.json()) as ErrorReportResponse;
-
-    return data.reportId ?? null;
   } catch {
-    /*
-     * 通信障害時はレポート自体をサーバーへ送れない。
-     * 一時保存機能で、復旧後に送信する。
-     */
-    return null;
+    // 通信断時は一時保存処理を継続する
   }
+
+  return null;
 }
 
 async function updateReport(
-  reportId: string,
+  reportId: string | null,
   action:
     | "START_AUTO_RECOVERY"
     | "AUTO_RECOVERY_SUCCEEDED"
-    | "ADMIN_REQUIRED",
-  note: string
+    | "ADMIN_REQUIRED"
 ) {
+  if (!reportId) {
+    return;
+  }
+
   try {
-    await fetch(`/api/error-reports/${reportId}`, {
+    await fetch(`/api/error-reports/${encodeURIComponent(reportId)}`, {
       method: "PATCH",
       headers: {
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({
-        action,
-        note,
-      }),
+      body: JSON.stringify({ action }),
     });
   } catch {
-    // レポート更新に失敗しても、本来の復旧処理は止めない。
+    // レポート更新失敗は本来の再試行を止めない
   }
 }
 
-/**
- * エラー検知後に自動復旧を試す。
- *
- * 成功時：自動復旧済みとしてログを残す。
- * 失敗時：管理者対応待ちとしてログを残し、呼び出し元へ失敗を返す。
- */
 export async function recoverAfterFailure<T>(
   options: RecoveryOptions<T>
 ): Promise<RecoveryResult<T>> {
-  const retries = Math.max(1, options.retries ?? 3);
-  const retryDelayMs = Math.max(0, options.retryDelayMs ?? 700);
+  const maxRetries = options.maxRetries ?? 2;
+  const retryDelayMs = options.retryDelayMs ?? 700;
 
-  const reportId = await createReport(options);
+  const reportId = await createReport({
+    code: options.code,
+    title: options.title,
+    message: options.message,
+    route: options.route,
+    sessionId: options.sessionId,
+    detail: options.detail,
+  });
 
-  if (reportId) {
-    await updateReport(
-      reportId,
-      "START_AUTO_RECOVERY",
-      "自動復旧を開始しました。"
-    );
-  }
+  await updateReport(reportId, "START_AUTO_RECOVERY");
 
-  let lastError = new Error(options.message);
-
-  for (let attempt = 1; attempt <= retries; attempt += 1) {
+  for (let attempt = 0; attempt <= maxRetries; attempt += 1) {
     try {
       const value = await options.action();
 
-      if (reportId) {
-        await updateReport(
-          reportId,
-          "AUTO_RECOVERY_SUCCEEDED",
-          `自動復旧に成功しました。再試行回数：${attempt}回`
-        );
-      }
+      await updateReport(reportId, "AUTO_RECOVERY_SUCCEEDED");
 
       return {
         success: true,
         value,
-        attempts: attempt,
         reportId,
       };
-    } catch (error) {
-      lastError =
-        error instanceof Error
-          ? error
-          : new Error("復旧処理中に不明なエラーが発生しました。");
-
-      if (attempt < retries) {
-        await sleep(retryDelayMs * attempt);
+    } catch {
+      if (attempt < maxRetries) {
+        await wait(retryDelayMs * (attempt + 1));
       }
     }
   }
 
-  if (reportId) {
-    await updateReport(
-      reportId,
-      "ADMIN_REQUIRED",
-      `自動復旧できませんでした。試行回数：${retries}回。${lastError.message}`
-    );
-  }
+  await updateReport(reportId, "ADMIN_REQUIRED");
 
   return {
     success: false,
-    error: lastError,
-    attempts: retries,
     reportId,
   };
 }

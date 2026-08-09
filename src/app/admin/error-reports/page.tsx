@@ -365,7 +365,7 @@ export default function ErrorReportsPage() {
                 </div>
               )}
 
-              {selected.detail && (
+              {selected.detail !== null && selected.detail !== undefined && (
                 <div>
                   <dt className="text-sm font-bold text-slate-500">
                     技術情報
