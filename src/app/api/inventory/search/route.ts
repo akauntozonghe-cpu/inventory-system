@@ -1,8 +1,21 @@
 import { NextRequest, NextResponse } from "next/server";
-import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 
 type Filter = "ALL" | "UNRECORDED" | "RECORDED" | "DIFFERENCE";
+
+function normalizeCode(value: string | null | undefined) {
+  return (value ?? "")
+    .normalize("NFKC")
+    .replace(/[\s-]/g, "")
+    .toLowerCase();
+}
+
+function normalizeText(value: string | null | undefined) {
+  return (value ?? "")
+    .normalize("NFKC")
+    .trim()
+    .toLowerCase();
+}
 
 export async function GET(request: NextRequest) {
   try {
@@ -24,79 +37,14 @@ export async function GET(request: NextRequest) {
 
     if (!sessionId) {
       return NextResponse.json(
-        { message: "棚卸セッションIDがありません" },
+        { message: "棚卸セッションIDがありません。" },
         { status: 400 }
       );
     }
 
-    const conditions: Prisma.StocktakeTargetWhereInput[] = [
-      { sessionId },
-    ];
-
-    if (keyword) {
-      conditions.push({
-        inventoryInstance: {
-          OR: [
-            {
-              item: {
-                name: {
-                  contains: keyword,
-                  mode: "insensitive",
-                },
-              },
-            },
-            {
-              item: {
-                janCode: {
-                  contains: keyword,
-                  mode: "insensitive",
-                },
-              },
-            },
-            {
-              item: {
-                managementCode: {
-                  contains: keyword,
-                  mode: "insensitive",
-                },
-              },
-            },
-            {
-              item: {
-                manufacturer: {
-                  contains: keyword,
-                  mode: "insensitive",
-                },
-              },
-            },
-          ],
-        },
-      });
-    }
-
-    if (filter === "RECORDED" || filter === "DIFFERENCE") {
-      conditions.push({
-        inventoryInstance: {
-          stocktakeRecords: {
-            some: { sessionId },
-          },
-        },
-      });
-    }
-
-    if (filter === "UNRECORDED") {
-      conditions.push({
-        inventoryInstance: {
-          stocktakeRecords: {
-            none: { sessionId },
-          },
-        },
-      });
-    }
-
     const targets = await prisma.stocktakeTarget.findMany({
       where: {
-        AND: conditions,
+        sessionId,
       },
       include: {
         inventoryInstance: {
@@ -104,7 +52,9 @@ export async function GET(request: NextRequest) {
             item: true,
             storageLocation: true,
             stocktakeRecords: {
-              where: { sessionId },
+              where: {
+                sessionId,
+              },
               select: {
                 countedQuantity: true,
               },
@@ -115,39 +65,149 @@ export async function GET(request: NextRequest) {
       orderBy: {
         createdAt: "asc",
       },
-      take: 100,
     });
 
-    const results = targets.map((target) => {
-      const { stocktakeRecords, ...inventory } =
-        target.inventoryInstance;
+    const normalizedCode = normalizeCode(keyword);
+    const normalizedKeyword = normalizeText(keyword);
 
-      const record = stocktakeRecords[0];
+    const searched = targets
+      .map((target) => {
+        const { stocktakeRecords, ...inventory } =
+          target.inventoryInstance;
 
-      return {
-        ...inventory,
-        expectedQuantity: target.expectedQuantity,
-        isRecorded: Boolean(record),
-        countedQuantity: record?.countedQuantity ?? null,
-      };
-    });
+        const record = stocktakeRecords[0];
+        const item = inventory.item;
 
-    const filteredResults =
-      filter === "DIFFERENCE"
-        ? results.filter(
-            (item) =>
-              item.isRecorded &&
-              item.countedQuantity !== item.expectedQuantity
-          )
-        : results;
+        const isRecorded = Boolean(record);
+        const countedQuantity = record?.countedQuantity ?? null;
+        const difference =
+          countedQuantity === null
+            ? null
+            : countedQuantity - target.expectedQuantity;
 
-    return NextResponse.json(filteredResults);
+        let searchScore = 0;
+
+        if (keyword) {
+          const systemBarcode = normalizeCode(item.systemBarcode);
+          const janCode = normalizeCode(item.janCode);
+          const itemManagementCode = normalizeCode(
+            item.managementCode
+          );
+          const inventoryManagementCode = normalizeCode(
+            inventory.managementCode
+          );
+
+          const codeCandidates = [
+            systemBarcode,
+            janCode,
+            itemManagementCode,
+            inventoryManagementCode,
+          ].filter(Boolean);
+
+          // システムバーコード・JAN・管理コードの完全一致を最優先
+          if (
+            systemBarcode &&
+            systemBarcode === normalizedCode
+          ) {
+            searchScore = 1000;
+          } else if (
+            janCode &&
+            janCode === normalizedCode
+          ) {
+            searchScore = 950;
+          } else if (
+            itemManagementCode &&
+            itemManagementCode === normalizedCode
+          ) {
+            searchScore = 900;
+          } else if (
+            inventoryManagementCode &&
+            inventoryManagementCode === normalizedCode
+          ) {
+            searchScore = 850;
+          } else if (
+            normalizedCode.length >= 4 &&
+            codeCandidates.some((code) =>
+              code.startsWith(normalizedCode)
+            )
+          ) {
+            searchScore = 700;
+          } else {
+            const textCandidates = [
+              item.name,
+              item.manufacturer,
+              item.majorCategory,
+              item.minorCategory,
+              item.managementGroupCode,
+              inventory.lotNo,
+              inventory.storageLocation?.name,
+            ]
+              .filter(
+                (value): value is string =>
+                  typeof value === "string" && value.length > 0
+              )
+              .map(normalizeText);
+
+            if (
+              normalizedKeyword &&
+              textCandidates.some((text) =>
+                text.includes(normalizedKeyword)
+              )
+            ) {
+              searchScore = 100;
+            }
+          }
+
+          if (searchScore === 0) {
+            return null;
+          }
+        }
+
+        if (filter === "UNRECORDED" && isRecorded) {
+          return null;
+        }
+
+        if (filter === "RECORDED" && !isRecorded) {
+          return null;
+        }
+
+        if (
+          filter === "DIFFERENCE" &&
+          (!isRecorded || difference === 0)
+        ) {
+          return null;
+        }
+
+        return {
+          ...inventory,
+          expectedQuantity: target.expectedQuantity,
+          isRecorded,
+          countedQuantity,
+          difference,
+          searchScore,
+        };
+      })
+      .filter(
+        (
+          item
+        ): item is NonNullable<typeof item> => item !== null
+      )
+      .sort((a, b) => b.searchScore - a.searchScore)
+      .slice(0, 100)
+      .map(({ searchScore, ...item }) => item);
+
+    return NextResponse.json(searched);
   } catch (error) {
-    console.error(error);
+    console.error("inventory search failed", error);
 
     return NextResponse.json(
-      { message: "在庫検索に失敗しました" },
-      { status: 500 }
+      {
+        code: "INVENTORY_SEARCH_500",
+        message: "在庫検索に失敗しました。",
+      },
+      {
+        status: 500,
+      }
     );
   }
 }
