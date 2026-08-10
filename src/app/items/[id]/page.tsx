@@ -1,7 +1,9 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
+import SystemBarcodeLabel from "@/components/SystemBarcodeLabel";
 
 type InventoryInstance = {
   id: string;
@@ -12,7 +14,6 @@ type InventoryInstance = {
   unit: string | null;
   stocktakeStatus: string;
   updatedAt: string;
-
   storageLocation: {
     name: string;
   } | null;
@@ -23,303 +24,327 @@ type Item = {
   managementCode: string | null;
   managementGroupCode: string | null;
   janCode: string | null;
+  systemBarcode: string | null;
   name: string;
   manufacturer: string | null;
   majorCategory: string | null;
   minorCategory: string | null;
   defaultUnit: string | null;
-
   inventoryInstances: InventoryInstance[];
 };
 
-export default function ItemPage() {
+function formatDate(value: string | null) {
+  if (!value) {
+    return "-";
+  }
+
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) {
+    return "-";
+  }
+
+  return new Intl.DateTimeFormat("ja-JP", {
+    dateStyle: "medium",
+  }).format(date);
+}
+
+function readMessage(data: unknown, fallback: string) {
+  if (
+    typeof data === "object" &&
+    data !== null &&
+    "message" in data &&
+    typeof data.message === "string"
+  ) {
+    return data.message;
+  }
+
+  return fallback;
+}
+
+export default function ItemDetailPage() {
   const params = useParams();
   const router = useRouter();
 
-  const id = params.id as string;
+  const id = typeof params.id === "string" ? params.id : "";
 
   const [item, setItem] = useState<Item | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
-  async function loadItem() {
-    try {
-      setLoading(true);
-
-      const res = await fetch(`/api/items/${id}`);
-
-      if (!res.ok) {
-        throw new Error();
-      }
-
-      const data = await res.json();
-
-      setItem(data);
-    } catch {
-      setError("商品の取得に失敗しました。");
-    } finally {
-      setLoading(false);
-    }
-  }
-
   useEffect(() => {
-    if (id) {
-      loadItem();
+    if (!id) {
+      setError("商品IDを確認できませんでした。");
+      setLoading(false);
+      return;
     }
+
+    const loadItem = async () => {
+      try {
+        setLoading(true);
+        setError("");
+
+        const response = await fetch(`/api/items/${id}`, {
+          cache: "no-store",
+        });
+
+        const text = await response.text();
+
+        let data: unknown = null;
+
+        try {
+          data = text ? JSON.parse(text) : null;
+        } catch {
+          throw new Error("商品情報の形式を確認できませんでした。");
+        }
+
+        if (!response.ok || typeof data !== "object" || data === null) {
+          throw new Error(
+            readMessage(data, "商品情報を取得できませんでした。")
+          );
+        }
+
+        setItem(data as Item);
+      } catch (loadError) {
+        setError(
+          loadError instanceof Error
+            ? loadError.message
+            : "商品情報を取得できませんでした。"
+        );
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    void loadItem();
   }, [id]);
 
   if (loading) {
     return (
-      <div className="max-w-5xl mx-auto p-8">
-        <div className="text-center py-20 text-gray-500">
-          読み込み中...
+      <main className="min-h-screen bg-slate-100 p-6">
+        <div className="mx-auto max-w-5xl rounded-2xl bg-white p-10 text-center text-slate-500 shadow-sm">
+          商品情報を読み込んでいます…
         </div>
-      </div>
+      </main>
     );
   }
 
   if (error || !item) {
     return (
-      <div className="max-w-5xl mx-auto p-8">
-        <div className="rounded-xl border border-red-300 bg-red-50 p-6 text-red-600">
-          {error || "商品が見つかりません"}
+      <main className="min-h-screen bg-slate-100 p-6">
+        <div className="mx-auto max-w-5xl rounded-2xl border border-red-200 bg-red-50 p-6 text-red-700">
+          {error || "商品が見つかりません。"}
+
+          <div className="mt-5">
+            <Link
+              href="/items"
+              className="inline-flex rounded-xl bg-slate-800 px-4 py-3 font-bold text-white"
+            >
+              商品一覧へ戻る
+            </Link>
+          </div>
         </div>
-      </div>
+      </main>
     );
   }
 
   return (
-    <div className="max-w-5xl mx-auto p-8">
-
-      <div className="flex justify-between items-start mb-8">
-
-        <div>
-          <h1 className="text-3xl font-bold">
-            {item.name}
-          </h1>
-
-          <div className="text-gray-500 mt-2">
-            商品詳細
-          </div>
-        </div>
-
-        <button
-          onClick={() => router.back()}
-          className="rounded-lg border px-4 py-2 hover:bg-gray-100"
-        >
-          戻る
-        </button>
-
-      </div>
-
-      <div className="rounded-xl border bg-white shadow p-6">
-
-        <h2 className="text-xl font-bold mb-4">
-          商品情報
-        </h2>
-
-        <div className="grid md:grid-cols-2 gap-6">
-
+    <main className="min-h-screen bg-slate-100 p-4 sm:p-8">
+      <div className="mx-auto max-w-5xl">
+        <header className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
           <div>
-            <div className="text-sm text-gray-500">
-              管理番号
-            </div>
-            <div>
-              {item.managementCode ?? "-"}
-            </div>
+            <p className="text-sm font-bold tracking-widest text-blue-600">
+              ITEM DETAIL
+            </p>
+
+            <h1 className="mt-1 text-3xl font-black text-slate-900">
+              {item.name}
+            </h1>
+
+            <p className="mt-2 text-slate-600">
+              商品と保管在庫の詳細
+            </p>
           </div>
 
-          <div>
-            <div className="text-sm text-gray-500">
-              管理グループ
-            </div>
-            <div>
-              {item.managementGroupCode ?? "-"}
-            </div>
-          </div>
+          <button
+            type="button"
+            onClick={() => router.push("/items")}
+            className="rounded-xl bg-white px-4 py-3 font-bold text-slate-700 shadow-sm hover:bg-slate-50"
+          >
+            商品一覧へ戻る
+          </button>
+        </header>
 
-          <div>
-            <div className="text-sm text-gray-500">
-              JAN
-            </div>
-            <div>
-              {item.janCode ?? "-"}
-            </div>
-          </div>
+        <div className="space-y-6">
+          <section className="rounded-2xl bg-white p-5 shadow-sm sm:p-7">
+            <h2 className="text-xl font-black text-slate-900">
+              商品情報
+            </h2>
 
-          <div>
-            <div className="text-sm text-gray-500">
-              メーカー
-            </div>
-            <div>
-              {item.manufacturer ?? "-"}
-            </div>
-          </div>
-
-          <div>
-            <div className="text-sm text-gray-500">
-              大分類
-            </div>
-            <div>
-              {item.majorCategory ?? "-"}
-            </div>
-          </div>
-
-          <div>
-            <div className="text-sm text-gray-500">
-              小分類
-            </div>
-            <div>
-              {item.minorCategory ?? "-"}
-            </div>
-          </div>
-
-          <div>
-            <div className="text-sm text-gray-500">
-              標準単位
-            </div>
-            <div>
-              {item.defaultUnit ?? "個"}
-            </div>
-          </div>
-
-        </div>
-
-      </div>
-
-      <div className="rounded-xl border bg-white shadow p-6 mt-8">
-
-        <h2 className="text-xl font-bold mb-4">
-          在庫一覧
-        </h2>
-
-        {item.inventoryInstances.length === 0 ? (
-
-          <div className="text-gray-500">
-            在庫情報はありません。
-          </div>
-
-        ) : (
-
-          <div className="space-y-4">
-
-            {item.inventoryInstances.map((inventory) => (
-
-              <div
-                key={inventory.id}
-                className="rounded-lg border p-5"
-              >
-
-                <div className="flex justify-between items-start">
-
-                  <div>
-
-                    <div className="font-bold text-lg">
-                      {inventory.storageLocation?.name ?? "保管場所未設定"}
-                    </div>
-
-                    <div className="text-gray-500 mt-1">
-                      LOT：{inventory.lotNo ?? "-"}
-                    </div>
-
-                    <div className="text-gray-500">
-                      使用期限：{inventory.expirationDate ?? "-"}
-                    </div>
-
-                    <div className="text-gray-500">
-                      最終更新：
-                      {new Date(inventory.updatedAt).toLocaleString("ja-JP")}
-                    </div>
-
-                  </div>
-
-                  <div className="text-right">
-
-                    <div className="text-3xl font-bold text-blue-600">
-                      {inventory.quantity}
-                    </div>
-
-                    <div>
-                      {inventory.unit ?? item.defaultUnit ?? "個"}
-                    </div>
-
-                    <span
-                      className={`inline-block mt-3 rounded-full px-3 py-1 text-sm font-bold ${
-                        inventory.stocktakeStatus === "棚卸済"
-                          ? "bg-green-100 text-green-700"
-                          : "bg-red-100 text-red-700"
-                      }`}
-                    >
-                      {inventory.stocktakeStatus}
-                    </span>
-
-                  </div>
-
-                </div>
-
-                <div className="flex gap-3 mt-6">
-
-                  <button
-                    className="rounded-lg bg-blue-600 px-4 py-2 text-white hover:bg-blue-700"
-                    onClick={() =>
-                      router.push(`/stocktake?inventory=${inventory.id}`)
-                    }
-                  >
-                    📷 棚卸する
-                  </button>
-
-                </div>
-
+            <div className="mt-5 grid gap-5 sm:grid-cols-2">
+              <div>
+                <p className="text-sm font-bold text-slate-500">
+                  既存JANコード
+                </p>
+                <p className="mt-1 break-all text-lg font-bold text-slate-900">
+                  {item.janCode ?? "未登録"}
+                </p>
               </div>
 
-            ))}
+              <div>
+                <p className="text-sm font-bold text-slate-500">
+                  システムJAN
+                </p>
+                <p className="mt-1 break-all text-lg font-bold text-slate-900">
+                  {item.systemBarcode ?? "-"}
+                </p>
+              </div>
 
-          </div>
+              <div>
+                <p className="text-sm font-bold text-slate-500">
+                  商品管理コード
+                </p>
+                <p className="mt-1 text-lg font-bold text-slate-900">
+                  {item.managementCode ?? "-"}
+                </p>
+              </div>
 
-        )}
+              <div>
+                <p className="text-sm font-bold text-slate-500">
+                  管理グループコード
+                </p>
+                <p className="mt-1 text-lg font-bold text-slate-900">
+                  {item.managementGroupCode ?? "-"}
+                </p>
+              </div>
 
+              <div>
+                <p className="text-sm font-bold text-slate-500">
+                  メーカー
+                </p>
+                <p className="mt-1 text-lg font-bold text-slate-900">
+                  {item.manufacturer ?? "-"}
+                </p>
+              </div>
+
+              <div>
+                <p className="text-sm font-bold text-slate-500">
+                  分類
+                </p>
+                <p className="mt-1 text-lg font-bold text-slate-900">
+                  {[item.majorCategory, item.minorCategory]
+                    .filter(Boolean)
+                    .join(" / ") || "-"}
+                </p>
+              </div>
+
+              <div>
+                <p className="text-sm font-bold text-slate-500">
+                  基本単位
+                </p>
+                <p className="mt-1 text-lg font-bold text-slate-900">
+                  {item.defaultUnit ?? "-"}
+                </p>
+              </div>
+            </div>
+          </section>
+
+          <SystemBarcodeLabel
+            itemId={item.id}
+            itemName={item.name}
+            janCode={item.janCode}
+            initialSystemJan={item.systemBarcode}
+          />
+
+          <section className="rounded-2xl bg-white p-5 shadow-sm sm:p-7">
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <h2 className="text-xl font-black text-slate-900">
+                  保管在庫
+                </h2>
+                <p className="mt-1 text-sm text-slate-600">
+                  {item.inventoryInstances.length} 件の在庫があります。
+                </p>
+              </div>
+            </div>
+
+            {item.inventoryInstances.length === 0 ? (
+              <div className="mt-5 rounded-xl bg-slate-100 p-6 text-center text-slate-600">
+                保管在庫はまだ登録されていません。
+              </div>
+            ) : (
+              <div className="mt-5 space-y-3">
+                {item.inventoryInstances.map((inventory) => (
+                  <article
+                    key={inventory.id}
+                    className="rounded-xl border border-slate-200 p-4"
+                  >
+                    <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+                      <div>
+                        <p className="font-bold text-slate-900">
+                          {inventory.storageLocation?.name ??
+                            "保管場所未設定"}
+                        </p>
+
+                        <dl className="mt-3 grid gap-2 text-sm text-slate-600 sm:grid-cols-3">
+                          <div>
+                            <dt className="font-bold text-slate-500">
+                              ロット番号
+                            </dt>
+                            <dd>{inventory.lotNo ?? "-"}</dd>
+                          </div>
+
+                          <div>
+                            <dt className="font-bold text-slate-500">
+                              使用期限
+                            </dt>
+                            <dd>
+                              {formatDate(inventory.expirationDate)}
+                            </dd>
+                          </div>
+
+                          <div>
+                            <dt className="font-bold text-slate-500">
+                              最終更新
+                            </dt>
+                            <dd>{formatDate(inventory.updatedAt)}</dd>
+                          </div>
+                        </dl>
+                      </div>
+
+                      <div className="flex items-end justify-between gap-4 sm:block sm:text-right">
+                        <div>
+                          <p className="text-sm font-bold text-slate-500">
+                            現在庫
+                          </p>
+                          <p className="text-3xl font-black text-blue-600">
+                            {inventory.quantity}
+                            <span className="ml-1 text-base">
+                              {inventory.unit ??
+                                item.defaultUnit ??
+                                "個"}
+                            </span>
+                          </p>
+                        </div>
+
+                        <span
+                          className={`inline-flex rounded-full px-3 py-1 text-sm font-bold ${
+                            inventory.stocktakeStatus === "棚卸済"
+                              ? "bg-emerald-100 text-emerald-700"
+                              : "bg-orange-100 text-orange-700"
+                          }`}
+                        >
+                          {inventory.stocktakeStatus}
+                        </span>
+                      </div>
+                    </div>
+                  </article>
+                ))}
+              </div>
+            )}
+          </section>
+        </div>
       </div>
-
-      <div className="flex gap-3 mt-8">
-
-        <button
-          className="rounded-lg border px-5 py-3 hover:bg-gray-100"
-          onClick={() => router.push(`/items/${item.id}/edit`)}
-        >
-          ✏ 編集
-        </button>
-
-        <button
-          className="rounded-lg border border-red-500 px-5 py-3 text-red-600 hover:bg-red-50"
-          onClick={async () => {
-  const ok = confirm(
-    `「${item.name}」を削除しますか？`
-  );
-
-  if (!ok) return;
-
-  try {
-    const res = await fetch(`/api/items/${item.id}`, {
-      method: "DELETE",
-    });
-
-    if (!res.ok) {
-      throw new Error();
-    }
-
-    alert("削除しました");
-
-    router.push("/items");
-  } catch {
-    alert("削除に失敗しました");
-  }
-}}
-        >
-          🗑 削除
-        </button>
-
-      </div>
-
-    </div>
+    </main>
   );
 }

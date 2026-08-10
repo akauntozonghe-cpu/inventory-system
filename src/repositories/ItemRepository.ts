@@ -1,5 +1,29 @@
 import { prisma } from "@/lib/prisma";
 
+type ItemInput = {
+  name: string;
+  janCode?: string;
+  systemBarcode?: string;
+  manufacturer?: string;
+  managementCode?: string;
+  managementGroupCode?: string;
+  majorCategory?: string;
+  minorCategory?: string;
+  defaultUnit?: string;
+};
+
+type ItemUpdateInput = Partial<{
+  name: string;
+  janCode: string;
+  systemBarcode: string;
+  manufacturer: string;
+  managementCode: string;
+  managementGroupCode: string;
+  majorCategory: string;
+  minorCategory: string;
+  defaultUnit: string;
+}>;
+
 export class ItemRepository {
   static async findAll() {
     return prisma.item.findMany({
@@ -9,36 +33,17 @@ export class ItemRepository {
     });
   }
 
-  static async create(data: {
-    name: string;
-    janCode?: string;
-    manufacturer?: string;
-    managementCode?: string;
-    managementGroupCode?: string;
-    majorCategory?: string;
-    minorCategory?: string;
-    defaultUnit?: string;
-  }) {
+  static async create(data: ItemInput) {
     return prisma.item.create({
       data,
     });
   }
 
-  static async update(
-    id: string,
-    data: Partial<{
-      name: string;
-      janCode: string;
-      manufacturer: string;
-      managementCode: string;
-      managementGroupCode: string;
-      majorCategory: string;
-      minorCategory: string;
-      defaultUnit: string;
-    }>
-  ) {
+  static async update(id: string, data: ItemUpdateInput) {
     return prisma.item.update({
-      where: { id },
+      where: {
+        id,
+      },
       data,
     });
   }
@@ -52,30 +57,60 @@ export class ItemRepository {
   }
 
   static async search(keyword: string) {
-    return prisma.item.findMany({
+    const query = keyword.trim();
+
+    if (!query) {
+      return [];
+    }
+
+    const items = await prisma.item.findMany({
       where: {
         OR: [
           {
-            name: {
-              contains: keyword,
+            janCode: {
+              equals: query,
               mode: "insensitive",
             },
           },
           {
-            janCode: {
-              contains: keyword,
+            systemBarcode: {
+              equals: query,
               mode: "insensitive",
             },
           },
           {
             managementCode: {
-              contains: keyword,
+              equals: query,
+              mode: "insensitive",
+            },
+          },
+          {
+            name: {
+              contains: query,
+              mode: "insensitive",
+            },
+          },
+          {
+            janCode: {
+              contains: query,
+              mode: "insensitive",
+            },
+          },
+          {
+            systemBarcode: {
+              contains: query,
+              mode: "insensitive",
+            },
+          },
+          {
+            managementCode: {
+              contains: query,
               mode: "insensitive",
             },
           },
           {
             manufacturer: {
-              contains: keyword,
+              contains: query,
               mode: "insensitive",
             },
           },
@@ -84,7 +119,33 @@ export class ItemRepository {
       orderBy: {
         name: "asc",
       },
-      take: 30,
+      take: 50,
+    });
+
+    const normalizedQuery = query.toLowerCase();
+
+    return items.sort((a, b) => {
+      const score = (item: (typeof items)[number]) => {
+        if (item.janCode?.toLowerCase() === normalizedQuery) {
+          return 0;
+        }
+
+        if (item.systemBarcode?.toLowerCase() === normalizedQuery) {
+          return 1;
+        }
+
+        if (item.managementCode?.toLowerCase() === normalizedQuery) {
+          return 2;
+        }
+
+        if (item.name.toLowerCase() === normalizedQuery) {
+          return 3;
+        }
+
+        return 10;
+      };
+
+      return score(a) - score(b);
     });
   }
 }

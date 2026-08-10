@@ -1,6 +1,6 @@
-import { randomUUID } from "node:crypto";
+import { randomInt } from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
-import { getLoggedInUser } from "@/lib/auth";
+import { getLoggedInUser, isAdmin } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 
 function getText(value: unknown) {
@@ -12,22 +12,48 @@ function getOptionalText(value: unknown) {
   return text === "" ? null : text;
 }
 
-function makeSystemBarcode() {
-  return `SYS-${randomUUID()
-    .replace(/-/g, "")
-    .slice(0, 16)
-    .toUpperCase()}`;
+function createCheckDigit(body: string) {
+  let total = 0;
+
+  for (let index = 0; index < body.length; index += 1) {
+    total += Number(body[index]) * (index % 2 === 0 ? 1 : 3);
+  }
+
+  return String((10 - (total % 10)) % 10);
+}
+
+async function createSystemJan() {
+  for (let attempt = 0; attempt < 20; attempt += 1) {
+    const serial = String(randomInt(0, 10_000_000_000)).padStart(10, "0");
+    const body = `20${serial}`;
+    const systemBarcode = `${body}${createCheckDigit(body)}`;
+
+    const exists = await prisma.item.findUnique({
+      where: {
+        systemBarcode,
+      },
+      select: {
+        id: true,
+      },
+    });
+
+    if (!exists) {
+      return systemBarcode;
+    }
+  }
+
+  throw new Error("SYSTEM_JAN_GENERATE_FAILED");
 }
 
 export async function POST(request: NextRequest) {
   try {
-    const user = getLoggedInUser(request);
+    const currentUser = getLoggedInUser(request);
 
-    if (!user) {
+    if (!currentUser) {
       return NextResponse.json(
         {
           code: "ITEM_REGISTER_AUTH_401",
-          message: "Login is required.",
+          message: "ログイン情報を確認できませんでした。",
         },
         { status: 401 }
       );
@@ -39,7 +65,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(
         {
           code: "ITEM_REGISTER_BODY_400",
-          message: "Invalid request body.",
+          message: "登録内容が正しくありません。",
         },
         { status: 400 }
       );
@@ -49,19 +75,15 @@ export async function POST(request: NextRequest) {
 
     const name = getText(body.name);
     const janCode = getOptionalText(body.janCode);
-    const systemBarcode =
-      getOptionalText(body.systemBarcode) ?? makeSystemBarcode();
-
     const quantity = Number(body.quantity ?? 0);
-    const storageLocationId = getOptionalText(
-      body.storageLocationId
-    );
+    const storageLocationId = getOptionalText(body.storageLocationId);
+    const generateSystemJan = body.generateSystemJan === true;
 
     if (!name) {
       return NextResponse.json(
         {
           code: "ITEM_REGISTER_NAME_400",
-          message: "Item name is required.",
+          message: "商品名を入力してください。",
         },
         { status: 400 }
       );
@@ -71,9 +93,30 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(
         {
           code: "ITEM_REGISTER_QUANTITY_400",
-          message: "Quantity must be a non-negative integer.",
+          message: "在庫数は0以上の整数で入力してください。",
         },
         { status: 400 }
+      );
+    }
+
+    if (!janCode && !generateSystemJan) {
+      return NextResponse.json(
+        {
+          code: "ITEM_REGISTER_JAN_REQUIRED_400",
+          message:
+            "JANコードがない商品は、管理者がシステムJANを発行して登録してください。",
+        },
+        { status: 400 }
+      );
+    }
+
+    if (generateSystemJan && !isAdmin(currentUser)) {
+      return NextResponse.json(
+        {
+          code: "ITEM_REGISTER_SYSTEM_JAN_ADMIN_403",
+          message: "システムJANの発行は管理者のみ実行できます。",
+        },
+        { status: 403 }
       );
     }
 
@@ -91,70 +134,68 @@ export async function POST(request: NextRequest) {
         return NextResponse.json(
           {
             code: "ITEM_REGISTER_LOCATION_404",
-            message: "Storage location was not found.",
+            message: "指定した保管場所が見つかりません。",
           },
           { status: 404 }
         );
       }
     }
 
-    const result = await prisma.$transaction(async (tx) => {
-      if (janCode) {
-        const duplicateJan = await tx.item.findFirst({
-          where: {
-            janCode,
-          },
-          select: {
-            id: true,
-          },
-        });
+    const managementCode = getOptionalText(body.managementCode);
 
-        if (duplicateJan) {
-          throw new Error("ITEM_REGISTER_JAN_DUPLICATE");
-        }
-      }
-
-      const duplicateBarcode = await tx.item.findUnique({
+    if (janCode) {
+      const duplicateJan = await prisma.item.findFirst({
         where: {
-          systemBarcode,
+          janCode,
         },
         select: {
           id: true,
         },
       });
 
-      if (duplicateBarcode) {
-        throw new Error("ITEM_REGISTER_BARCODE_DUPLICATE");
-      }
-
-      const managementCode = getOptionalText(
-        body.managementCode
-      );
-
-      if (managementCode) {
-        const duplicateManagementCode = await tx.item.findUnique({
-          where: {
-            managementCode,
+      if (duplicateJan) {
+        return NextResponse.json(
+          {
+            code: "ITEM_REGISTER_JAN_DUPLICATE_409",
+            message:
+              "このJANコードはすでに登録されています。在庫追加は既存の商品から行ってください。",
           },
-          select: {
-            id: true,
-          },
-        });
-
-        if (duplicateManagementCode) {
-          throw new Error("ITEM_REGISTER_MANAGEMENT_CODE_DUPLICATE");
-        }
+          { status: 409 }
+        );
       }
+    }
 
+    if (managementCode) {
+      const duplicateManagementCode = await prisma.item.findUnique({
+        where: {
+          managementCode,
+        },
+        select: {
+          id: true,
+        },
+      });
+
+      if (duplicateManagementCode) {
+        return NextResponse.json(
+          {
+            code: "ITEM_REGISTER_MANAGEMENT_CODE_DUPLICATE_409",
+            message: "この管理コードはすでに登録されています。",
+          },
+          { status: 409 }
+        );
+      }
+    }
+
+    const systemBarcode = generateSystemJan ? await createSystemJan() : null;
+
+    const result = await prisma.$transaction(async (tx) => {
       const item = await tx.item.create({
         data: {
           name,
           janCode,
           systemBarcode,
           managementCode,
-          managementGroupCode: getOptionalText(
-            body.managementGroupCode
-          ),
+          managementGroupCode: getOptionalText(body.managementGroupCode),
           manufacturer: getOptionalText(body.manufacturer),
           majorCategory: getOptionalText(body.majorCategory),
           minorCategory: getOptionalText(body.minorCategory),
@@ -167,9 +208,7 @@ export async function POST(request: NextRequest) {
           itemId: item.id,
           storageLocationId,
           managementCode,
-          managementGroupCode: getOptionalText(
-            body.managementGroupCode
-          ),
+          managementGroupCode: getOptionalText(body.managementGroupCode),
           manufacturer: getOptionalText(body.manufacturer),
           majorCategory: getOptionalText(body.majorCategory),
           minorCategory: getOptionalText(body.minorCategory),
@@ -204,7 +243,9 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(
       {
         success: true,
-        message: "Item registered.",
+        message: generateSystemJan
+          ? "商品を登録し、システムJANを発行しました。"
+          : "商品を登録しました。",
         ...result,
       },
       { status: 201 }
@@ -212,19 +253,20 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     console.error("ITEM_REGISTER_ERROR", error);
 
-    const message =
-      error instanceof Error
-        ? error.message
-        : "ITEM_REGISTER_FAILED";
+    const code =
+      error instanceof Error && error.message === "SYSTEM_JAN_GENERATE_FAILED"
+        ? "ITEM_REGISTER_SYSTEM_JAN_500"
+        : "ITEM_REGISTER_500";
 
     return NextResponse.json(
       {
-        code: message.startsWith("ITEM_REGISTER_")
-          ? message
-          : "ITEM_REGISTER_500",
-        message,
+        code,
+        message:
+          code === "ITEM_REGISTER_SYSTEM_JAN_500"
+            ? "システムJANを発行できませんでした。もう一度お試しください。"
+            : "商品登録に失敗しました。",
       },
-      { status: 400 }
+      { status: 500 }
     );
   }
 }

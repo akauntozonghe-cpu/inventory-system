@@ -11,64 +11,93 @@ type CurrentUser = {
   role: "ADMIN" | "WORKER";
 };
 
-const menus = [
+type Menu = {
+  href: string;
+  icon: string;
+  title: string;
+  description: string;
+  color: string;
+};
+
+const menus: Menu[] = [
   {
     href: "/admin/users",
     icon: "👥",
     title: "ユーザー管理",
-    description: "ユーザー登録・停止・パスワード再発行を行います。",
+    description:
+      "ユーザーの登録・有効化・無効化・役割変更・仮パスワード発行を行います。",
     color: "bg-blue-500",
   },
   {
     href: "/admin/error-reports",
     icon: "🛡️",
-    title: "エラー報告・復旧",
-    description: "自動復旧できなかったエラーを確認・対応します。",
+    title: "エラーレポート",
+    description:
+      "自動復旧できなかったエラーの確認、対応状況の更新、管理者対応を行います。",
     color: "bg-red-500",
+  },
+  {
+    href: "/admin/category-qr",
+    icon: "📱",
+    title: "大分類QRラベル",
+    description:
+      "大分類ごとのQRラベルを発行・印刷します。棚やケースに貼って使います。",
+    color: "bg-indigo-500",
   },
   {
     href: "/add",
     icon: "➕",
     title: "商品登録",
-    description: "商品・システムバーコード・初期在庫を登録します。",
+    description:
+      "新しい商品と初期在庫を登録します。JANがない商品にはシステムJANを発行できます。",
     color: "bg-emerald-500",
   },
   {
     href: "/items",
-    icon: "📋",
-    title: "商品・在庫管理",
-    description: "登録済みの商品情報と在庫を確認・編集します。",
+    icon: "🏷️",
+    title: "商品・ラベル管理",
+    description:
+      "商品情報の確認、編集、既存JAN・システムJANのラベル印刷を行います。",
     color: "bg-orange-500",
   },
   {
     href: "/locations",
     icon: "📍",
     title: "保管場所管理",
-    description: "棚・倉庫など、保管場所を管理します。",
+    description:
+      "倉庫・棚・引き出しなどの保管場所を登録・管理します。",
     color: "bg-purple-500",
   },
   {
     href: "/stocktake/history",
-    icon: "🕘",
+    icon: "📋",
     title: "棚卸履歴",
-    description: "確定済みの棚卸結果を確認します。",
+    description:
+      "完了した棚卸の履歴、進捗、差異、確定内容を確認します。",
     color: "bg-cyan-500",
   },
   {
     href: "/account/password",
     icon: "🔐",
-    title: "自分のパスワード変更",
-    description: "現在ログインしている管理者のパスワードを変更します。",
+    title: "パスワード変更",
+    description:
+      "現在ログインしている管理者のパスワードを変更します。",
     color: "bg-slate-600",
   },
-  {
-    href: "/reset",
-    icon: "⚠️",
-    title: "データ初期化",
-    description: "テストデータなどを初期化します。操作には十分注意してください。",
-    color: "bg-rose-600",
-  },
 ];
+
+function getMessage(data: unknown, fallback: string) {
+  if (
+    typeof data === "object" &&
+    data !== null &&
+    "message" in data &&
+    typeof data.message === "string"
+  ) {
+    return data.message;
+  }
+
+  return fallback;
+}
 
 export default function AdminPage() {
   const router = useRouter();
@@ -84,27 +113,42 @@ export default function AdminPage() {
           cache: "no-store",
         });
 
+        const text = await response.text();
+
+        let data: unknown = null;
+
+        try {
+          data = text ? JSON.parse(text) : null;
+        } catch {
+          throw new Error("ログイン情報の形式を確認できませんでした。");
+        }
+
         if (response.status === 401) {
           router.replace("/login");
           return;
         }
 
         if (!response.ok) {
-          throw new Error("ログイン情報を取得できませんでした。");
+          throw new Error(
+            getMessage(data, "ログイン情報を取得できませんでした。")
+          );
         }
 
-        const currentUser = (await response.json()) as CurrentUser;
-
-        if (currentUser.role !== "ADMIN") {
+        if (
+          typeof data !== "object" ||
+          data === null ||
+          !("role" in data) ||
+          data.role !== "ADMIN"
+        ) {
           router.replace("/");
           return;
         }
 
-        setUser(currentUser);
-      } catch (caughtError) {
+        setUser(data as CurrentUser);
+      } catch (loadError) {
         setError(
-          caughtError instanceof Error
-            ? caughtError.message
+          loadError instanceof Error
+            ? loadError.message
             : "管理者情報を取得できませんでした。"
         );
       } finally {
@@ -117,9 +161,9 @@ export default function AdminPage() {
 
   if (loading) {
     return (
-      <main className="grid min-h-screen place-items-center bg-slate-100">
+      <main className="grid min-h-screen place-items-center bg-slate-100 p-5">
         <p className="font-bold text-slate-600">
-          管理者情報を確認中…
+          管理者情報を確認しています…
         </p>
       </main>
     );
@@ -130,7 +174,7 @@ export default function AdminPage() {
       <main className="grid min-h-screen place-items-center bg-slate-100 p-5">
         <section className="w-full max-w-md rounded-3xl bg-white p-6 shadow-sm">
           <p className="text-sm font-bold text-red-600">
-            管理者モードを開始できません
+            管理者モードを開けませんでした
           </p>
 
           <p className="mt-3 text-slate-700">{error}</p>
@@ -160,18 +204,18 @@ export default function AdminPage() {
             </p>
 
             <h1 className="mt-1 text-3xl font-black text-slate-900 sm:text-4xl">
-              管理者モード
+              管理者設定
             </h1>
 
             <p className="mt-2 text-slate-600">
-              ユーザー・エラー・商品・保管場所などを管理します。
+              ユーザー、商品ラベル、保管場所、エラー対応などのシステム設定を管理します。
             </p>
           </div>
 
           <div className="flex flex-wrap items-center gap-3">
             <div className="rounded-xl bg-white px-4 py-3 shadow-sm">
               <p className="text-xs font-bold text-slate-500">
-                操作中の管理者
+                ログイン中の管理者
               </p>
 
               <p className="font-black text-slate-900">
@@ -190,12 +234,11 @@ export default function AdminPage() {
 
         <section className="mt-8 rounded-2xl border border-red-200 bg-red-50 p-5">
           <p className="font-bold text-red-800">
-            管理者操作の注意
+            管理者操作について
           </p>
 
           <p className="mt-2 text-sm leading-6 text-red-700">
-            ユーザー停止・パスワード再発行・データ初期化などは、他の利用者の作業に影響する可能性があります。
-            内容を確認してから実行してください。
+            ユーザーの権限変更、パスワード再設定、システムJAN発行、データの管理は管理者だけが実行できます。操作前に内容を確認してください。
           </p>
         </section>
 

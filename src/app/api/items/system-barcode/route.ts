@@ -1,33 +1,61 @@
 import { randomInt } from "node:crypto";
-import { NextRequest, NextResponse } from "next/server";
 import { Prisma } from "@prisma/client";
+import { NextRequest, NextResponse } from "next/server";
+import { getLoggedInUser, isAdmin } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 
-function createCheckDigit(body: string) {
-  let total = 0;
+function calculateCheckDigit(base12: string) {
+  const total = base12
+    .split("")
+    .reverse()
+    .reduce((sum, digit, index) => {
+      const value = Number(digit);
 
-  for (let index = 0; index < body.length; index += 1) {
-    const digit = Number(body[index]);
-
-    total += digit * (index % 2 === 0 ? 1 : 3);
-  }
+      return sum + value * (index % 2 === 0 ? 3 : 1);
+    }, 0);
 
   return String((10 - (total % 10)) % 10);
 }
 
-function createSystemBarcode() {
-  // 04 + 10桁のランダム番号 + EAN-13チェック桁
-  const serial = String(
-    randomInt(0, 10_000_000_000)
-  ).padStart(10, "0");
+function createSystemJan() {
+  // 「20」始まりはシステム内で発行する管理用コードとして使う。
+  const serial = randomInt(0, 10_000_000_000)
+    .toString()
+    .padStart(10, "0");
 
-  const body = `04${serial}`;
+  const base12 = `20${serial}`;
 
-  return `${body}${createCheckDigit(body)}`;
+  return `${base12}${calculateCheckDigit(base12)}`;
 }
 
 export async function POST(request: NextRequest) {
   try {
+    const currentUser = await getLoggedInUser(request);
+
+    if (!currentUser) {
+      return NextResponse.json(
+        {
+          code: "AUTH_REQUIRED",
+          message: "ログインが必要です。",
+        },
+        {
+          status: 401,
+        }
+      );
+    }
+
+    if (!isAdmin(currentUser)) {
+      return NextResponse.json(
+        {
+          code: "SYSTEM_JAN_ADMIN_ONLY",
+          message: "システムJANの発行は管理者のみ実行できます。",
+        },
+        {
+          status: 403,
+        }
+      );
+    }
+
     const body: unknown = await request.json();
 
     const itemId =
@@ -35,58 +63,80 @@ export async function POST(request: NextRequest) {
       body !== null &&
       "itemId" in body &&
       typeof body.itemId === "string"
-        ? body.itemId.trim()
+        ? body.itemId
         : "";
 
     if (!itemId) {
       return NextResponse.json(
-        { message: "商品IDが指定されていません。" },
-        { status: 400 }
+        {
+          code: "SYSTEM_JAN_ITEM_ID_REQUIRED",
+          message: "商品IDが指定されていません。",
+        },
+        {
+          status: 400,
+        }
       );
     }
 
     const item = await prisma.item.findUnique({
-      where: { id: itemId },
-      select: {
-        id: true,
-        name: true,
-        janCode: true,
-        systemBarcode: true,
+      where: {
+        id: itemId,
       },
     });
 
     if (!item) {
       return NextResponse.json(
-        { message: "商品が見つかりません。" },
-        { status: 404 }
+        {
+          code: "SYSTEM_JAN_ITEM_NOT_FOUND",
+          message: "商品が見つかりません。",
+        },
+        {
+          status: 404,
+        }
       );
     }
 
+    // 正式なJANがある商品は、それをそのまま利用する。
+    if (item.janCode) {
+      return NextResponse.json(
+        {
+          code: "SYSTEM_JAN_REAL_JAN_EXISTS",
+          message: "この商品には既存のJANコードがあります。",
+          item,
+        },
+        {
+          status: 409,
+        }
+      );
+    }
+
+    // すでに発行済みなら同じシステムJANを返す。
     if (item.systemBarcode) {
       return NextResponse.json({
-        item,
+        success: true,
         created: false,
+        item,
       });
     }
 
-    for (let attempt = 0; attempt < 10; attempt += 1) {
-      const systemBarcode = createSystemBarcode();
+    // 重複時だけ再生成する。
+    for (let attempt = 0; attempt < 20; attempt += 1) {
+      const systemBarcode = createSystemJan();
 
       try {
         const updatedItem = await prisma.item.update({
-          where: { id: item.id },
-          data: { systemBarcode },
-          select: {
-            id: true,
-            name: true,
-            janCode: true,
-            systemBarcode: true,
+          where: {
+            id: item.id,
+          },
+          data: {
+            systemBarcode,
           },
         });
 
         return NextResponse.json({
-          item: updatedItem,
+          success: true,
           created: true,
+          item: updatedItem,
         });
       } catch (error) {
         if (
@@ -102,22 +152,24 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json(
       {
-        message:
-          "システムバーコードを発番できませんでした。もう一度試してください。",
+        code: "SYSTEM_JAN_GENERATION_FAILED",
+        message: "システムJANを発行できませんでした。もう一度試してください。",
       },
-      { status: 500 }
+      {
+        status: 500,
+      }
     );
   } catch (error) {
-    console.error("POST /api/items/system-barcode", error);
+    console.error("SYSTEM_JAN_500", error);
 
     return NextResponse.json(
       {
-        message:
-          error instanceof Error
-            ? error.message
-            : "システムバーコードの発番に失敗しました。",
+        code: "SYSTEM_JAN_500",
+        message: "システムJANの発行中にエラーが発生しました。",
       },
-      { status: 500 }
+      {
+        status: 500,
+      }
     );
   }
 }

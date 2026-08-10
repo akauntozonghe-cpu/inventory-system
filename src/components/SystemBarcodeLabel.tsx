@@ -1,0 +1,349 @@
+"use client";
+
+import { useEffect, useRef, useState } from "react";
+import JsBarcode from "jsbarcode";
+
+type SystemBarcodeLabelProps = {
+  itemId: string;
+  itemName: string;
+  janCode: string | null;
+  initialSystemJan: string | null;
+};
+
+type AuthUser = {
+  id: string;
+  role: "ADMIN" | "WORKER";
+};
+
+type IssueResponse = {
+  success?: boolean;
+  item?: {
+    systemBarcode?: string | null;
+  };
+  message?: string;
+};
+
+function barcodeFormat(value: string): "EAN13" | "EAN8" | "CODE128" {
+  if (/^\d{13}$/.test(value)) {
+    return "EAN13";
+  }
+
+  if (/^\d{8}$/.test(value)) {
+    return "EAN8";
+  }
+
+  return "CODE128";
+}
+
+function readMessage(data: unknown, fallback: string) {
+  if (
+    typeof data === "object" &&
+    data !== null &&
+    "message" in data &&
+    typeof data.message === "string"
+  ) {
+    return data.message;
+  }
+
+  return fallback;
+}
+
+function escapeHtml(value: string) {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+export default function SystemBarcodeLabel({
+  itemId,
+  itemName,
+  janCode,
+  initialSystemJan,
+}: SystemBarcodeLabelProps) {
+  const svgRef = useRef<SVGSVGElement | null>(null);
+
+  const [systemJan, setSystemJan] = useState(initialSystemJan);
+  const [isAdmin, setIsAdmin] = useState(false);
+  const [checkingRole, setCheckingRole] = useState(true);
+  const [issuing, setIssuing] = useState(false);
+  const [message, setMessage] = useState("");
+
+  const barcode = janCode || systemJan;
+  const barcodeTitle = janCode ? "既存JANコード" : "システムJAN";
+
+  useEffect(() => {
+    setSystemJan(initialSystemJan);
+  }, [initialSystemJan]);
+
+  useEffect(() => {
+    const loadUser = async () => {
+      try {
+        const response = await fetch("/api/auth/me", {
+          cache: "no-store",
+        });
+
+        const text = await response.text();
+
+        let data: unknown = null;
+
+        try {
+          data = text ? JSON.parse(text) : null;
+        } catch {
+          data = null;
+        }
+
+        if (
+          response.ok &&
+          typeof data === "object" &&
+          data !== null &&
+          "role" in data &&
+          data.role === "ADMIN"
+        ) {
+          setIsAdmin(true);
+        }
+      } finally {
+        setCheckingRole(false);
+      }
+    };
+
+    void loadUser();
+  }, []);
+
+  useEffect(() => {
+    if (!barcode || !svgRef.current) {
+      return;
+    }
+
+    try {
+      JsBarcode(svgRef.current, barcode, {
+        format: barcodeFormat(barcode),
+        width: 2,
+        height: 76,
+        displayValue: true,
+        fontSize: 15,
+        margin: 8,
+        background: "#ffffff",
+        lineColor: "#111827",
+      });
+    } catch {
+      setMessage("バーコードを表示できませんでした。");
+    }
+  }, [barcode]);
+
+  const issueSystemJan = async () => {
+    if (janCode) {
+      setMessage("既存JANコードがあるため、システムJANは発行しません。");
+      return;
+    }
+
+    setIssuing(true);
+    setMessage("");
+
+    try {
+      const response = await fetch("/api/items/system-barcode", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          itemId,
+        }),
+      });
+
+      const text = await response.text();
+
+      let data: unknown = null;
+
+      try {
+        data = text ? JSON.parse(text) : null;
+      } catch {
+        throw new Error("システムJANの応答を確認できませんでした。");
+      }
+
+      if (!response.ok) {
+        throw new Error(
+          readMessage(data, "システムJANを発行できませんでした。")
+        );
+      }
+
+      const result = data as IssueResponse;
+      const nextSystemJan = result.item?.systemBarcode ?? null;
+
+      if (!nextSystemJan) {
+        throw new Error("システムJANを確認できませんでした。");
+      }
+
+      setSystemJan(nextSystemJan);
+      setMessage(
+        "システムJANを発行しました。ラベルを印刷して商品または保管ケースへ貼り付けてください。"
+      );
+    } catch (error) {
+      setMessage(
+        error instanceof Error
+          ? error.message
+          : "システムJANを発行できませんでした。"
+      );
+    } finally {
+      setIssuing(false);
+    }
+  };
+
+  const printLabel = () => {
+    if (!barcode || !svgRef.current) {
+      return;
+    }
+
+    const printWindow = window.open("", "_blank", "width=520,height=420");
+
+    if (!printWindow) {
+      setMessage(
+        "印刷画面を開けませんでした。ブラウザのポップアップ許可を確認してください。"
+      );
+      return;
+    }
+
+    printWindow.document.write(`
+      <!doctype html>
+      <html lang="ja">
+        <head>
+          <meta charset="utf-8" />
+          <title>${escapeHtml(itemName)} ラベル</title>
+          <style>
+            @page {
+              margin: 8mm;
+            }
+
+            body {
+              margin: 0;
+              color: #111827;
+              font-family: Arial, "Noto Sans JP", sans-serif;
+            }
+
+            .label {
+              width: 82mm;
+              box-sizing: border-box;
+              border: 1px solid #cbd5e1;
+              border-radius: 4mm;
+              padding: 5mm;
+            }
+
+            .system {
+              margin: 0;
+              color: #475569;
+              font-size: 8pt;
+              font-weight: 700;
+            }
+
+            .name {
+              margin: 2mm 0 3mm;
+              font-size: 13pt;
+              font-weight: 800;
+              word-break: break-word;
+            }
+
+            .code {
+              margin: 0 0 2mm;
+              font-family: monospace;
+              font-size: 10pt;
+              font-weight: 700;
+            }
+
+            svg {
+              display: block;
+              width: 100%;
+              height: auto;
+            }
+          </style>
+        </head>
+        <body>
+          <section class="label">
+            <p class="system">INVENTORY OS / ${barcodeTitle}</p>
+            <p class="name">${escapeHtml(itemName)}</p>
+            <p class="code">${escapeHtml(barcode)}</p>
+            ${svgRef.current.outerHTML}
+          </section>
+
+          <script>
+            window.onload = () => {
+              window.print();
+              window.onafterprint = () => window.close();
+            };
+          </script>
+        </body>
+      </html>
+    `);
+
+    printWindow.document.close();
+  };
+
+  return (
+    <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-7">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <p className="text-sm font-bold text-slate-500">
+            バーコード・ラベル
+          </p>
+
+          <h2 className="mt-1 text-xl font-black text-slate-900">
+            {barcode ? barcodeTitle : "JANコード未登録"}
+          </h2>
+
+          <p className="mt-2 text-sm leading-6 text-slate-600">
+            {janCode
+              ? "商品に登録済みのJANコードをそのまま使います。"
+              : systemJan
+                ? "JANコードがない商品のため、Inventory OSが発行したシステムJANです。"
+                : "JANコードがない商品です。管理者はシステムJANを発行できます。"}
+          </p>
+        </div>
+
+        {barcode ? (
+          <button
+            type="button"
+            onClick={printLabel}
+            className="rounded-xl bg-slate-800 px-4 py-3 font-bold text-white hover:bg-slate-950"
+          >
+            ラベルを印刷
+          </button>
+        ) : isAdmin ? (
+          <button
+            type="button"
+            onClick={() => void issueSystemJan()}
+            disabled={issuing || checkingRole}
+            className="rounded-xl bg-blue-600 px-4 py-3 font-bold text-white hover:bg-blue-700 disabled:bg-slate-400"
+          >
+            {issuing ? "発行中…" : "システムJANを発行"}
+          </button>
+        ) : (
+          <span className="rounded-xl bg-slate-100 px-4 py-3 text-sm font-bold text-slate-600">
+            管理者のみ発行可能
+          </span>
+        )}
+      </div>
+
+      {message && (
+        <p className="mt-4 rounded-xl bg-slate-100 px-4 py-3 text-sm font-bold text-slate-700">
+          {message}
+        </p>
+      )}
+
+      {barcode && (
+        <div className="mt-5 rounded-xl border border-slate-200 bg-slate-50 p-4">
+          <p className="mb-2 text-center text-sm font-bold text-slate-600">
+            {barcodeTitle}
+          </p>
+
+          <p className="mb-2 break-all text-center font-mono text-sm font-bold text-slate-800">
+            {barcode}
+          </p>
+
+          <div className="flex justify-center overflow-x-auto rounded-lg bg-white p-2">
+            <svg ref={svgRef} />
+          </div>
+        </div>
+      )}
+    </section>
+  );
+}
