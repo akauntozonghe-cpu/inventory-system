@@ -129,13 +129,13 @@ export default function HomePage() {
             </div>
 
             {user?.role === "ADMIN" && (
-              <Link
-                href="/admin/users"
-                className="rounded-xl bg-slate-700 px-4 py-3 font-bold text-white transition hover:bg-slate-800"
-              >
-                ユーザー管理
-              </Link>
-            )}
+  <Link
+    href="/admin"
+    className="rounded-xl bg-slate-700 px-4 py-3 font-bold text-white transition hover:bg-slate-800"
+  >
+    管理者設定
+  </Link>
+)}
 
             <button
               type="button"
