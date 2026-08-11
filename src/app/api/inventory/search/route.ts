@@ -3,18 +3,15 @@ import { prisma } from "@/lib/prisma";
 
 type Filter = "ALL" | "UNRECORDED" | "RECORDED" | "DIFFERENCE";
 
-function normalizeCode(value: string | null | undefined) {
-  return (value ?? "")
-    .normalize("NFKC")
-    .replace(/[\s-]/g, "")
-    .toLowerCase();
-}
-
 function normalizeText(value: string | null | undefined) {
   return (value ?? "")
     .normalize("NFKC")
     .trim()
-    .toLowerCase();
+    .toLocaleLowerCase("ja-JP");
+}
+
+function normalizeCode(value: string | null | undefined) {
+  return normalizeText(value).replace(/[\s-]/g, "");
 }
 
 function getFilter(value: string | null): Filter {
@@ -29,56 +26,135 @@ function getFilter(value: string | null): Filter {
   return "ALL";
 }
 
+const targetInclude = {
+  inventoryInstance: {
+    include: {
+      item: true,
+      storageLocation: true,
+      stocktakeRecords: {
+        where: {
+          sessionId: "",
+        },
+        select: {
+          countedQuantity: true,
+        },
+      },
+    },
+  },
+} as const;
+
 export async function GET(request: NextRequest) {
   try {
     const sessionId =
       request.nextUrl.searchParams.get("sessionId")?.trim() ?? "";
-
     const keyword =
       request.nextUrl.searchParams.get("q")?.trim() ?? "";
-
     const majorCategory =
       request.nextUrl.searchParams.get("majorCategory")?.trim() ?? "";
-
     const filter = getFilter(request.nextUrl.searchParams.get("filter"));
+    const exactOnly = request.nextUrl.searchParams.get("exact") === "1";
 
     if (!sessionId) {
       return NextResponse.json(
         {
           code: "INVENTORY_SEARCH_SESSION_REQUIRED",
-          message: "棚卸セッションIDが指定されていません。",
+          message: "棚卸セッションIDがありません。",
         },
         { status: 400 }
       );
     }
 
-    const targets = await prisma.stocktakeTarget.findMany({
-      where: {
-        sessionId,
-      },
-      include: {
-        inventoryInstance: {
-          include: {
-            item: true,
-            storageLocation: true,
-            stocktakeRecords: {
-              where: {
-                sessionId,
-              },
-              select: {
-                countedQuantity: true,
-              },
+    const include = {
+      inventoryInstance: {
+        include: {
+          item: true,
+          storageLocation: true,
+          stocktakeRecords: {
+            where: {
+              sessionId,
+            },
+            select: {
+              countedQuantity: true,
             },
           },
         },
       },
-      orderBy: {
-        createdAt: "asc",
-      },
-    });
+    } as const;
 
-    const normalizedCode = normalizeCode(keyword);
+    const directCodeConditions = keyword
+      ? [
+          {
+            inventoryInstance: {
+              is: {
+                item: {
+                  is: {
+                    janCode: keyword,
+                  },
+                },
+              },
+            },
+          },
+          {
+            inventoryInstance: {
+              is: {
+                item: {
+                  is: {
+                    systemBarcode: keyword,
+                  },
+                },
+              },
+            },
+          },
+          {
+            inventoryInstance: {
+              is: {
+                item: {
+                  is: {
+                    managementCode: keyword,
+                  },
+                },
+              },
+            },
+          },
+          {
+            inventoryInstance: {
+              is: {
+                managementCode: keyword,
+              },
+            },
+          },
+        ]
+      : [];
+
+    let targets = exactOnly
+      ? await prisma.stocktakeTarget.findMany({
+          where: {
+            sessionId,
+            OR: directCodeConditions,
+          },
+          include,
+          orderBy: {
+            createdAt: "asc",
+          },
+        })
+      : [];
+
+    // JANがハイフン付きなどで登録されている場合も、
+    // 下の正規化比較で確実に探せるようにする。
+    if (!exactOnly || targets.length === 0) {
+      targets = await prisma.stocktakeTarget.findMany({
+        where: {
+          sessionId,
+        },
+        include,
+        orderBy: {
+          createdAt: "asc",
+        },
+      });
+    }
+
     const normalizedKeyword = normalizeText(keyword);
+    const normalizedCode = normalizeCode(keyword);
     const normalizedMajorCategory = normalizeText(majorCategory);
 
     const searched = targets
@@ -121,39 +197,20 @@ export async function GET(request: NextRequest) {
         let searchScore = 0;
 
         if (keyword) {
-          const systemBarcode = normalizeCode(item.systemBarcode);
-          const janCode = normalizeCode(item.janCode);
-          const itemManagementCode = normalizeCode(item.managementCode);
-          const inventoryManagementCode = normalizeCode(
-            inventory.managementCode
-          );
+          const codes = [
+            item.janCode,
+            item.systemBarcode,
+            item.managementCode,
+            inventory.managementCode,
+          ]
+            .map(normalizeCode)
+            .filter(Boolean);
 
-          const codeCandidates = [
-            systemBarcode,
-            janCode,
-            itemManagementCode,
-            inventoryManagementCode,
-          ].filter(Boolean);
-
-          if (systemBarcode && systemBarcode === normalizedCode) {
+          if (codes.some((code) => code === normalizedCode)) {
             searchScore = 1000;
-          } else if (janCode && janCode === normalizedCode) {
-            searchScore = 950;
-          } else if (
-            itemManagementCode &&
-            itemManagementCode === normalizedCode
-          ) {
-            searchScore = 900;
-          } else if (
-            inventoryManagementCode &&
-            inventoryManagementCode === normalizedCode
-          ) {
-            searchScore = 850;
           } else if (
             normalizedCode.length >= 3 &&
-            codeCandidates.some((code) =>
-              code.startsWith(normalizedCode)
-            )
+            codes.some((code) => code.startsWith(normalizedCode))
           ) {
             searchScore = 700;
           } else {
@@ -167,11 +224,8 @@ export async function GET(request: NextRequest) {
               inventory.lotNo,
               inventory.storageLocation?.name,
             ]
-              .filter(
-                (value): value is string =>
-                  typeof value === "string" && value.length > 0
-              )
-              .map(normalizeText);
+              .map(normalizeText)
+              .filter(Boolean);
 
             if (
               normalizedKeyword &&

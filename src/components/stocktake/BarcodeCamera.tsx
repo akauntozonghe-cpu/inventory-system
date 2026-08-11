@@ -7,16 +7,32 @@ type Props = {
   onClose: () => void;
   children?: ReactNode;
   closeOnDetect?: boolean;
+  notice?: string;
 };
+
+type CameraDevice = {
+  deviceId: string;
+  label: string;
+};
+
+function findPreferredCamera(devices: CameraDevice[]) {
+  return (
+    devices.find((device) =>
+      /(back|rear|environment|背面)/i.test(device.label)
+    ) ??
+    devices[devices.length - 1] ??
+    devices[0]
+  );
+}
 
 export default function BarcodeCamera({
   onDetected,
   onClose,
   children,
   closeOnDetect = false,
+  notice = "",
 }: Props) {
   const videoRef = useRef<HTMLVideoElement>(null);
-
   const onDetectedRef = useRef(onDetected);
   const onCloseRef = useRef(onClose);
 
@@ -24,17 +40,14 @@ export default function BarcodeCamera({
   const lastDetectedAtRef = useRef(0);
   const closedAfterDetectionRef = useRef(false);
 
-  const [message, setMessage] = useState(
-    "バーコードを枠内に入れてください"
+  const [cameraMessage, setCameraMessage] = useState(
+    "バーコードを横長の枠内に入れてください。"
   );
 
   useEffect(() => {
     onDetectedRef.current = onDetected;
-  }, [onDetected]);
-
-  useEffect(() => {
     onCloseRef.current = onClose;
-  }, [onClose]);
+  }, [onDetected, onClose]);
 
   useEffect(() => {
     let stopped = false;
@@ -49,23 +62,51 @@ export default function BarcodeCamera({
 
         const hints = new Map();
 
+        // JAN/EAN、一般的な業務用バーコード、物流用ITFを対象にする。
         hints.set(DecodeHintType.POSSIBLE_FORMATS, [
           BarcodeFormat.EAN_13,
           BarcodeFormat.EAN_8,
           BarcodeFormat.UPC_A,
+          BarcodeFormat.UPC_E,
           BarcodeFormat.CODE_128,
+          BarcodeFormat.CODE_39,
+          BarcodeFormat.CODE_93,
+          BarcodeFormat.CODABAR,
+          BarcodeFormat.ITF,
         ]);
 
+        // 読み取り精度を優先する。
+        hints.set(DecodeHintType.TRY_HARDER, true);
+
         const reader = new BrowserMultiFormatReader(hints, {
-          delayBetweenScanAttempts: 180,
+          delayBetweenScanAttempts: 220,
+          delayBetweenScanSuccess: 900,
         });
+
+        const devices =
+          await BrowserMultiFormatReader.listVideoInputDevices();
 
         if (!videoRef.current || stopped) {
           return;
         }
 
-        controls = await reader.decodeFromVideoDevice(
-          undefined,
+        const preferredCamera = findPreferredCamera(devices);
+
+        controls = await reader.decodeFromConstraints(
+  {
+    audio: false,
+    video: {
+      facingMode: {
+        ideal: "environment",
+      },
+      width: {
+        ideal: 1920,
+      },
+      height: {
+        ideal: 1080,
+      },
+    },
+  },
           videoRef.current,
           (result) => {
             if (!result || stopped) {
@@ -81,7 +122,7 @@ export default function BarcodeCamera({
             const now = Date.now();
             const isDuplicate =
               lastValueRef.current === value &&
-              now - lastDetectedAtRef.current < 1800;
+              now - lastDetectedAtRef.current < 2500;
 
             if (isDuplicate) {
               return;
@@ -90,9 +131,8 @@ export default function BarcodeCamera({
             lastValueRef.current = value;
             lastDetectedAtRef.current = now;
 
-            navigator.vibrate?.(80);
-
-            setMessage(`読み取りました：${value}`);
+            navigator.vibrate?.(100);
+            setCameraMessage(`読み取りました：${value}`);
             onDetectedRef.current(value);
 
             if (closeOnDetect && !closedAfterDetectionRef.current) {
@@ -102,16 +142,16 @@ export default function BarcodeCamera({
 
               window.setTimeout(() => {
                 onCloseRef.current();
-              }, 150);
+              }, 250);
             }
           }
         );
-      } catch (caughtError) {
-        console.error(caughtError);
+      } catch (error) {
+        console.error("BARCODE_CAMERA_ERROR", error);
 
         if (!stopped) {
-          setMessage(
-            "カメラを起動できませんでした。カメラの使用許可を確認してください。"
+          setCameraMessage(
+            "カメラを開始できませんでした。カメラの使用許可を確認してください。"
           );
         }
       }
@@ -125,28 +165,32 @@ export default function BarcodeCamera({
     };
   }, [closeOnDetect]);
 
+  const visibleNotice = notice || cameraMessage;
+
   return (
     <div className="fixed inset-0 z-50 bg-slate-950 text-white">
       <div className="mx-auto flex h-[100dvh] max-w-2xl flex-col">
-        <header className="flex items-center justify-between px-4 py-3">
+        <header className="flex items-center justify-between gap-4 px-4 py-4">
           <div>
-            <h2 className="font-bold">
-              {closeOnDetect
-                ? "カメラで読み取る"
-                : "連続スキャン中"}
+            <p className="text-xs font-bold tracking-widest text-blue-300">
+              BARCODE SCAN
+            </p>
+
+            <h2 className="mt-1 text-xl font-black">
+              {closeOnDetect ? "バーコードを読み取る" : "連続スキャン中"}
             </h2>
 
-            <p className="text-xs text-slate-300">
+            <p className="mt-1 text-sm text-slate-300">
               {closeOnDetect
-                ? "読み取ると自動で閉じます"
-                : "保存後、そのまま次の商品を読み取れます"}
+                ? "読み取ると自動でカメラを閉じます。"
+                : "保存後は、そのまま次の商品を読み取れます。"}
             </p>
           </div>
 
           <button
             type="button"
             onClick={() => onCloseRef.current()}
-            className="rounded-xl bg-white/15 px-4 py-2 text-sm font-bold"
+            className="shrink-0 rounded-xl bg-white/15 px-4 py-3 text-sm font-bold"
           >
             閉じる
           </button>
@@ -156,31 +200,21 @@ export default function BarcodeCamera({
           <video
             ref={videoRef}
             autoPlay
-            playsInline
             muted
+            playsInline
             className="h-full w-full object-cover"
           />
 
-          <div className="pointer-events-none absolute inset-x-10 top-1/2 h-32 -translate-y-1/2 rounded-2xl border-4 border-white/80" />
+          <div className="pointer-events-none absolute inset-x-8 top-1/2 h-32 -translate-y-1/2 rounded-2xl border-4 border-white/90 shadow-[0_0_0_9999px_rgba(0,0,0,0.35)]" />
 
-          <p className="absolute inset-x-3 top-3 rounded-xl bg-black/60 px-3 py-2 text-center text-sm">
-            {message}
+          <p className="absolute inset-x-4 bottom-4 rounded-2xl bg-slate-950/85 px-4 py-3 text-center text-sm font-bold">
+            {visibleNotice}
           </p>
         </section>
 
         {!closeOnDetect && (
-          <section className="min-h-0 flex-1 overflow-y-auto bg-slate-100 p-3 text-slate-900">
-            {children || (
-              <div className="rounded-2xl bg-white p-5 text-center shadow">
-                <p className="font-bold">
-                  商品を読み取ってください
-                </p>
-
-                <p className="mt-2 text-sm text-slate-600">
-                  読み取った商品と数量入力が、ここに表示されます。
-                </p>
-              </div>
-            )}
+          <section className="min-h-0 flex-1 overflow-y-auto bg-slate-100 p-4 text-slate-900">
+            {children}
           </section>
         )}
       </div>
