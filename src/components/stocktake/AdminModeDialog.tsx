@@ -127,86 +127,88 @@ export default function AdminModeDialog({
   };
 
   return (
-    <div className="fixed inset-0 z-[70] grid place-items-center bg-slate-950/70 p-4">
-      <section
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="admin-mode-title"
-        className="w-full max-w-md rounded-3xl bg-white p-6 shadow-2xl"
-      >
-        <p className="text-sm font-bold text-blue-600">管理者モード</p>
-
-        <h2
-          id="admin-mode-title"
-          className="mt-2 text-2xl font-black text-slate-900"
+    <div className="fixed inset-0 z-[80] overflow-y-auto bg-slate-950/70 p-4">
+      <div className="mx-auto flex min-h-full max-w-md items-center">
+        <section
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="admin-mode-title"
+          className="w-full rounded-3xl bg-white p-5 shadow-2xl sm:p-6"
         >
-          管理者認証
-        </h2>
+          <p className="text-sm font-bold text-violet-600">管理者モード</p>
 
-        <p className="mt-3 text-sm leading-6 text-slate-600">
-          商品登録・商品情報修正・システムJAN発行を行うため、管理者IDとパスワードを入力してください。
-          認証後10分で自動的に解除されます。
-        </p>
+          <h2
+            id="admin-mode-title"
+            className="mt-2 text-2xl font-black text-slate-950"
+          >
+            管理者認証
+          </h2>
 
-        <label className="mt-5 block text-sm font-bold text-slate-800">
-          管理者ID
-        </label>
-        <input
-          value={username}
-          autoComplete="username"
-          disabled={loading}
-          onChange={(event) => setUsername(event.target.value)}
-          onKeyDown={(event) => {
-            if (event.key === "Enter") {
-              void authenticate();
-            }
-          }}
-          className="mt-2 w-full rounded-2xl border-2 border-slate-200 px-4 py-3 outline-none focus:border-blue-500 disabled:bg-slate-100"
-        />
-
-        <label className="mt-4 block text-sm font-bold text-slate-800">
-          管理者パスワード
-        </label>
-        <input
-          type="password"
-          value={password}
-          autoComplete="current-password"
-          disabled={loading}
-          onChange={(event) => setPassword(event.target.value)}
-          onKeyDown={(event) => {
-            if (event.key === "Enter") {
-              void authenticate();
-            }
-          }}
-          className="mt-2 w-full rounded-2xl border-2 border-slate-200 px-4 py-3 outline-none focus:border-blue-500 disabled:bg-slate-100"
-        />
-
-        {errorMessage && (
-          <p className="mt-4 rounded-2xl bg-red-50 px-4 py-3 text-sm font-medium text-red-700">
-            {errorMessage}
+          <p className="mt-3 text-sm leading-6 text-slate-600">
+            商品登録・システムバーコード発行・商品情報修正など、
+            棚卸中の管理者操作を行うための認証です。
           </p>
-        )}
 
-        <div className="mt-6 grid grid-cols-2 gap-3">
-          <button
-            type="button"
-            disabled={loading}
-            onClick={close}
-            className="rounded-2xl bg-slate-100 px-4 py-3 font-bold text-slate-700 transition hover:bg-slate-200 disabled:opacity-50"
-          >
-            キャンセル
-          </button>
+          <label className="mt-5 block text-sm font-bold text-slate-800">
+            管理者ID
+            <input
+              value={username}
+              autoComplete="username"
+              disabled={loading}
+              onChange={(event) => setUsername(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") {
+                  void authenticate();
+                }
+              }}
+              className="mt-2 w-full rounded-2xl border-2 border-slate-200 px-4 py-3 text-base outline-none focus:border-violet-500 disabled:bg-slate-100"
+            />
+          </label>
 
-          <button
-            type="button"
-            disabled={loading}
-            onClick={() => void authenticate()}
-            className="rounded-2xl bg-blue-600 px-4 py-3 font-bold text-white transition hover:bg-blue-700 disabled:bg-slate-300"
-          >
-            {loading ? "認証中…" : "管理者モードを開始"}
-          </button>
-        </div>
-      </section>
+          <label className="mt-4 block text-sm font-bold text-slate-800">
+            パスワード
+            <input
+              type="password"
+              value={password}
+              autoComplete="current-password"
+              disabled={loading}
+              onChange={(event) => setPassword(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") {
+                  void authenticate();
+                }
+              }}
+              className="mt-2 w-full rounded-2xl border-2 border-slate-200 px-4 py-3 text-base outline-none focus:border-violet-500 disabled:bg-slate-100"
+            />
+          </label>
+
+          {errorMessage && (
+            <p className="mt-4 rounded-2xl bg-red-50 px-4 py-3 text-sm font-bold text-red-700">
+              {errorMessage}
+            </p>
+          )}
+
+          <div className="mt-6 grid grid-cols-2 gap-3">
+            <button
+              type="button"
+              disabled={loading}
+              onClick={close}
+              className="min-h-12 rounded-2xl bg-slate-100 px-4 py-3 font-bold text-slate-700 disabled:opacity-50"
+            >
+              キャンセル
+            </button>
+
+            <button
+              type="button"
+              disabled={loading}
+              onClick={() => void authenticate()}
+              className="min-h-12 rounded-2xl bg-violet-600 px-4 py-3 font-bold text-white disabled:bg-slate-300"
+            >
+              {loading ? "認証中..." : "認証する"}
+            </button>
+          </div>
+        </section>
+      </div>
     </div>
   );
 }
