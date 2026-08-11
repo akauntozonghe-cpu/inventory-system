@@ -11,7 +11,10 @@ import type { NextRequest } from "next/server";
 const scrypt = promisify(scryptCallback);
 
 export const AUTH_COOKIE = "inventory_session";
+export const ADMIN_ELEVATION_COOKIE = "inventory_admin_elevation";
+
 const SESSION_SECONDS = 60 * 60 * 12;
+const ADMIN_ELEVATION_SECONDS = 60 * 10;
 
 export type LoggedInUser = {
   id: string;
@@ -22,12 +25,18 @@ export type LoggedInUser = {
   expiresAt: number;
 };
 
+export type AdminElevation = {
+  adminUserId: string;
+  authenticatedByUserId: string;
+  expiresAt: number;
+};
+
 function getAuthSecret() {
   const value = process.env.AUTH_SECRET;
 
   if (!value || value.length < 32) {
     throw new Error(
-      "AUTH_SECRET が未設定、または短すぎます。32文字以上を設定してください。"
+      "AUTH_SECRET が未設定、または短すぎます。32文字以上のランダムな文字列を設定してください。"
     );
   }
 
@@ -45,6 +54,36 @@ function safelyCompare(left: string, right: string) {
   const rightHash = createHash("sha256").update(right).digest();
 
   return timingSafeEqual(leftHash, rightHash);
+}
+
+function createSignedToken(payload: object) {
+  const encoded = Buffer.from(JSON.stringify(payload)).toString("base64url");
+
+  return `${encoded}.${sign(encoded)}`;
+}
+
+function readSignedToken<T>(token?: string): T | null {
+  if (!token) {
+    return null;
+  }
+
+  const [encoded, receivedSignature, ...rest] = token.split(".");
+
+  if (!encoded || !receivedSignature || rest.length > 0) {
+    return null;
+  }
+
+  if (!safelyCompare(receivedSignature, sign(encoded))) {
+    return null;
+  }
+
+  try {
+    return JSON.parse(
+      Buffer.from(encoded, "base64url").toString("utf8")
+    ) as T;
+  } catch {
+    return null;
+  }
 }
 
 export async function hashPassword(password: string) {
@@ -72,53 +111,31 @@ export async function verifyPassword(
 export function createSessionToken(
   user: Omit<LoggedInUser, "expiresAt">
 ) {
-  const payload: LoggedInUser = {
+  return createSignedToken({
     ...user,
     expiresAt: Date.now() + SESSION_SECONDS * 1000,
-  };
-
-  const encoded = Buffer.from(JSON.stringify(payload)).toString("base64url");
-
-  return `${encoded}.${sign(encoded)}`;
+  });
 }
 
 export function verifySessionToken(
   token?: string
 ): LoggedInUser | null {
-  if (!token) {
+  const user = readSignedToken<LoggedInUser>(token);
+
+  if (
+    !user ||
+    !user.id ||
+    !user.username ||
+    !user.displayName ||
+    !user.role ||
+    typeof user.mustChangePassword !== "boolean" ||
+    typeof user.expiresAt !== "number" ||
+    user.expiresAt <= Date.now()
+  ) {
     return null;
   }
 
-  const [encoded, receivedSignature, ...rest] = token.split(".");
-
-  if (!encoded || !receivedSignature || rest.length > 0) {
-    return null;
-  }
-
-  if (!safelyCompare(receivedSignature, sign(encoded))) {
-    return null;
-  }
-
-  try {
-    const user = JSON.parse(
-      Buffer.from(encoded, "base64url").toString("utf8")
-    ) as LoggedInUser;
-
-    if (
-      !user.id ||
-      !user.username ||
-      !user.displayName ||
-      !user.role ||
-      typeof user.mustChangePassword !== "boolean" ||
-      user.expiresAt <= Date.now()
-    ) {
-      return null;
-    }
-
-    return user;
-  } catch {
-    return null;
-  }
+  return user;
 }
 
 export function getLoggedInUser(request: NextRequest) {
@@ -129,10 +146,61 @@ export function isAdmin(user: LoggedInUser | null) {
   return user?.role === "ADMIN";
 }
 
+export function createAdminElevationToken(input: {
+  adminUserId: string;
+  authenticatedByUserId: string;
+}) {
+  return createSignedToken({
+    ...input,
+    expiresAt: Date.now() + ADMIN_ELEVATION_SECONDS * 1000,
+  });
+}
+
+export function verifyAdminElevationToken(
+  token?: string
+): AdminElevation | null {
+  const elevation = readSignedToken<AdminElevation>(token);
+
+  if (
+    !elevation ||
+    !elevation.adminUserId ||
+    !elevation.authenticatedByUserId ||
+    typeof elevation.expiresAt !== "number" ||
+    elevation.expiresAt <= Date.now()
+  ) {
+    return null;
+  }
+
+  return elevation;
+}
+
+export function getAdminElevation(request: NextRequest) {
+  return verifyAdminElevationToken(
+    request.cookies.get(ADMIN_ELEVATION_COOKIE)?.value
+  );
+}
+
+/**
+ * 通常ログインが管理者、または棚卸画面で管理者が一時認証した場合に true。
+ */
+export function hasAdminAccess(request: NextRequest) {
+  const currentUser = getLoggedInUser(request);
+
+  return isAdmin(currentUser) || Boolean(getAdminElevation(request));
+}
+
 export const sessionCookieOptions = {
   httpOnly: true,
   secure: process.env.NODE_ENV === "production",
   sameSite: "lax" as const,
   path: "/",
   maxAge: SESSION_SECONDS,
+};
+
+export const adminElevationCookieOptions = {
+  httpOnly: true,
+  secure: process.env.NODE_ENV === "production",
+  sameSite: "lax" as const,
+  path: "/",
+  maxAge: ADMIN_ELEVATION_SECONDS,
 };

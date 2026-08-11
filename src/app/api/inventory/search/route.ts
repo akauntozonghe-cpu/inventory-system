@@ -17,6 +17,18 @@ function normalizeText(value: string | null | undefined) {
     .toLowerCase();
 }
 
+function getFilter(value: string | null): Filter {
+  if (
+    value === "UNRECORDED" ||
+    value === "RECORDED" ||
+    value === "DIFFERENCE"
+  ) {
+    return value;
+  }
+
+  return "ALL";
+}
+
 export async function GET(request: NextRequest) {
   try {
     const sessionId =
@@ -25,19 +37,17 @@ export async function GET(request: NextRequest) {
     const keyword =
       request.nextUrl.searchParams.get("q")?.trim() ?? "";
 
-    const requestedFilter =
-      request.nextUrl.searchParams.get("filter") ?? "ALL";
+    const majorCategory =
+      request.nextUrl.searchParams.get("majorCategory")?.trim() ?? "";
 
-    const filter: Filter =
-      requestedFilter === "UNRECORDED" ||
-      requestedFilter === "RECORDED" ||
-      requestedFilter === "DIFFERENCE"
-        ? requestedFilter
-        : "ALL";
+    const filter = getFilter(request.nextUrl.searchParams.get("filter"));
 
     if (!sessionId) {
       return NextResponse.json(
-        { message: "棚卸セッションIDがありません。" },
+        {
+          code: "INVENTORY_SEARCH_SESSION_REQUIRED",
+          message: "棚卸セッションIDが指定されていません。",
+        },
         { status: 400 }
       );
     }
@@ -69,6 +79,7 @@ export async function GET(request: NextRequest) {
 
     const normalizedCode = normalizeCode(keyword);
     const normalizedKeyword = normalizeText(keyword);
+    const normalizedMajorCategory = normalizeText(majorCategory);
 
     const searched = targets
       .map((target) => {
@@ -78,6 +89,13 @@ export async function GET(request: NextRequest) {
         const record = stocktakeRecords[0];
         const item = inventory.item;
 
+        if (
+          normalizedMajorCategory &&
+          normalizeText(item.majorCategory) !== normalizedMajorCategory
+        ) {
+          return null;
+        }
+
         const isRecorded = Boolean(record);
         const countedQuantity = record?.countedQuantity ?? null;
         const difference =
@@ -85,14 +103,27 @@ export async function GET(request: NextRequest) {
             ? null
             : countedQuantity - target.expectedQuantity;
 
+        if (filter === "UNRECORDED" && isRecorded) {
+          return null;
+        }
+
+        if (filter === "RECORDED" && !isRecorded) {
+          return null;
+        }
+
+        if (
+          filter === "DIFFERENCE" &&
+          (!isRecorded || difference === 0)
+        ) {
+          return null;
+        }
+
         let searchScore = 0;
 
         if (keyword) {
           const systemBarcode = normalizeCode(item.systemBarcode);
           const janCode = normalizeCode(item.janCode);
-          const itemManagementCode = normalizeCode(
-            item.managementCode
-          );
+          const itemManagementCode = normalizeCode(item.managementCode);
           const inventoryManagementCode = normalizeCode(
             inventory.managementCode
           );
@@ -104,16 +135,9 @@ export async function GET(request: NextRequest) {
             inventoryManagementCode,
           ].filter(Boolean);
 
-          // システムバーコード・JAN・管理コードの完全一致を最優先
-          if (
-            systemBarcode &&
-            systemBarcode === normalizedCode
-          ) {
+          if (systemBarcode && systemBarcode === normalizedCode) {
             searchScore = 1000;
-          } else if (
-            janCode &&
-            janCode === normalizedCode
-          ) {
+          } else if (janCode && janCode === normalizedCode) {
             searchScore = 950;
           } else if (
             itemManagementCode &&
@@ -126,7 +150,7 @@ export async function GET(request: NextRequest) {
           ) {
             searchScore = 850;
           } else if (
-            normalizedCode.length >= 4 &&
+            normalizedCode.length >= 3 &&
             codeCandidates.some((code) =>
               code.startsWith(normalizedCode)
             )
@@ -139,6 +163,7 @@ export async function GET(request: NextRequest) {
               item.majorCategory,
               item.minorCategory,
               item.managementGroupCode,
+              inventory.managementGroupCode,
               inventory.lotNo,
               inventory.storageLocation?.name,
             ]
@@ -163,21 +188,6 @@ export async function GET(request: NextRequest) {
           }
         }
 
-        if (filter === "UNRECORDED" && isRecorded) {
-          return null;
-        }
-
-        if (filter === "RECORDED" && !isRecorded) {
-          return null;
-        }
-
-        if (
-          filter === "DIFFERENCE" &&
-          (!isRecorded || difference === 0)
-        ) {
-          return null;
-        }
-
         return {
           ...inventory,
           expectedQuantity: target.expectedQuantity,
@@ -192,22 +202,29 @@ export async function GET(request: NextRequest) {
           item
         ): item is NonNullable<typeof item> => item !== null
       )
-      .sort((a, b) => b.searchScore - a.searchScore)
-      .slice(0, 100)
+      .sort((left, right) => {
+        if (right.searchScore !== left.searchScore) {
+          return right.searchScore - left.searchScore;
+        }
+
+        if (left.isRecorded !== right.isRecorded) {
+          return Number(left.isRecorded) - Number(right.isRecorded);
+        }
+
+        return left.item.name.localeCompare(right.item.name, "ja");
+      })
       .map(({ searchScore, ...item }) => item);
 
     return NextResponse.json(searched);
   } catch (error) {
-    console.error("inventory search failed", error);
+    console.error("INVENTORY_SEARCH_500", error);
 
     return NextResponse.json(
       {
         code: "INVENTORY_SEARCH_500",
         message: "在庫検索に失敗しました。",
       },
-      {
-        status: 500,
-      }
+      { status: 500 }
     );
   }
 }

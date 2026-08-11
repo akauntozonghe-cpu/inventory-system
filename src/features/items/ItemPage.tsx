@@ -32,7 +32,7 @@ async function readJson(response: Response): Promise<unknown> {
 
   if (!text.trim()) {
     throw new Error(
-      `サーバーから応答を確認できませんでした。（HTTP ${response.status}）`
+      `サーバーから応答を確認できませんでした（HTTP ${response.status}）。`
     );
   }
 
@@ -40,7 +40,7 @@ async function readJson(response: Response): Promise<unknown> {
     return JSON.parse(text) as unknown;
   } catch {
     throw new Error(
-      `サーバーから正しい応答を確認できませんでした。（HTTP ${response.status}）`
+      `サーバーから正しい応答を確認できませんでした（HTTP ${response.status}）。`
     );
   }
 }
@@ -118,7 +118,9 @@ export default function ItemPage() {
         (item.janCode ?? "").toLowerCase().includes(keyword) ||
         (item.systemBarcode ?? "").toLowerCase().includes(keyword) ||
         (item.managementCode ?? "").toLowerCase().includes(keyword) ||
-        (item.manufacturer ?? "").toLowerCase().includes(keyword);
+        (item.manufacturer ?? "").toLowerCase().includes(keyword) ||
+        (item.majorCategory ?? "").toLowerCase().includes(keyword) ||
+        (item.minorCategory ?? "").toLowerCase().includes(keyword);
 
       return matchesCategory && matchesKeyword;
     });
@@ -152,6 +154,7 @@ export default function ItemPage() {
   const handleQrDetected = useCallback((category: string) => {
     setMajorCategory(category);
     setSearch("");
+    setScannerOpen(false);
     setMessage(`大分類「${category}」で絞り込みました。`);
   }, []);
 
@@ -231,11 +234,11 @@ export default function ItemPage() {
             </p>
 
             <h1 className="mt-1 text-3xl font-black text-slate-900">
-              商品一覧・ラベル印刷
+              商品一覧・ラベル発行
             </h1>
 
             <p className="mt-2 text-slate-600">
-              商品を探す、バーコードラベルを印刷する、大分類QRで絞り込むことができます。
+              商品を確認し、バーコードラベルを発行できます。大分類QRでも絞り込めます。
             </p>
           </div>
 
@@ -308,7 +311,7 @@ export default function ItemPage() {
             >
               <label>
                 <span className="font-bold">
-                  商品名 <span className="text-red-600">*</span>
+                  商品名<span className="text-red-600">*</span>
                 </span>
 
                 <input
@@ -442,6 +445,7 @@ export default function ItemPage() {
 
       {scannerOpen && (
         <CategoryQrScanner
+          currentCategory={majorCategory || null}
           onDetected={handleQrDetected}
           onClose={() => setScannerOpen(false)}
         />

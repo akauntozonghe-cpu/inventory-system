@@ -7,6 +7,7 @@ import {
 } from "@zxing/browser";
 
 type CategoryQrScannerProps = {
+  currentCategory: string | null;
   onDetected: (category: string) => void;
   onClose: () => void;
 };
@@ -19,9 +20,7 @@ function parseCategoryQr(value: string) {
   }
 
   try {
-    const category = decodeURIComponent(
-      value.slice(PREFIX.length)
-    ).trim();
+    const category = decodeURIComponent(value.slice(PREFIX.length)).trim();
 
     return category || null;
   } catch {
@@ -30,6 +29,7 @@ function parseCategoryQr(value: string) {
 }
 
 export default function CategoryQrScanner({
+  currentCategory,
   onDetected,
   onClose,
 }: CategoryQrScannerProps) {
@@ -37,10 +37,15 @@ export default function CategoryQrScanner({
   const controlsRef = useRef<IScannerControls | null>(null);
   const onDetectedRef = useRef(onDetected);
   const onCloseRef = useRef(onClose);
-  const handledRef = useRef(false);
+
+  const lastValueRef = useRef("");
+  const lastDetectedAtRef = useRef(0);
 
   const [message, setMessage] = useState(
-    "カメラを起動しています…"
+    "大分類QRをカメラに写してください。"
+  );
+  const [lastReadCategory, setLastReadCategory] = useState<string | null>(
+    null
   );
 
   useEffect(() => {
@@ -68,7 +73,7 @@ export default function CategoryQrScanner({
 
         if (devices.length === 0) {
           setMessage(
-            "利用できるカメラが見つかりません。カメラの許可を確認してください。"
+            "利用できるカメラが見つかりません。カメラの利用許可を確認してください。"
           );
           return;
         }
@@ -83,40 +88,51 @@ export default function CategoryQrScanner({
         }
 
         setMessage(
-          "大分類QRを枠内に入れてください。読み取ると自動で閉じます。"
+          "大分類QRを読み取り中です。読み取った後もカメラは開いたままです。"
         );
 
         controlsRef.current = await reader.decodeFromVideoDevice(
           backCamera.deviceId,
           videoRef.current,
           (result) => {
-            if (disposed || handledRef.current || !result) {
+            if (disposed || !result) {
               return;
             }
 
-            const category = parseCategoryQr(result.getText());
+            const rawValue = result.getText().trim();
+            const category = parseCategoryQr(rawValue);
 
             if (!category) {
-              setMessage(
-                "Inventory OSで発行した大分類QRを読み取ってください。"
-              );
               return;
             }
 
-            handledRef.current = true;
+            const now = Date.now();
+            const isDuplicate =
+              rawValue === lastValueRef.current &&
+              now - lastDetectedAtRef.current < 1800;
+
+            if (isDuplicate) {
+              return;
+            }
+
+            lastValueRef.current = rawValue;
+            lastDetectedAtRef.current = now;
+
             navigator.vibrate?.(100);
 
-            stopCamera();
+            setLastReadCategory(category);
+            setMessage(`大分類「${category}」を適用しました。`);
             onDetectedRef.current(category);
-            onCloseRef.current();
           }
         );
       } catch (error) {
         console.error("CATEGORY_QR_CAMERA_ERROR", error);
 
-        setMessage(
-          "カメラを起動できませんでした。カメラの利用を許可して、もう一度試してください。"
-        );
+        if (!disposed) {
+          setMessage(
+            "カメラを起動できませんでした。カメラの利用許可を確認して、もう一度試してください。"
+          );
+        }
       }
     };
 
@@ -129,44 +145,74 @@ export default function CategoryQrScanner({
   }, []);
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end bg-slate-950/70 sm:items-center sm:justify-center sm:p-6">
-      <section className="w-full rounded-t-3xl bg-white p-5 shadow-2xl sm:max-w-xl sm:rounded-3xl">
-        <div className="flex items-start justify-between gap-4">
+    <div className="fixed inset-0 z-50 bg-slate-950 text-white">
+      <div className="mx-auto flex h-[100dvh] max-w-2xl flex-col">
+        <header className="flex items-start justify-between gap-4 px-4 py-4">
           <div>
-            <p className="text-sm font-bold tracking-widest text-indigo-600">
-              CATEGORY QR
+            <p className="text-xs font-bold tracking-widest text-indigo-300">
+              CATEGORY QR SCAN
             </p>
-
-            <h2 className="mt-1 text-2xl font-black text-slate-900">
-              大分類QRを読み取る
-            </h2>
+            <h2 className="mt-1 text-xl font-black">大分類QRを読み取る</h2>
+            <p className="mt-1 text-sm text-slate-300">
+              QR読取を終了するまで、カメラは開いたままです。
+            </p>
           </div>
 
           <button
             type="button"
-            onClick={onClose}
-            className="rounded-xl bg-slate-100 px-4 py-2 font-bold text-slate-700 hover:bg-slate-200"
+            onClick={() => onCloseRef.current()}
+            className="shrink-0 rounded-xl bg-white/15 px-4 py-3 text-sm font-bold text-white"
           >
-            閉じる
+            QR読取を終了
           </button>
-        </div>
+        </header>
 
-        <p className="mt-4 rounded-xl bg-indigo-50 px-4 py-3 text-sm font-bold text-indigo-800">
-          {message}
-        </p>
+        <section className="relative h-[38dvh] shrink-0 overflow-hidden bg-black">
+          <video
+            ref={videoRef}
+            autoPlay
+            muted
+            playsInline
+            className="h-full w-full object-cover"
+          />
 
-        <video
-          ref={videoRef}
-          autoPlay
-          muted
-          playsInline
-          className="mt-4 aspect-[4/3] w-full rounded-2xl bg-slate-950 object-cover"
-        />
+          <div className="pointer-events-none absolute inset-x-10 top-1/2 h-32 -translate-y-1/2 rounded-2xl border-4 border-white/80" />
+        </section>
 
-        <p className="mt-4 text-sm leading-6 text-slate-500">
-          棚や保管ケースに貼った「大分類QRラベル」を読み取ると、商品一覧をその大分類だけに絞り込みます。
-        </p>
-      </section>
+        <section className="min-h-0 flex-1 overflow-y-auto bg-slate-100 p-4 text-slate-900">
+          <div className="rounded-2xl bg-white p-5 shadow-sm">
+            <p className="text-sm font-medium text-slate-500">
+              読み取り状況
+            </p>
+            <p className="mt-2 font-bold text-slate-900">{message}</p>
+
+            <div className="mt-5 grid gap-3 sm:grid-cols-2">
+              <div className="rounded-2xl bg-indigo-50 p-4">
+                <p className="text-xs font-bold text-indigo-600">
+                  現在の大分類
+                </p>
+                <p className="mt-1 text-lg font-black text-indigo-950">
+                  {currentCategory ?? "未選択"}
+                </p>
+              </div>
+
+              <div className="rounded-2xl bg-emerald-50 p-4">
+                <p className="text-xs font-bold text-emerald-600">
+                  最後に読み取ったQR
+                </p>
+                <p className="mt-1 text-lg font-black text-emerald-950">
+                  {lastReadCategory ?? "まだ読み取っていません"}
+                </p>
+              </div>
+            </div>
+
+            <p className="mt-5 text-sm leading-6 text-slate-600">
+              大分類を読み取ると、その分類の棚卸対象だけに切り替わります。
+              別の大分類QRを読めば、続けて対象を変更できます。
+            </p>
+          </div>
+        </section>
+      </div>
     </div>
   );
 }

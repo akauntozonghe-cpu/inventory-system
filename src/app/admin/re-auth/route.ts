@@ -1,5 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getLoggedInUser, verifyPassword } from "@/lib/auth";
+import {
+  ADMIN_ELEVATION_COOKIE,
+  adminElevationCookieOptions,
+  createAdminElevationToken,
+  getLoggedInUser,
+  verifyPassword,
+} from "@/lib/auth";
 import { createAdminActionLog } from "@/lib/error-report";
 import { prisma } from "@/lib/prisma";
 
@@ -89,26 +95,38 @@ export async function POST(request: NextRequest) {
       detail: {
         authenticatedBy: currentUser.id,
         authenticatedByName: currentUser.displayName,
-        reason: "エラー画面からの管理者再認証",
+        reason: "棚卸画面の隠し管理者モードを有効化",
       },
     });
 
-    return NextResponse.json({
+    const response = NextResponse.json({
       success: true,
+      expiresInSeconds: 600,
       admin: {
         id: adminUser.id,
         username: adminUser.username,
         displayName: adminUser.displayName,
       },
     });
+
+    response.cookies.set(
+      ADMIN_ELEVATION_COOKIE,
+      createAdminElevationToken({
+        adminUserId: adminUser.id,
+        authenticatedByUserId: currentUser.id,
+      }),
+      adminElevationCookieOptions
+    );
+
+    return response;
   } catch (error) {
-    console.error("管理者再認証エラー", error);
+    console.error("ADMIN_REAUTH_500", error);
 
     return NextResponse.json(
       {
         success: false,
         code: "ADMIN_REAUTH_500",
-        message: "管理者認証を確認できませんでした。",
+        message: "管理者認証中にエラーが発生しました。",
       },
       { status: 500 }
     );

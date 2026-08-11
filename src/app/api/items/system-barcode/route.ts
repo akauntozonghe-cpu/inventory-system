@@ -1,7 +1,10 @@
 import { randomInt } from "node:crypto";
 import { Prisma } from "@prisma/client";
 import { NextRequest, NextResponse } from "next/server";
-import { getLoggedInUser, isAdmin } from "@/lib/auth";
+import {
+  getLoggedInUser,
+  hasAdminAccess,
+} from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 
 function calculateCheckDigit(base12: string) {
@@ -18,7 +21,7 @@ function calculateCheckDigit(base12: string) {
 }
 
 function createSystemJan() {
-  // 「20」始まりはシステム内で発行する管理用コードとして使う。
+  // GS1の正式JANとは区別する、システム内専用の13桁コード。
   const serial = randomInt(0, 10_000_000_000)
     .toString()
     .padStart(10, "0");
@@ -28,53 +31,57 @@ function createSystemJan() {
   return `${base12}${calculateCheckDigit(base12)}`;
 }
 
+function getItemId(body: unknown) {
+  if (
+    typeof body === "object" &&
+    body !== null &&
+    "itemId" in body &&
+    typeof body.itemId === "string"
+  ) {
+    return body.itemId.trim();
+  }
+
+  return "";
+}
+
 export async function POST(request: NextRequest) {
   try {
-    const currentUser = await getLoggedInUser(request);
+    const currentUser = getLoggedInUser(request);
 
     if (!currentUser) {
       return NextResponse.json(
         {
+          success: false,
           code: "AUTH_REQUIRED",
-          message: "ログインが必要です。",
+          message: "ログイン情報を確認できませんでした。",
         },
-        {
-          status: 401,
-        }
+        { status: 401 }
       );
     }
 
-    if (!isAdmin(currentUser)) {
+    if (!hasAdminAccess(request)) {
       return NextResponse.json(
         {
-          code: "SYSTEM_JAN_ADMIN_ONLY",
-          message: "システムJANの発行は管理者のみ実行できます。",
+          success: false,
+          code: "SYSTEM_JAN_ADMIN_REQUIRED",
+          message:
+            "システムJANの発行には管理者認証が必要です。棚卸画面の管理者モードを有効にしてください。",
         },
-        {
-          status: 403,
-        }
+        { status: 403 }
       );
     }
 
     const body: unknown = await request.json();
-
-    const itemId =
-      typeof body === "object" &&
-      body !== null &&
-      "itemId" in body &&
-      typeof body.itemId === "string"
-        ? body.itemId
-        : "";
+    const itemId = getItemId(body);
 
     if (!itemId) {
       return NextResponse.json(
         {
+          success: false,
           code: "SYSTEM_JAN_ITEM_ID_REQUIRED",
           message: "商品IDが指定されていません。",
         },
-        {
-          status: 400,
-        }
+        { status: 400 }
       );
     }
 
@@ -87,30 +94,28 @@ export async function POST(request: NextRequest) {
     if (!item) {
       return NextResponse.json(
         {
+          success: false,
           code: "SYSTEM_JAN_ITEM_NOT_FOUND",
           message: "商品が見つかりません。",
         },
-        {
-          status: 404,
-        }
+        { status: 404 }
       );
     }
 
-    // 正式なJANがある商品は、それをそのまま利用する。
+    // 正式なJANが登録済みの商品には、システムJANを重複発行しない。
     if (item.janCode) {
       return NextResponse.json(
         {
+          success: false,
           code: "SYSTEM_JAN_REAL_JAN_EXISTS",
-          message: "この商品には既存のJANコードがあります。",
+          message: "この商品には既存のJANコードが登録されています。",
           item,
         },
-        {
-          status: 409,
-        }
+        { status: 409 }
       );
     }
 
-    // すでに発行済みなら同じシステムJANを返す。
+    // 発行済みなら同じコードを返す。
     if (item.systemBarcode) {
       return NextResponse.json({
         success: true,
@@ -119,7 +124,7 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    // 重複時だけ再生成する。
+    // 一意制約の衝突時だけ再試行する。
     for (let attempt = 0; attempt < 20; attempt += 1) {
       const systemBarcode = createSystemJan();
 
@@ -152,24 +157,23 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json(
       {
+        success: false,
         code: "SYSTEM_JAN_GENERATION_FAILED",
-        message: "システムJANを発行できませんでした。もう一度試してください。",
+        message:
+          "システムJANを発行できませんでした。時間をおいてもう一度試してください。",
       },
-      {
-        status: 500,
-      }
+      { status: 500 }
     );
   } catch (error) {
     console.error("SYSTEM_JAN_500", error);
 
     return NextResponse.json(
       {
+        success: false,
         code: "SYSTEM_JAN_500",
         message: "システムJANの発行中にエラーが発生しました。",
       },
-      {
-        status: 500,
-      }
+      { status: 500 }
     );
   }
 }
