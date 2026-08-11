@@ -8,9 +8,18 @@ import BarcodeCandidatePicker from "@/components/stocktake/BarcodeCandidatePicke
 import StocktakeInputPanel from "@/components/stocktake/StocktakeInputPanel";
 import StocktakeSearchCard from "@/components/stocktake/StocktakeSearchCard";
 import { saveStocktakeRecord } from "@/lib/stocktake-record-client";
+import AdminModeDialog from "@/components/stocktake/AdminModeDialog";
+import StocktakeAdminMenu from "@/components/stocktake/StocktakeAdminMenu";
+import UnregisteredItemDialog from "@/components/stocktake/UnregisteredItemDialog";
 
 type Filter = "ALL" | "UNRECORDED" | "RECORDED" | "DIFFERENCE";
 type Action = "PAUSE" | "COMPLETE" | null;
+
+type AdminUser = {
+  id: string;
+  username: string;
+  displayName: string;
+};
 
 type Inventory = {
   id: string;
@@ -118,6 +127,12 @@ export default function StocktakePage() {
   const [candidates, setCandidates] = useState<Inventory[]>([]);
   const [scannedCode, setScannedCode] = useState("");
   const [confirmAction, setConfirmAction] = useState<Action>(null);
+
+  const adminTapTimesRef = useRef<number[]>([]);
+  const [adminDialogOpen, setAdminDialogOpen] = useState(false);
+  const [adminMenuOpen, setAdminMenuOpen] = useState(false);
+  const [adminUser, setAdminUser] = useState<AdminUser | null>(null);
+  const [registerDialogOpen, setRegisterDialogOpen] = useState(false);
 
   const canEdit =
     progress?.session.status === "IN_PROGRESS" && !saving;
@@ -379,6 +394,20 @@ export default function StocktakePage() {
     setMessage(`大分類「${value}」で棚卸対象を絞り込みました。`);
   };
 
+  const handleTitleTap = () => {
+    const now = Date.now();
+
+    adminTapTimesRef.current = [
+      ...adminTapTimesRef.current.filter((time) => now - time < 1200),
+      now,
+    ];
+
+    if (adminTapTimesRef.current.length >= 3) {
+      adminTapTimesRef.current = [];
+      setAdminDialogOpen(true);
+    }
+  };
+
   return (
     <main className="min-h-screen overflow-x-hidden bg-slate-950 px-3 py-5 text-slate-900 sm:px-6 sm:py-8">
       <div className="mx-auto w-full max-w-7xl">
@@ -386,18 +415,51 @@ export default function StocktakePage() {
           <div className="min-w-0">
             <p className="text-sm font-bold text-blue-300">棚卸作業</p>
 
-            <h1 className="mt-1 break-words text-3xl font-black tracking-tight">
-              {progress?.session.title ?? "棚卸"}
-            </h1>
+            <button
+              type="button"
+              onClick={handleTitleTap}
+              className="mt-1 cursor-default select-none text-left"
+              aria-label="棚卸タイトル"
+            >
+              <h1 className="break-words text-3xl font-black tracking-tight">
+                {progress?.session.title ?? "棚卸"}
+              </h1>
+            </button>
 
             <p className="mt-2 text-sm text-slate-300">
               対象：{progress?.session.scopeLabel ?? "全在庫"}
             </p>
+
+            {adminUser && (
+              <div className="mt-3 flex flex-wrap items-center gap-2">
+                <span className="rounded-full bg-violet-500/20 px-3 py-1 text-xs font-black text-violet-200">
+                  管理者モード：{adminUser.displayName}
+                </span>
+
+                <button
+                  type="button"
+                  onClick={() => setAdminMenuOpen(true)}
+                  className="rounded-xl bg-violet-600 px-3 py-2 text-xs font-bold text-white"
+                >
+                  管理者メニュー
+                </button>
+              </div>
+            )}
           </div>
 
           <div className="grid w-full grid-cols-2 gap-2 sm:flex sm:w-auto sm:flex-wrap">
             {progress?.session.status === "IN_PROGRESS" && (
               <>
+                {adminUser && (
+                  <button
+                    type="button"
+                    onClick={() => setAdminMenuOpen(true)}
+                    className="min-h-12 w-full rounded-xl bg-violet-600 px-3 py-3 text-sm font-bold text-white sm:w-auto"
+                  >
+                    管理者
+                  </button>
+                )}
+
                 <button
                   type="button"
                   onClick={() => setCategoryCameraOpen(true)}
@@ -691,6 +753,59 @@ export default function StocktakePage() {
           }}
         />
       )}
+
+      <AdminModeDialog
+        open={adminDialogOpen}
+        sessionId={sessionId}
+        onClose={() => setAdminDialogOpen(false)}
+        onAuthenticated={(admin) => {
+          setAdminUser(admin);
+          setAdminDialogOpen(false);
+          setMessage(`管理者モードを開始しました：${admin.displayName}`);
+        }}
+      />
+
+      <StocktakeAdminMenu
+        open={adminMenuOpen}
+        adminName={adminUser?.displayName ?? ""}
+        onClose={() => setAdminMenuOpen(false)}
+        onRegisterItem={() => {
+          setAdminMenuOpen(false);
+          setRegisterDialogOpen(true);
+        }}
+        onIssueBarcode={() => {
+          setAdminMenuOpen(false);
+          router.push("/items");
+        }}
+        onOpenErrorReports={() => {
+          setAdminMenuOpen(false);
+          router.push("/admin/error-reports");
+        }}
+        onReload={() => {
+          setAdminMenuOpen(false);
+          void reload(keyword, filter, majorCategory);
+          setMessage("棚卸対象を再読み込みしました。");
+        }}
+        onExitAdminMode={() => {
+          setAdminMenuOpen(false);
+          setAdminUser(null);
+          setMessage("管理者モードを終了しました。");
+        }}
+      />
+
+      <UnregisteredItemDialog
+        open={registerDialogOpen}
+        sessionId={sessionId}
+        initialJanCode={scannedCode || keyword}
+        onClose={() => setRegisterDialogOpen(false)}
+        onRegistered={() => {
+          setRegisterDialogOpen(false);
+          setMessage("商品を登録し、今回の棚卸対象へ追加しました。");
+          setKeyword("");
+          setFilter("UNRECORDED");
+          void reload("", "UNRECORDED", majorCategory);
+        }}
+      />
 
       {confirmAction && (
         <div className="fixed inset-0 z-[70] grid place-items-center bg-slate-950/70 p-4">
