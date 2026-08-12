@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { FormEvent, useEffect, useState } from "react";
+import { type FormEvent, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 
 type Location = {
@@ -29,6 +29,7 @@ type FormState = {
   expirationDate: string;
   unit: string;
   quantity: string;
+  memo: string;
 };
 
 const initialForm: FormState = {
@@ -44,6 +45,7 @@ const initialForm: FormState = {
   expirationDate: "",
   unit: "個",
   quantity: "0",
+  memo: "",
 };
 
 function getMessage(data: unknown, fallback: string) {
@@ -64,7 +66,7 @@ async function readJson(response: Response): Promise<unknown> {
 
   if (!text.trim()) {
     throw new Error(
-      `サーバーから応答を受け取れませんでした。（HTTP ${response.status}）`
+      `サーバーから応答を受け取れませんでした。HTTP ${response.status}`
     );
   }
 
@@ -72,9 +74,24 @@ async function readJson(response: Response): Promise<unknown> {
     return JSON.parse(text) as unknown;
   } catch {
     throw new Error(
-      `サーバーから正しい応答を受け取れませんでした。（HTTP ${response.status}）`
+      `サーバーから正しい応答を受け取れませんでした。HTTP ${response.status}`
     );
   }
+}
+
+function isCurrentUser(value: unknown): value is CurrentUser {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    "id" in value &&
+    "username" in value &&
+    "displayName" in value &&
+    "role" in value &&
+    typeof value.id === "string" &&
+    typeof value.username === "string" &&
+    typeof value.displayName === "string" &&
+    (value.role === "ADMIN" || value.role === "WORKER")
+  );
 }
 
 export default function AddPage() {
@@ -83,26 +100,23 @@ export default function AddPage() {
   const [form, setForm] = useState<FormState>(initialForm);
   const [locations, setLocations] = useState<Location[]>([]);
   const [currentUser, setCurrentUser] = useState<CurrentUser | null>(null);
-  const [loadingLocations, setLoadingLocations] = useState(true);
-  const [loadingUser, setLoadingUser] = useState(true);
+
+  const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [generateSystemJan, setGenerateSystemJan] = useState(false);
+  const [generateSystemBarcode, setGenerateSystemBarcode] = useState(false);
+
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
 
   const isAdmin = currentUser?.role === "ADMIN";
-  const janIsEmpty = form.janCode.trim() === "";
+  const hasJanCode = form.janCode.trim().length > 0;
 
   useEffect(() => {
     const loadInitialData = async () => {
       try {
         const [locationResponse, userResponse] = await Promise.all([
-          fetch("/api/storage-locations", {
-            cache: "no-store",
-          }),
-          fetch("/api/auth/me", {
-            cache: "no-store",
-          }),
+          fetch("/api/storage-locations", { cache: "no-store" }),
+          fetch("/api/auth/me", { cache: "no-store" }),
         ]);
 
         const [locationData, userData] = await Promise.all([
@@ -119,23 +133,25 @@ export default function AddPage() {
           );
         }
 
-        if (!userResponse.ok) {
+        if (!userResponse.ok || !isCurrentUser(userData)) {
           throw new Error(
-            getMessage(userData, "ログイン情報を取得できませんでした。")
+            getMessage(
+              userData,
+              "ログイン情報を取得できませんでした。もう一度ログインしてください。"
+            )
           );
         }
 
         setLocations(locationData as Location[]);
-        setCurrentUser(userData as CurrentUser);
+        setCurrentUser(userData);
       } catch (loadError) {
         setError(
           loadError instanceof Error
             ? loadError.message
-            : "初期情報を取得できませんでした。"
+            : "初期データの取得に失敗しました。"
         );
       } finally {
-        setLoadingLocations(false);
-        setLoadingUser(false);
+        setLoading(false);
       }
     };
 
@@ -148,38 +164,32 @@ export default function AddPage() {
       [key]: value,
     }));
 
-    if (key === "janCode" && value.trim() !== "") {
-      setGenerateSystemJan(false);
+    if (key === "janCode" && value.trim()) {
+      setGenerateSystemBarcode(false);
     }
   };
 
   const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
 
-    setMessage("");
     setError("");
+    setMessage("");
 
-    if (!form.name.trim()) {
+    const name = form.name.trim();
+    const quantity = Number(form.quantity);
+
+    if (!name) {
       setError("商品名を入力してください。");
       return;
     }
 
-    const quantity = Number(form.quantity);
-
     if (!Number.isInteger(quantity) || quantity < 0) {
-      setError("在庫数は0以上の整数で入力してください。");
+      setError("数量は0以上の整数で入力してください。");
       return;
     }
 
-    if (janIsEmpty && !generateSystemJan) {
-      setError(
-        "JANコードを入力してください。JANがない商品は、管理者がシステムJANを発行して登録できます。"
-      );
-      return;
-    }
-
-    if (generateSystemJan && !isAdmin) {
-      setError("システムJANの発行は管理者のみ実行できます。");
+    if (generateSystemBarcode && !isAdmin) {
+      setError("システムバーコードの発行は管理者のみ実行できます。");
       return;
     }
 
@@ -194,7 +204,7 @@ export default function AddPage() {
         body: JSON.stringify({
           ...form,
           quantity,
-          generateSystemJan,
+          generateSystemBarcode,
         }),
       });
 
@@ -206,21 +216,19 @@ export default function AddPage() {
         );
       }
 
-      setMessage(
-        getMessage(
-          data,
-          generateSystemJan
-            ? "商品を登録し、システムJANを発行しました。"
-            : "商品を登録しました。"
-        )
-      );
+      const fallbackMessage = isAdmin
+        ? generateSystemBarcode
+          ? "商品を正式登録し、システムバーコードを発行しました。"
+          : "商品と在庫を正式登録しました。"
+        : "商品登録を申請しました。管理者の確認後に正式登録されます。";
 
+      setMessage(getMessage(data, fallbackMessage));
       setForm(initialForm);
-      setGenerateSystemJan(false);
+      setGenerateSystemBarcode(false);
 
       window.setTimeout(() => {
-        router.push("/items");
-      }, 1200);
+        router.push(isAdmin ? "/items" : "/");
+      }, 1400);
     } catch (submitError) {
       setError(
         submitError instanceof Error
@@ -237,22 +245,24 @@ export default function AddPage() {
       <div className="mx-auto max-w-4xl">
         <header className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
           <div>
-            <p className="text-sm font-bold tracking-widest text-blue-600">
+            <p className="text-sm font-black tracking-widest text-blue-600">
               INVENTORY OS
             </p>
 
             <h1 className="mt-1 text-3xl font-black text-slate-900">
-              商品登録
+              商品・在庫登録
             </h1>
 
             <p className="mt-2 text-slate-600">
-              商品情報と初期在庫をまとめて登録します。
+              {isAdmin
+                ? "管理者登録：商品と初期在庫をその場で正式登録します。"
+                : "一般ユーザー登録：内容は管理者確認後に正式登録されます。"}
             </p>
           </div>
 
           <Link
             href="/"
-            className="rounded-xl bg-white px-4 py-3 text-center font-bold text-slate-700 shadow-sm hover:bg-slate-50"
+            className="rounded-xl bg-slate-700 px-5 py-3 text-center font-bold text-white transition hover:bg-slate-800"
           >
             ホームへ戻る
           </Link>
@@ -260,18 +270,38 @@ export default function AddPage() {
 
         {error && (
           <section className="mb-5 rounded-2xl border border-red-200 bg-red-50 p-5">
-            <p className="text-sm font-bold text-red-600">
+            <p className="font-black text-red-700">
               商品登録エラー
             </p>
-            <p className="mt-2 text-slate-700">{error}</p>
+            <p className="mt-2 text-red-800">{error}</p>
           </section>
         )}
 
         {message && (
           <section className="mb-5 rounded-2xl border border-emerald-200 bg-emerald-50 p-5">
-            <p className="font-bold text-emerald-700">{message}</p>
+            <p className="font-black text-emerald-700">{message}</p>
             <p className="mt-1 text-sm text-emerald-700">
-              商品一覧へ移動します。
+              画面を移動します。
+            </p>
+          </section>
+        )}
+
+        {!loading && currentUser && (
+          <section
+            className={`mb-5 rounded-2xl border p-5 ${
+              isAdmin
+                ? "border-blue-200 bg-blue-50"
+                : "border-amber-200 bg-amber-50"
+            }`}
+          >
+            <p className="font-black text-slate-900">
+              ログイン中：{currentUser.displayName}
+            </p>
+
+            <p className="mt-1 text-sm text-slate-700">
+              {isAdmin
+                ? "管理者として正式登録できます。登録内容は操作ログに記録されます。"
+                : "登録内容は申請として保存され、管理者が確認・承認します。"}
             </p>
           </section>
         )}
@@ -279,12 +309,12 @@ export default function AddPage() {
         <form onSubmit={submit} className="space-y-5">
           <section className="rounded-3xl bg-white p-5 shadow-sm sm:p-7">
             <h2 className="text-xl font-black text-slate-900">
-              基本情報
+              商品情報
             </h2>
 
             <div className="mt-5 grid gap-4 sm:grid-cols-2">
               <label className="sm:col-span-2">
-                <span className="font-bold">
+                <span className="font-bold text-slate-800">
                   商品名 <span className="text-red-600">*</span>
                 </span>
 
@@ -292,74 +322,77 @@ export default function AddPage() {
                   value={form.name}
                   onChange={(event) => change("name", event.target.value)}
                   placeholder="例：救急絆創膏 Mサイズ 100枚入"
-                  className="mt-2 w-full rounded-xl border border-slate-300 px-4 py-3 outline-none focus:border-blue-600"
+                  className="mt-2 w-full rounded-xl border border-slate-300 px-4 py-3 outline-none transition focus:border-blue-600 focus:ring-2 focus:ring-blue-100"
                 />
               </label>
 
               <label>
-                <span className="font-bold">
-                  JANコード {!generateSystemJan && <span className="text-red-600">*</span>}
+                <span className="font-bold text-slate-800">
+                  JANコード
                 </span>
 
                 <input
                   value={form.janCode}
-                  onChange={(event) => change("janCode", event.target.value)}
-                  disabled={generateSystemJan}
+                  onChange={(event) =>
+                    change("janCode", event.target.value)
+                  }
+                  disabled={generateSystemBarcode}
                   inputMode="numeric"
                   placeholder="例：4901234567890"
-                  className="mt-2 w-full rounded-xl border border-slate-300 px-4 py-3 outline-none focus:border-blue-600 disabled:bg-slate-100"
+                  className="mt-2 w-full rounded-xl border border-slate-300 px-4 py-3 outline-none transition focus:border-blue-600 focus:ring-2 focus:ring-blue-100 disabled:bg-slate-100"
                 />
 
                 <span className="mt-1 block text-xs text-slate-500">
-                  パッケージに記載された既存JANを入力します。
+                  商品に印字されているJANコードを優先して入力します。
                 </span>
               </label>
 
               <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
-                <p className="font-bold text-slate-800">JANがない商品の場合</p>
+                <p className="font-bold text-slate-800">
+                  JANコードがない商品
+                </p>
 
-                {loadingUser ? (
-                  <p className="mt-2 text-sm text-slate-500">
-                    権限を確認しています…
-                  </p>
-                ) : isAdmin ? (
+                {isAdmin ? (
                   <>
-                    <label className="mt-3 flex cursor-pointer items-start gap-3">
+                    <label className="mt-3 flex items-start gap-3">
                       <input
                         type="checkbox"
-                        checked={generateSystemJan}
-                        disabled={!janIsEmpty && !generateSystemJan}
+                        checked={generateSystemBarcode}
+                        disabled={hasJanCode && !generateSystemBarcode}
                         onChange={(event) =>
-                          setGenerateSystemJan(event.target.checked)
+                          setGenerateSystemBarcode(event.target.checked)
                         }
                         className="mt-1 h-5 w-5"
                       />
 
                       <span>
                         <span className="block font-bold text-blue-700">
-                          システムJANを発行して登録
+                          システムバーコードを発行する
                         </span>
+
                         <span className="mt-1 block text-sm text-slate-600">
-                          このシステム内の検索・カメラ読取・棚卸に使う管理用番号を発行します。
+                          JANがない商品へ、システム内専用のバーコードを発行します。
                         </span>
                       </span>
                     </label>
 
-                    {!janIsEmpty && (
+                    {hasJanCode && (
                       <p className="mt-2 text-xs font-bold text-slate-500">
-                        既存JANが入力されているため、システムJANの発行は不要です。
+                        JANコードがある商品にはシステムバーコードを発行しません。
                       </p>
                     )}
                   </>
                 ) : (
                   <p className="mt-2 text-sm text-slate-600">
-                    JANがない商品の登録は、管理者へ依頼してください。
+                    JANが確認できない場合も、そのまま申請できます。管理者が確認時にシステムバーコードを発行できます。
                   </p>
                 )}
               </div>
 
               <label>
-                <span className="font-bold">管理コード</span>
+                <span className="font-bold text-slate-800">
+                  管理番号
+                </span>
 
                 <input
                   value={form.managementCode}
@@ -367,12 +400,14 @@ export default function AddPage() {
                     change("managementCode", event.target.value)
                   }
                   placeholder="任意"
-                  className="mt-2 w-full rounded-xl border border-slate-300 px-4 py-3 outline-none focus:border-blue-600"
+                  className="mt-2 w-full rounded-xl border border-slate-300 px-4 py-3 outline-none transition focus:border-blue-600 focus:ring-2 focus:ring-blue-100"
                 />
               </label>
 
               <label>
-                <span className="font-bold">管理グループコード</span>
+                <span className="font-bold text-slate-800">
+                  管理グループコード
+                </span>
 
                 <input
                   value={form.managementGroupCode}
@@ -380,12 +415,14 @@ export default function AddPage() {
                     change("managementGroupCode", event.target.value)
                   }
                   placeholder="任意"
-                  className="mt-2 w-full rounded-xl border border-slate-300 px-4 py-3 outline-none focus:border-blue-600"
+                  className="mt-2 w-full rounded-xl border border-slate-300 px-4 py-3 outline-none transition focus:border-blue-600 focus:ring-2 focus:ring-blue-100"
                 />
               </label>
 
-              <label>
-                <span className="font-bold">メーカー</span>
+              <label className="sm:col-span-2">
+                <span className="font-bold text-slate-800">
+                  メーカー
+                </span>
 
                 <input
                   value={form.manufacturer}
@@ -393,18 +430,22 @@ export default function AddPage() {
                     change("manufacturer", event.target.value)
                   }
                   placeholder="例：オレンジケア"
-                  className="mt-2 w-full rounded-xl border border-slate-300 px-4 py-3 outline-none focus:border-blue-600"
+                  className="mt-2 w-full rounded-xl border border-slate-300 px-4 py-3 outline-none transition focus:border-blue-600 focus:ring-2 focus:ring-blue-100"
                 />
               </label>
             </div>
           </section>
 
           <section className="rounded-3xl bg-white p-5 shadow-sm sm:p-7">
-            <h2 className="text-xl font-black text-slate-900">分類</h2>
+            <h2 className="text-xl font-black text-slate-900">
+              分類
+            </h2>
 
             <div className="mt-5 grid gap-4 sm:grid-cols-2">
               <label>
-                <span className="font-bold">大分類</span>
+                <span className="font-bold text-slate-800">
+                  大分類
+                </span>
 
                 <input
                   value={form.majorCategory}
@@ -412,39 +453,45 @@ export default function AddPage() {
                     change("majorCategory", event.target.value)
                   }
                   placeholder="例：衛生用品"
-                  className="mt-2 w-full rounded-xl border border-slate-300 px-4 py-3 outline-none focus:border-blue-600"
+                  className="mt-2 w-full rounded-xl border border-slate-300 px-4 py-3 outline-none transition focus:border-blue-600 focus:ring-2 focus:ring-blue-100"
                 />
               </label>
 
               <label>
-                <span className="font-bold">小分類</span>
+                <span className="font-bold text-slate-800">
+                  小分類
+                </span>
 
                 <input
                   value={form.minorCategory}
                   onChange={(event) =>
                     change("minorCategory", event.target.value)
                   }
-                  placeholder="例：救急絆創膏"
-                  className="mt-2 w-full rounded-xl border border-slate-300 px-4 py-3 outline-none focus:border-blue-600"
+                  placeholder="例：絆創膏"
+                  className="mt-2 w-full rounded-xl border border-slate-300 px-4 py-3 outline-none transition focus:border-blue-600 focus:ring-2 focus:ring-blue-100"
                 />
               </label>
             </div>
           </section>
 
           <section className="rounded-3xl bg-white p-5 shadow-sm sm:p-7">
-            <h2 className="text-xl font-black text-slate-900">初期在庫</h2>
+            <h2 className="text-xl font-black text-slate-900">
+              初期在庫
+            </h2>
 
             <div className="mt-5 grid gap-4 sm:grid-cols-2">
               <label>
-                <span className="font-bold">保管場所</span>
+                <span className="font-bold text-slate-800">
+                  保管場所
+                </span>
 
                 <select
                   value={form.storageLocationId}
-                  disabled={loadingLocations}
+                  disabled={loading}
                   onChange={(event) =>
                     change("storageLocationId", event.target.value)
                   }
-                  className="mt-2 w-full rounded-xl border border-slate-300 bg-white px-4 py-3 outline-none focus:border-blue-600 disabled:bg-slate-100"
+                  className="mt-2 w-full rounded-xl border border-slate-300 bg-white px-4 py-3 outline-none transition focus:border-blue-600 focus:ring-2 focus:ring-blue-100 disabled:bg-slate-100"
                 >
                   <option value="">未設定</option>
 
@@ -457,8 +504,8 @@ export default function AddPage() {
               </label>
 
               <label>
-                <span className="font-bold">
-                  在庫数 <span className="text-red-600">*</span>
+                <span className="font-bold text-slate-800">
+                  数量 <span className="text-red-600">*</span>
                 </span>
 
                 <input
@@ -466,35 +513,43 @@ export default function AddPage() {
                   min="0"
                   inputMode="numeric"
                   value={form.quantity}
-                  onChange={(event) => change("quantity", event.target.value)}
-                  className="mt-2 w-full rounded-xl border border-slate-300 px-4 py-3 outline-none focus:border-blue-600"
+                  onChange={(event) =>
+                    change("quantity", event.target.value)
+                  }
+                  className="mt-2 w-full rounded-xl border border-slate-300 px-4 py-3 outline-none transition focus:border-blue-600 focus:ring-2 focus:ring-blue-100"
                 />
               </label>
 
               <label>
-                <span className="font-bold">単位</span>
+                <span className="font-bold text-slate-800">
+                  単位
+                </span>
 
                 <input
                   value={form.unit}
                   onChange={(event) => change("unit", event.target.value)}
                   placeholder="例：個、箱"
-                  className="mt-2 w-full rounded-xl border border-slate-300 px-4 py-3 outline-none focus:border-blue-600"
+                  className="mt-2 w-full rounded-xl border border-slate-300 px-4 py-3 outline-none transition focus:border-blue-600 focus:ring-2 focus:ring-blue-100"
                 />
               </label>
 
               <label>
-                <span className="font-bold">ロット番号</span>
+                <span className="font-bold text-slate-800">
+                  ロット番号
+                </span>
 
                 <input
                   value={form.lotNo}
                   onChange={(event) => change("lotNo", event.target.value)}
                   placeholder="任意"
-                  className="mt-2 w-full rounded-xl border border-slate-300 px-4 py-3 outline-none focus:border-blue-600"
+                  className="mt-2 w-full rounded-xl border border-slate-300 px-4 py-3 outline-none transition focus:border-blue-600 focus:ring-2 focus:ring-blue-100"
                 />
               </label>
 
               <label className="sm:col-span-2">
-                <span className="font-bold">使用期限</span>
+                <span className="font-bold text-slate-800">
+                  使用期限
+                </span>
 
                 <input
                   type="date"
@@ -502,7 +557,21 @@ export default function AddPage() {
                   onChange={(event) =>
                     change("expirationDate", event.target.value)
                   }
-                  className="mt-2 w-full rounded-xl border border-slate-300 px-4 py-3 outline-none focus:border-blue-600"
+                  className="mt-2 w-full rounded-xl border border-slate-300 px-4 py-3 outline-none transition focus:border-blue-600 focus:ring-2 focus:ring-blue-100"
+                />
+              </label>
+
+              <label className="sm:col-span-2">
+                <span className="font-bold text-slate-800">
+                  メモ
+                </span>
+
+                <textarea
+                  rows={3}
+                  value={form.memo}
+                  onChange={(event) => change("memo", event.target.value)}
+                  placeholder="申請理由、商品の補足、保管上の注意など"
+                  className="mt-2 w-full resize-y rounded-xl border border-slate-300 px-4 py-3 outline-none transition focus:border-blue-600 focus:ring-2 focus:ring-blue-100"
                 />
               </label>
             </div>
@@ -510,14 +579,16 @@ export default function AddPage() {
 
           <button
             type="submit"
-            disabled={saving || loadingUser}
+            disabled={saving || loading || !currentUser}
             className="w-full rounded-2xl bg-blue-600 py-4 text-lg font-black text-white shadow-sm transition hover:bg-blue-700 disabled:bg-slate-400"
           >
             {saving
-              ? "商品を登録中…"
-              : generateSystemJan
-                ? "商品を登録してシステムJANを発行する"
-                : "商品と初期在庫を登録する"}
+              ? "送信中..."
+              : isAdmin
+                ? generateSystemBarcode
+                  ? "正式登録してシステムバーコードを発行"
+                  : "商品と初期在庫を正式登録"
+                : "商品登録を申請する"}
           </button>
         </form>
       </div>

@@ -1,48 +1,41 @@
 "use client";
 
-import { type ReactNode, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { BrowserMultiFormatReader } from "@zxing/browser";
+import {
+  BarcodeFormat,
+  DecodeHintType,
+  NotFoundException,
+} from "@zxing/library";
 
-type Props = {
+type BarcodeCameraProps = {
+  title?: string;
+  notice?: string;
+  closeOnDetect?: boolean;
   onDetected: (barcode: string) => void;
   onClose: () => void;
-  children?: ReactNode;
-  closeOnDetect?: boolean;
-  notice?: string;
+  children?: React.ReactNode;
 };
-
-type CameraDevice = {
-  deviceId: string;
-  label: string;
-};
-
-function findPreferredCamera(devices: CameraDevice[]) {
-  return (
-    devices.find((device) =>
-      /(back|rear|environment|背面)/i.test(device.label)
-    ) ??
-    devices[devices.length - 1] ??
-    devices[0]
-  );
-}
 
 export default function BarcodeCamera({
+  title = "バーコードを読み取る",
+  notice,
+  closeOnDetect = true,
   onDetected,
   onClose,
   children,
-  closeOnDetect = false,
-  notice = "",
-}: Props) {
-  const videoRef = useRef<HTMLVideoElement>(null);
+}: BarcodeCameraProps) {
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const controlsRef = useRef<{ stop: () => void } | null>(null);
+  const readerRef = useRef<BrowserMultiFormatReader | null>(null);
+  const detectedAtRef = useRef(0);
+  const stoppedRef = useRef(false);
   const onDetectedRef = useRef(onDetected);
   const onCloseRef = useRef(onClose);
 
-  const lastValueRef = useRef("");
-  const lastDetectedAtRef = useRef(0);
-  const closedAfterDetectionRef = useRef(false);
-
-  const [cameraMessage, setCameraMessage] = useState(
-    "バーコードを横長の枠内に入れてください。"
-  );
+  const [status, setStatus] = useState("カメラを起動しています…");
+  const [lastBarcode, setLastBarcode] = useState("");
+  const [cameraError, setCameraError] = useState("");
 
   useEffect(() => {
     onDetectedRef.current = onDetected;
@@ -50,19 +43,30 @@ export default function BarcodeCamera({
   }, [onDetected, onClose]);
 
   useEffect(() => {
-    let stopped = false;
-    let controls: { stop: () => void } | undefined;
+    let mounted = true;
+
+    const stopCamera = () => {
+      if (stoppedRef.current) {
+        return;
+      }
+
+      stoppedRef.current = true;
+
+      try {
+        controlsRef.current?.stop();
+      } catch {
+        // 停止済みの場合は何もしない
+      }
+
+      controlsRef.current = null;
+      readerRef.current = null;
+    };
 
     const startCamera = async () => {
       try {
-        const { BrowserMultiFormatReader } = await import("@zxing/browser");
-        const { BarcodeFormat, DecodeHintType } = await import(
-          "@zxing/library"
-        );
+        stoppedRef.current = false;
 
-        const hints = new Map();
-
-        // JAN/EAN、一般的な業務用バーコード、物流用ITFを対象にする。
+        const hints = new Map<DecodeHintType, BarcodeFormat[]>();
         hints.set(DecodeHintType.POSSIBLE_FORMATS, [
           BarcodeFormat.EAN_13,
           BarcodeFormat.EAN_8,
@@ -71,87 +75,102 @@ export default function BarcodeCamera({
           BarcodeFormat.CODE_128,
           BarcodeFormat.CODE_39,
           BarcodeFormat.CODE_93,
-          BarcodeFormat.CODABAR,
           BarcodeFormat.ITF,
+          BarcodeFormat.CODABAR,
+          BarcodeFormat.QR_CODE,
         ]);
 
-        // 読み取り精度を優先する。
-        hints.set(DecodeHintType.TRY_HARDER, true);
-
         const reader = new BrowserMultiFormatReader(hints, {
-          delayBetweenScanAttempts: 220,
-          delayBetweenScanSuccess: 900,
+          delayBetweenScanAttempts: 120,
+          delayBetweenScanSuccess: 700,
         });
 
-        const devices =
-          await BrowserMultiFormatReader.listVideoInputDevices();
+        readerRef.current = reader;
 
-        if (!videoRef.current || stopped) {
+        if (!videoRef.current) {
           return;
         }
 
-        const preferredCamera = findPreferredCamera(devices);
-
-        controls = await reader.decodeFromConstraints(
-  {
-    audio: false,
-    video: {
-      facingMode: {
-        ideal: "environment",
-      },
-      width: {
-        ideal: 1920,
-      },
-      height: {
-        ideal: 1080,
-      },
-    },
-  },
+        const controls = await reader.decodeFromConstraints(
+          {
+            audio: false,
+            video: {
+              facingMode: {
+                ideal: "environment",
+              },
+              width: {
+                ideal: 1920,
+              },
+              height: {
+                ideal: 1080,
+              },
+            },
+          },
           videoRef.current,
-          (result) => {
-            if (!result || stopped) {
+          (result, scanError) => {
+            if (!mounted || stoppedRef.current) {
               return;
             }
 
-            const value = result.getText().trim();
+            if (!result) {
+              if (
+                scanError &&
+                !(scanError instanceof NotFoundException) &&
+                scanError.name !== "NotFoundException"
+              ) {
+                console.warn("BARCODE_SCAN_WARNING", scanError);
+              }
 
-            if (!value) {
+              return;
+            }
+
+            const barcode = result.getText().trim();
+
+            if (!barcode) {
               return;
             }
 
             const now = Date.now();
-            const isDuplicate =
-              lastValueRef.current === value &&
-              now - lastDetectedAtRef.current < 2500;
 
-            if (isDuplicate) {
+            if (now - detectedAtRef.current < 900) {
               return;
             }
 
-            lastValueRef.current = value;
-            lastDetectedAtRef.current = now;
+            detectedAtRef.current = now;
+            setLastBarcode(barcode);
+            setStatus(`読み取りました：${barcode}`);
 
-            navigator.vibrate?.(100);
-            setCameraMessage(`読み取りました：${value}`);
-            onDetectedRef.current(value);
-
-            if (closeOnDetect && !closedAfterDetectionRef.current) {
-              closedAfterDetectionRef.current = true;
-              stopped = true;
-              controls?.stop();
+            if (closeOnDetect) {
+              stopCamera();
 
               window.setTimeout(() => {
-                onCloseRef.current();
+                if (mounted) {
+                  onDetectedRef.current(barcode);
+                }
               }, 250);
+
+              return;
             }
+
+            onDetectedRef.current(barcode);
           }
         );
+
+        controlsRef.current = controls;
+
+        if (mounted) {
+          setStatus(
+            closeOnDetect
+              ? "バーコードを枠内に合わせてください"
+              : "連続スキャン中"
+          );
+        }
       } catch (error) {
         console.error("BARCODE_CAMERA_ERROR", error);
 
-        if (!stopped) {
-          setCameraMessage(
-            "カメラを開始できませんでした。カメラの使用許可を確認してください。"
+        if (mounted) {
+          setCameraError(
+            "カメラを起動できませんでした。カメラの利用を許可し、ほかのアプリがカメラを使用していないか確認してください。"
           );
         }
       }
@@ -160,63 +179,101 @@ export default function BarcodeCamera({
     void startCamera();
 
     return () => {
-      stopped = true;
-      controls?.stop();
+      mounted = false;
+      stopCamera();
     };
   }, [closeOnDetect]);
 
-  const visibleNotice = notice || cameraMessage;
+  const handleClose = () => {
+    try {
+      controlsRef.current?.stop();
+    } catch {
+      // 停止済みの場合は何もしない
+    }
+
+    onCloseRef.current();
+  };
 
   return (
-    <div className="fixed inset-0 z-50 bg-slate-950 text-white">
-      <div className="mx-auto flex h-[100dvh] max-w-2xl flex-col">
-        <header className="flex items-center justify-between gap-4 px-4 py-4">
+    <div className="fixed inset-0 z-[110] overflow-y-auto bg-slate-950">
+      <div className="mx-auto min-h-screen max-w-4xl bg-slate-950 text-white">
+        <header className="flex items-start justify-between gap-4 border-b border-slate-800 px-5 py-5 sm:px-7">
           <div>
-            <p className="text-xs font-bold tracking-widest text-blue-300">
-              BARCODE SCAN
+            <p className="text-sm font-bold text-indigo-300">
+              {closeOnDetect ? "バーコード読取" : "連続スキャン"}
             </p>
 
-            <h2 className="mt-1 text-xl font-black">
-              {closeOnDetect ? "バーコードを読み取る" : "連続スキャン中"}
-            </h2>
+            <h1 className="mt-1 text-2xl font-black sm:text-3xl">{title}</h1>
 
-            <p className="mt-1 text-sm text-slate-300">
-              {closeOnDetect
-                ? "読み取ると自動でカメラを閉じます。"
-                : "保存後は、そのまま次の商品を読み取れます。"}
-            </p>
+            {notice && (
+              <p className="mt-2 text-sm text-slate-300">{notice}</p>
+            )}
           </div>
 
           <button
             type="button"
-            onClick={() => onCloseRef.current()}
-            className="shrink-0 rounded-xl bg-white/15 px-4 py-3 text-sm font-bold"
+            onClick={handleClose}
+            className="shrink-0 rounded-xl bg-slate-700 px-4 py-3 font-bold text-white transition hover:bg-slate-600"
           >
             閉じる
           </button>
         </header>
 
-        <section className="relative h-[34dvh] shrink-0 overflow-hidden bg-black">
-          <video
-            ref={videoRef}
-            autoPlay
-            muted
-            playsInline
-            className="h-full w-full object-cover"
-          />
+        <main className="space-y-5 p-5 sm:p-7">
+          <section className="rounded-3xl bg-black p-3 shadow-2xl">
+            <div className="relative aspect-[4/3] overflow-hidden rounded-2xl border-4 border-indigo-400 bg-black sm:aspect-video">
+              <video
+                ref={videoRef}
+                autoPlay
+                muted
+                playsInline
+                className="h-full w-full object-cover"
+              />
 
-          <div className="pointer-events-none absolute inset-x-8 top-1/2 h-32 -translate-y-1/2 rounded-2xl border-4 border-white/90 shadow-[0_0_0_9999px_rgba(0,0,0,0.35)]" />
-
-          <p className="absolute inset-x-4 bottom-4 rounded-2xl bg-slate-950/85 px-4 py-3 text-center text-sm font-bold">
-            {visibleNotice}
-          </p>
-        </section>
-
-        {!closeOnDetect && (
-          <section className="min-h-0 flex-1 overflow-y-auto bg-slate-100 p-4 text-slate-900">
-            {children}
+              <div className="pointer-events-none absolute inset-x-[7%] inset-y-[28%] rounded-2xl border-4 border-white/90">
+                <div className="absolute -left-1 -top-1 h-9 w-9 rounded-tl-xl border-l-8 border-t-8 border-indigo-400" />
+                <div className="absolute -right-1 -top-1 h-9 w-9 rounded-tr-xl border-r-8 border-t-8 border-indigo-400" />
+                <div className="absolute -bottom-1 -left-1 h-9 w-9 rounded-bl-xl border-b-8 border-l-8 border-indigo-400" />
+                <div className="absolute -bottom-1 -right-1 h-9 w-9 rounded-br-xl border-b-8 border-r-8 border-indigo-400" />
+              </div>
+            </div>
           </section>
-        )}
+
+          <section className="rounded-3xl bg-white p-5 text-center text-slate-950 shadow-xl">
+            {cameraError ? (
+              <>
+                <p className="font-black text-red-600">
+                  カメラを起動できませんでした
+                </p>
+                <p className="mt-3 text-sm leading-6 text-slate-600">
+                  {cameraError}
+                </p>
+              </>
+            ) : (
+              <>
+                <p className="text-sm font-bold text-indigo-600">
+                  {closeOnDetect ? "読み取り待機中" : "連続スキャン中"}
+                </p>
+
+                <p className="mt-2 text-lg font-black">{status}</p>
+
+                {!closeOnDetect && (
+                  <p className="mt-3 text-sm text-slate-500">
+                    数量を保存後、そのまま次の商品を読み取れます。
+                  </p>
+                )}
+
+                {lastBarcode && (
+                  <p className="mt-3 break-all text-sm text-slate-500">
+                    最終読取：{lastBarcode}
+                  </p>
+                )}
+              </>
+            )}
+          </section>
+
+          {children}
+        </main>
       </div>
     </div>
   );

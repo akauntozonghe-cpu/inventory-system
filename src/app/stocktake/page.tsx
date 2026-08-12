@@ -336,8 +336,23 @@ export default function StocktakePage() {
         <aside className="hidden lg:block">{quantityPanel || <div className="sticky top-6 rounded-3xl border border-slate-200 bg-white p-7 text-center shadow-sm"><p className="text-lg font-bold">商品を選んでください</p><p className="mt-2 text-sm text-slate-500">カードを選ぶか、カメラでバーコードを読み取ると数量を入力できます。</p></div>}</aside>
       </div>
     </div>
-    {singleCameraOpen && <BarcodeCamera onDetected={(barcode) => scanBarcode(barcode, false)} onClose={() => setSingleCameraOpen(false)} closeOnDetect />}
-    {scannerOpen && <BarcodeCamera onDetected={(barcode) => scanBarcode(barcode, true)} onClose={() => { setScannerOpen(false); setSelected(null); setQuantity(""); setScannerCandidates([]); }}><div className="max-h-[55vh] overflow-y-auto">{selected ? quantityPanel : scannerCandidates.length > 0 ? <div className="space-y-2"><p className="px-1 text-sm font-bold text-slate-700">複数の在庫が見つかりました。保管場所を選んでください。</p>{scannerCandidates.map((item) => <button key={item.id} type="button" onClick={() => selectItem(item)} className="w-full rounded-xl bg-white p-4 text-left shadow"><p className="font-bold">{item.item.name}</p><p className="mt-1 text-sm text-slate-600">保管場所：{item.storageLocation?.name ?? "未設定"}</p><p className="text-sm font-bold text-blue-600">現在庫：{item.expectedQuantity}</p></button>)}</div> : <div className="rounded-2xl bg-white p-5 text-center shadow"><p className="font-bold">商品を読み取ってください</p><p className="mt-2 text-sm text-slate-600">読み取った商品と数量入力が、ここに表示されます。</p></div>}</div></BarcodeCamera>}
+    {singleCameraOpen && (
+  <BarcodeCamera
+    title="バーコードを読み取る"
+    closeOnDetect
+    onDetected={(barcode) => scanBarcode(barcode, false)}
+    onClose={() => setSingleCameraOpen(false)}
+  />
+)}
+
+{scannerOpen && (
+  <BarcodeCamera
+    title="連続スキャン"
+    closeOnDetect={false}
+    onDetected={(barcode) => scanBarcode(barcode, true)}
+    onClose={() => setScannerOpen(false)}
+  />
+)}
     {systemError && <div role="alertdialog" aria-live="assertive" className="fixed inset-0 z-[70] grid place-items-center bg-slate-950/75 p-5"><section className="w-full max-w-md rounded-3xl bg-white p-6 text-slate-900 shadow-2xl"><p className="text-sm font-bold text-red-600">システム保護エラー</p><h2 className="mt-2 text-2xl font-bold">作業を安全停止しました</h2><p className="mt-4 leading-7 text-slate-700">{systemError}</p>{errorRequiresAcknowledgement ? <><p className="mt-4 text-sm text-slate-500">このエラーを確認するまで、棚卸の操作はできません。</p><button type="button" onClick={() => router.replace("/stocktake/start")} className="mt-6 w-full rounded-2xl bg-slate-800 py-4 text-lg font-bold text-white">開始画面へ戻る</button></> : <p className="mt-4 text-sm text-slate-500">保存済みの棚卸データは保護されています。開始画面へ戻ります。</p>}</section></div>}
     {progress?.session.status === "PAUSED" && !systemError && <div className="fixed inset-0 z-[60] grid place-items-center bg-slate-950/70 p-5"><section className="w-full max-w-md rounded-3xl bg-white p-6 text-center text-slate-900 shadow-2xl"><p className="text-sm font-bold text-orange-600">棚卸は中断中です</p><h2 className="mt-2 text-2xl font-bold">すべての操作を停止しています</h2><p className="mt-4 text-slate-600">カメラ・検索・数量入力・保存は、再開するまで使えません。</p><button type="button" onClick={() => changeStatus("RESUME")} className="mt-6 w-full rounded-2xl bg-emerald-600 py-4 text-lg font-bold text-white">再開する</button></section></div>}
   </main>;

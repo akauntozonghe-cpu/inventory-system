@@ -1,22 +1,10 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
+import { FormEvent, useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 
-type Scope =
-  | "ALL"
-  | "LOCATION"
-  | "MAJOR_CATEGORY"
-  | "MINOR_CATEGORY";
-
-type Options = {
-  locations: Array<{
-    id: string;
-    name: string;
-  }>;
-  majorCategories: string[];
-  minorCategories: string[];
-};
+type ScopeType = "ALL" | "LOCATION" | "MAJOR_CATEGORY" | "MINOR_CATEGORY";
 
 type SessionStatus =
   | "IN_PROGRESS"
@@ -26,30 +14,43 @@ type SessionStatus =
   | "COMPLETED"
   | "CANCELLED";
 
-type Session = {
+type CurrentUser = {
+  id: string;
+  username: string;
+  displayName: string;
+  role: "ADMIN" | "WORKER";
+};
+
+type StocktakeSession = {
   id: string;
   title: string;
-  scopeLabel: string | null;
+  operator: string | null;
+  operatorUserName: string | null;
+  scopeType: ScopeType;
+  scopeValue: string | null;
+  scopeLabel: string;
   status: SessionStatus;
+  statusLabel: string;
   targetCount: number;
   recordedCount: number;
+  unrecordedCount: number;
+  progressPercent: number;
+  updatedAt: string;
+  canOpen: boolean;
+  canResume: boolean;
+  isAdminView: boolean;
 };
 
-type CurrentUser = {
-  displayName: string;
-};
-
-const scopeLabels: Record<Scope, string> = {
-  ALL: "全在庫",
-  LOCATION: "保管場所ごと",
-  MAJOR_CATEGORY: "大分類ごと",
-  MINOR_CATEGORY: "小分類ごと",
+type OptionData = {
+  storageLocations: string[];
+  majorCategories: string[];
+  minorCategories: string[];
 };
 
 function getMessage(value: unknown, fallback: string) {
   if (
+    value &&
     typeof value === "object" &&
-    value !== null &&
     "message" in value &&
     typeof value.message === "string"
   ) {
@@ -59,160 +60,171 @@ function getMessage(value: unknown, fallback: string) {
   return fallback;
 }
 
-async function readJson(response: Response): Promise<unknown> {
-  const text = await response.text();
+function getStringArray(
+  value: Record<string, unknown>,
+  key: string
+): string[] {
+  const target = value[key];
 
-  if (!text.trim()) {
-    throw new Error(
-      `サーバーから応答がありません。HTTP ${response.status}`
-    );
+  return Array.isArray(target)
+    ? target.filter((item): item is string => typeof item === "string")
+    : [];
+}
+
+function formatDate(value: string) {
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) {
+    return "-";
   }
 
-  try {
-    return JSON.parse(text) as unknown;
-  } catch {
-    throw new Error(
-      `正しい応答を取得できませんでした。HTTP ${response.status}`
-    );
+  return new Intl.DateTimeFormat("ja-JP", {
+    year: "numeric",
+    month: "numeric",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(date);
+}
+
+function getScopeLabel(scopeType: ScopeType) {
+  switch (scopeType) {
+    case "ALL":
+      return "全在庫";
+    case "LOCATION":
+      return "保管場所ごと";
+    case "MAJOR_CATEGORY":
+      return "大分類ごと";
+    case "MINOR_CATEGORY":
+      return "小分類ごと";
   }
 }
 
-function isOptions(value: unknown): value is Options {
-  return (
-    typeof value === "object" &&
-    value !== null &&
-    "locations" in value &&
-    "majorCategories" in value &&
-    "minorCategories" in value &&
-    Array.isArray(value.locations) &&
-    Array.isArray(value.majorCategories) &&
-    Array.isArray(value.minorCategories)
-  );
-}
-
-function isSessions(value: unknown): value is Session[] {
-  return Array.isArray(value);
-}
-
-function isCurrentUser(value: unknown): value is CurrentUser {
-  return (
-    typeof value === "object" &&
-    value !== null &&
-    "displayName" in value &&
-    typeof value.displayName === "string"
-  );
-}
-
-function getSessionLabel(status: SessionStatus) {
+function getStatusClass(status: SessionStatus) {
   switch (status) {
     case "PAUSED":
-      return "中断中の棚卸";
-    case "IN_PROGRESS":
-      return "作業中の棚卸";
+      return "bg-orange-100 text-orange-700";
     case "REVIEW":
-      return "確認待ちの棚卸";
+      return "bg-indigo-100 text-indigo-700";
     case "CONFLICT":
-      return "競合停止中の棚卸";
-    case "CANCELLED":
-      return "安全終了した棚卸";
+      return "bg-red-100 text-red-700";
     case "COMPLETED":
-      return "終了済みの棚卸";
+      return "bg-emerald-100 text-emerald-700";
+    default:
+      return "bg-blue-100 text-blue-700";
   }
 }
 
 export default function StocktakeStartPage() {
   const router = useRouter();
 
-  const [options, setOptions] = useState<Options>({
-    locations: [],
+  const [currentUser, setCurrentUser] = useState<CurrentUser | null>(null);
+  const [sessions, setSessions] = useState<StocktakeSession[]>([]);
+  const [options, setOptions] = useState<OptionData>({
+    storageLocations: [],
     majorCategories: [],
     minorCategories: [],
   });
 
-  const [sessions, setSessions] = useState<Session[]>([]);
-  const [operator, setOperator] = useState("");
   const [title, setTitle] = useState("");
+  const [operator, setOperator] = useState("");
   const [memo, setMemo] = useState("");
-  const [scopeType, setScopeType] = useState<Scope>("ALL");
+  const [scopeType, setScopeType] = useState<ScopeType>("ALL");
   const [scopeValue, setScopeValue] = useState("");
 
-  const [saving, setSaving] = useState(false);
-  const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(true);
+  const [starting, setStarting] = useState(false);
+  const [resumingId, setResumingId] = useState<string | null>(null);
+  const [error, setError] = useState("");
+
+  const loadPageData = useCallback(async () => {
+    const [userResponse, sessionResponse, optionsResponse] =
+      await Promise.all([
+        fetch("/api/auth/me", { cache: "no-store" }),
+        fetch("/api/stocktake/session", { cache: "no-store" }),
+        fetch("/api/stocktake/options", { cache: "no-store" }),
+      ]);
+
+    const userData: unknown = await userResponse.json().catch(() => null);
+    const sessionData: unknown = await sessionResponse.json().catch(() => null);
+    const optionsData: unknown = await optionsResponse.json().catch(() => null);
+
+    if (!userResponse.ok) {
+      throw new Error(
+        getMessage(userData, "ログイン情報を取得できませんでした。")
+      );
+    }
+
+    if (!sessionResponse.ok) {
+      throw new Error(
+        getMessage(sessionData, "棚卸一覧を取得できませんでした。")
+      );
+    }
+
+    if (!optionsResponse.ok) {
+      throw new Error(
+        getMessage(optionsData, "棚卸の選択肢を取得できませんでした。")
+      );
+    }
+
+    const user =
+      userData &&
+      typeof userData === "object" &&
+      "user" in userData &&
+      userData.user &&
+      typeof userData.user === "object"
+        ? (userData.user as CurrentUser)
+        : null;
+
+    if (!user) {
+      throw new Error(
+        "ログイン情報が不完全です。もう一度ログインしてください。"
+      );
+    }
+
+    const sessionList =
+      sessionData &&
+      typeof sessionData === "object" &&
+      "sessions" in sessionData &&
+      Array.isArray(sessionData.sessions)
+        ? (sessionData.sessions as StocktakeSession[])
+        : [];
+
+    const rawOptions =
+      optionsData && typeof optionsData === "object"
+        ? (optionsData as Record<string, unknown>)
+        : {};
+
+    setCurrentUser(user);
+    setSessions(sessionList);
+
+    setOptions({
+      storageLocations: getStringArray(rawOptions, "storageLocations"),
+      majorCategories: getStringArray(rawOptions, "majorCategories"),
+      minorCategories: getStringArray(rawOptions, "minorCategories"),
+    });
+
+    setOperator((previous) => previous || user.displayName);
+  }, []);
 
   useEffect(() => {
-    let cancelled = false;
+    let mounted = true;
 
     const load = async () => {
       try {
-        const [
-          meResponse,
-          optionsResponse,
-          sessionsResponse,
-        ] = await Promise.all([
-          fetch("/api/auth/me", { cache: "no-store" }),
-          fetch("/api/stocktake/options", {
-            cache: "no-store",
-          }),
-          fetch("/api/stocktake/session?active=true", {
-            cache: "no-store",
-          }),
-        ]);
-
-        const [me, optionsData, sessionsData] =
-          await Promise.all([
-            readJson(meResponse),
-            readJson(optionsResponse),
-            readJson(sessionsResponse),
-          ]);
-
-        if (meResponse.status === 401) {
-          router.replace("/login");
-          return;
-        }
-
-        if (!meResponse.ok || !isCurrentUser(me)) {
-          throw new Error(
-            getMessage(
-              me,
-              `AUTH_ME_${meResponse.status}: ログイン情報を確認できませんでした。`
-            )
-          );
-        }
-
-        if (!optionsResponse.ok || !isOptions(optionsData)) {
-          throw new Error(
-            getMessage(
-              optionsData,
-              `STOCKTAKE_OPTIONS_${optionsResponse.status}: 棚卸候補を取得できませんでした。`
-            )
-          );
-        }
-
-        if (!sessionsResponse.ok || !isSessions(sessionsData)) {
-          throw new Error(
-            getMessage(
-              sessionsData,
-              `STOCKTAKE_SESSIONS_${sessionsResponse.status}: 棚卸一覧を取得できませんでした。`
-            )
-          );
-        }
-
-        if (!cancelled) {
-          setOperator(me.displayName);
-          setOptions(optionsData);
-          setSessions(sessionsData);
-        }
-      } catch (error) {
-        if (!cancelled) {
-          setMessage(
-            error instanceof Error
-              ? error.message
-              : "STOCKTAKE_START_UNKNOWN: 初期情報を取得できませんでした。"
+        setLoading(true);
+        setError("");
+        await loadPageData();
+      } catch (loadError) {
+        if (mounted) {
+          setError(
+            loadError instanceof Error
+              ? loadError.message
+              : "棚卸開始画面を読み込めませんでした。"
           );
         }
       } finally {
-        if (!cancelled) {
+        if (mounted) {
           setLoading(false);
         }
       }
@@ -221,67 +233,25 @@ export default function StocktakeStartPage() {
     void load();
 
     return () => {
-      cancelled = true;
+      mounted = false;
     };
-  }, [router]);
+  }, [loadPageData]);
 
-  const values = useMemo(() => {
-    if (scopeType === "LOCATION") {
-      return options.locations.map((item) => ({
-        value: item.id,
-        label: item.name,
-      }));
-    }
+  const startStocktake = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
 
-    if (scopeType === "MAJOR_CATEGORY") {
-      return options.majorCategories.map((value) => ({
-        value,
-        label: value,
-      }));
-    }
-
-    if (scopeType === "MINOR_CATEGORY") {
-      return options.minorCategories.map((value) => ({
-        value,
-        label: value,
-      }));
-    }
-
-    return [];
-  }, [options, scopeType]);
-
-  const activeSession = sessions[0];
-
-  const start = async () => {
     if (!title.trim()) {
-      setMessage(
-        "STOCKTAKE_TITLE_REQUIRED: 棚卸名を入力してください。"
-      );
+      setError("棚卸名を入力してください。");
       return;
     }
 
-    if (!operator.trim()) {
-      setMessage(
-        "STOCKTAKE_OPERATOR_REQUIRED: 担当者名を入力してください。"
-      );
+    if (scopeType !== "ALL" && !scopeValue.trim()) {
+      setError(`${getScopeLabel(scopeType)}を選択してください。`);
       return;
     }
 
-    if (scopeType !== "ALL" && !scopeValue) {
-      setMessage(
-        "STOCKTAKE_SCOPE_REQUIRED: 棚卸範囲を選択してください。"
-      );
-      return;
-    }
-
-    setSaving(true);
-    setMessage("");
-
-    const scopeLabel =
-      scopeType === "ALL"
-        ? "全在庫"
-        : values.find((item) => item.value === scopeValue)
-            ?.label ?? "";
+    setStarting(true);
+    setError("");
 
     try {
       const response = await fetch("/api/stocktake/start", {
@@ -291,315 +261,327 @@ export default function StocktakeStartPage() {
         },
         body: JSON.stringify({
           title: title.trim(),
-          operator: operator.trim(),
-          memo: memo.trim(),
+          operator: operator.trim() || currentUser?.displayName || "管理者",
+          memo: memo.trim() || null,
           scopeType,
-          scopeValue,
-          scopeLabel,
+          scopeValue: scopeType === "ALL" ? null : scopeValue.trim(),
         }),
       });
 
-      const data = await readJson(response);
+      const data: unknown = await response.json().catch(() => null);
 
-      if (
-        !response.ok ||
-        typeof data !== "object" ||
-        data === null ||
-        !("id" in data) ||
-        typeof data.id !== "string"
-      ) {
+      if (!response.ok) {
         throw new Error(
-          getMessage(
-            data,
-            "STOCKTAKE_START_FAILED: 棚卸を開始できませんでした。"
-          )
+          getMessage(data, "棚卸を開始できませんでした。")
         );
       }
 
-      router.push(`/stocktake/${data.id}`);
-    } catch (error) {
-      setMessage(
-        error instanceof Error
-          ? error.message
-          : "STOCKTAKE_START_FAILED: 棚卸を開始できませんでした。"
+      const sessionId =
+        data &&
+        typeof data === "object" &&
+        "id" in data &&
+        typeof data.id === "string"
+          ? data.id
+          : data &&
+              typeof data === "object" &&
+              "session" in data &&
+              data.session &&
+              typeof data.session === "object" &&
+              "id" in data.session &&
+              typeof data.session.id === "string"
+            ? data.session.id
+            : "";
+
+      if (!sessionId) {
+        throw new Error("開始した棚卸情報を取得できませんでした。");
+      }
+
+      router.push(`/stocktake/${sessionId}`);
+    } catch (startError) {
+      setError(
+        startError instanceof Error
+          ? startError.message
+          : "棚卸を開始できませんでした。"
       );
     } finally {
-      setSaving(false);
+      setStarting(false);
     }
   };
 
-  const openActiveSession = async () => {
-    if (!activeSession || saving) {
-      return;
-    }
-
-    if (
-      activeSession.status === "REVIEW" ||
-      activeSession.status === "CONFLICT"
-    ) {
-      router.push(`/stocktake/${activeSession.id}/result`);
-      return;
-    }
-
-    setSaving(true);
-    setMessage("");
+  const resumeStocktake = async (session: StocktakeSession) => {
+    setResumingId(session.id);
+    setError("");
 
     try {
-      if (activeSession.status === "PAUSED") {
-        const response = await fetch(
-          `/api/stocktake/session/${activeSession.id}`,
-          {
-            method: "PATCH",
-            headers: {
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify({
-              action: "RESUME",
-            }),
-          }
-        );
+      if (session.status === "PAUSED") {
+        const response = await fetch(`/api/stocktake/session/${session.id}`, {
+          method: "PATCH",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            action: "RESUME",
+          }),
+        });
 
-        const data = await readJson(response);
+        const data: unknown = await response.json().catch(() => null);
 
         if (!response.ok) {
           throw new Error(
-            getMessage(
-              data,
-              "STOCKTAKE_RESUME_FAILED: 棚卸を再開できませんでした。"
-            )
+            getMessage(data, "棚卸を再開できませんでした。")
           );
         }
       }
 
-      router.push(`/stocktake/${activeSession.id}`);
-    } catch (error) {
-      setMessage(
-        error instanceof Error
-          ? error.message
-          : "STOCKTAKE_RESUME_FAILED: 棚卸を再開できませんでした。"
+      router.push(`/stocktake/${session.id}`);
+    } catch (resumeError) {
+      setError(
+        resumeError instanceof Error
+          ? resumeError.message
+          : "棚卸を開けませんでした。"
       );
     } finally {
-      setSaving(false);
+      setResumingId(null);
     }
   };
 
-  const activeActionLabel =
-    activeSession?.status === "PAUSED"
-      ? "再開して作業へ"
-      : activeSession?.status === "IN_PROGRESS"
-        ? "棚卸作業を開く"
-        : activeSession?.status === "CONFLICT"
-          ? "競合内容を確認する"
-          : "結果を確認する";
+  const scopeOptions =
+    scopeType === "LOCATION"
+      ? options.storageLocations
+      : scopeType === "MAJOR_CATEGORY"
+        ? options.majorCategories
+        : scopeType === "MINOR_CATEGORY"
+          ? options.minorCategories
+          : [];
 
   if (loading) {
     return (
-      <main className="grid min-h-screen place-items-center bg-slate-50 p-6">
-        <p className="font-bold text-slate-600">
-          棚卸情報を読み込んでいます…
-        </p>
+      <main className="min-h-screen bg-slate-950 p-5 text-white sm:p-8">
+        <div className="mx-auto max-w-5xl rounded-3xl bg-white p-8 text-slate-900">
+          棚卸開始画面を読み込んでいます…
+        </div>
       </main>
     );
   }
 
   return (
-    <main className="min-h-screen bg-slate-50 p-4 text-slate-900 sm:p-8">
-      <div className="mx-auto max-w-3xl">
-        <header className="mb-6 flex items-start justify-between gap-3">
+    <main className="min-h-screen bg-slate-950 pb-12 text-slate-950">
+      <header className="border-b border-slate-800 bg-slate-950 px-5 py-6 text-white sm:px-8">
+        <div className="mx-auto flex max-w-6xl flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
           <div>
-            <h1 className="text-3xl font-black">
-              棚卸開始
-            </h1>
-
-            <p className="mt-2 text-sm text-slate-600">
-              ログイン中：
-              <span className="ml-1 font-bold text-slate-900">
-                {operator || "読み込み中…"}
-              </span>
+            <p className="text-sm font-bold text-indigo-300">棚卸管理</p>
+            <h1 className="mt-1 text-3xl font-black sm:text-4xl">棚卸開始</h1>
+            <p className="mt-2 text-slate-300">
+              ログイン中：{currentUser?.displayName || "-"}
             </p>
           </div>
 
-          <button
-            type="button"
-            onClick={() => router.replace("/")}
-            className="rounded-xl bg-slate-700 px-4 py-3 font-bold text-white"
+          <Link
+            href="/"
+            className="rounded-xl bg-slate-700 px-5 py-3 text-center font-bold text-white transition hover:bg-slate-600"
           >
             ホームへ戻る
-          </button>
-        </header>
+          </Link>
+        </div>
+      </header>
 
-        {message && (
-          <p
-            role="alert"
-            className="mb-5 rounded-xl border border-red-200 bg-red-50 p-4 font-bold text-red-800"
-          >
-            {message}
-          </p>
+      <div className="mx-auto max-w-6xl space-y-7 p-5 sm:p-8">
+        {error && (
+          <div className="rounded-2xl border border-red-200 bg-red-50 px-5 py-4 font-bold text-red-800">
+            {error}
+          </div>
         )}
 
-        {activeSession ? (
-          <section
-            className={`rounded-2xl bg-white p-6 shadow-sm ${
-              activeSession.status === "CONFLICT"
-                ? "border-2 border-red-300"
-                : "border border-orange-200"
-            }`}
-          >
-            <p
-              className={`text-sm font-bold ${
-                activeSession.status === "CONFLICT"
-                  ? "text-red-700"
-                  : "text-orange-700"
-              }`}
-            >
-              {getSessionLabel(activeSession.status)}
+        {sessions.length > 0 && (
+          <section className="rounded-3xl bg-white p-5 shadow-sm sm:p-7">
+            <p className="text-sm font-bold text-indigo-600">
+              再開・確認できる棚卸
+            </p>
+            <h2 className="mt-1 text-2xl font-black">作業中の棚卸</h2>
+            <p className="mt-2 text-slate-600">
+              中断した棚卸は再開できます。確認待ち・競合中の棚卸は結果を確認してください。
             </p>
 
-            <h2 className="mt-1 text-2xl font-black">
-              {activeSession.title}
-            </h2>
+            <div className="mt-6 space-y-3">
+              {sessions.map((session) => (
+                <article
+                  key={session.id}
+                  className="rounded-2xl border border-slate-200 p-5"
+                >
+                  <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                    <div>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <h3 className="text-xl font-black">{session.title}</h3>
+                        <span
+                          className={`rounded-full px-3 py-1 text-sm font-black ${getStatusClass(
+                            session.status
+                          )}`}
+                        >
+                          {session.statusLabel}
+                        </span>
+                      </div>
 
-            <p className="mt-3 text-slate-600">
-              対象：
-              {activeSession.scopeLabel ?? "全在庫"}
-              <br />
-              進捗：
-              {activeSession.recordedCount} /{" "}
-              {activeSession.targetCount}件
-            </p>
+                      <p className="mt-2 text-slate-600">
+                        対象：{session.scopeLabel}
+                        {session.operatorUserName
+                          ? `　担当者：${session.operatorUserName}`
+                          : session.operator
+                            ? `　担当者：${session.operator}`
+                            : ""}
+                      </p>
 
-            {activeSession.status === "CONFLICT" && (
-              <p className="mt-4 rounded-xl bg-red-50 p-4 text-sm leading-6 text-red-800">
-                棚卸開始後に在庫数の変更を検知しました。
-                誤反映を防ぐため作業を停止しています。
-                結果画面から管理者が安全終了または内容確認を行えます。
-              </p>
-            )}
+                      <p className="mt-1 text-sm text-slate-500">
+                        進捗：{session.recordedCount} / {session.targetCount} 件
+                        （{session.progressPercent}%）　更新：
+                        {formatDate(session.updatedAt)}
+                      </p>
+                    </div>
 
-            {activeSession.status === "REVIEW" && (
-              <p className="mt-4 rounded-xl bg-amber-50 p-4 text-sm leading-6 text-amber-800">
-                旧バージョンで確認待ちになっている棚卸です。
-                結果画面から内容を確認してください。
-              </p>
-            )}
-
-            <button
-              type="button"
-              onClick={() => void openActiveSession()}
-              disabled={saving}
-              className={`mt-5 w-full rounded-xl py-3.5 text-lg font-bold text-white disabled:bg-slate-400 ${
-                activeSession.status === "CONFLICT"
-                  ? "bg-red-600"
-                  : "bg-blue-600"
-              }`}
-            >
-              {saving ? "処理中…" : activeActionLabel}
-            </button>
-          </section>
-        ) : (
-          <section className="rounded-2xl bg-white p-6 shadow-sm sm:p-8">
-            <h2 className="text-2xl font-black">
-              新しい棚卸を開始
-            </h2>
-
-            <div className="mt-6 space-y-5">
-              <label className="block font-bold">
-                棚卸名
-                <input
-                  value={title}
-                  onChange={(event) => setTitle(event.target.value)}
-                  className="mt-2 w-full rounded-xl border border-slate-300 p-3 font-normal outline-none focus:border-blue-500"
-                  placeholder="例：2026年8月 倉庫棚卸"
-                />
-              </label>
-
-              <label className="block font-bold">
-                担当者
-                <input
-                  value={operator}
-                  onChange={(event) =>
-                    setOperator(event.target.value)
-                  }
-                  className="mt-2 w-full rounded-xl border border-slate-300 p-3 font-normal outline-none focus:border-blue-500"
-                />
-
-                <span className="mt-1 block text-xs font-normal text-slate-500">
-                  ログイン中の表示名を自動入力しています。
-                  必要な場合のみ変更できます。
-                </span>
-              </label>
-
-              <div>
-                <p className="font-bold">棚卸範囲</p>
-
-                <div className="mt-2 grid grid-cols-2 gap-2">
-                  {(Object.keys(scopeLabels) as Scope[]).map(
-                    (scope) => (
-                      <button
-                        key={scope}
-                        type="button"
-                        onClick={() => {
-                          setScopeType(scope);
-                          setScopeValue("");
-                        }}
-                        className={`rounded-xl border p-3 text-left font-bold ${
-                          scopeType === scope
-                            ? "border-blue-600 bg-blue-50 text-blue-700"
-                            : "border-slate-200 bg-white"
-                        }`}
+                    {session.status === "REVIEW" ||
+                    session.status === "CONFLICT" ? (
+                      <Link
+                        href={`/stocktake/${session.id}/result`}
+                        className="rounded-xl bg-indigo-600 px-5 py-3 text-center font-black text-white transition hover:bg-indigo-500"
                       >
-                        {scopeLabels[scope]}
+                        結果を確認する
+                      </Link>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => void resumeStocktake(session)}
+                        disabled={!session.canOpen || resumingId === session.id}
+                        className="rounded-xl bg-emerald-600 px-5 py-3 font-black text-white transition hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        {resumingId === session.id
+                          ? "開いています…"
+                          : session.status === "PAUSED"
+                            ? "再開する"
+                            : "開く"}
                       </button>
-                    )
-                  )}
-                </div>
-              </div>
-
-              {scopeType !== "ALL" && (
-                <label className="block font-bold">
-                  {scopeLabels[scopeType]}を選択
-                  <select
-                    value={scopeValue}
-                    onChange={(event) =>
-                      setScopeValue(event.target.value)
-                    }
-                    className="mt-2 w-full rounded-xl border border-slate-300 p-3 font-normal outline-none focus:border-blue-500"
-                  >
-                    <option value="">
-                      選択してください
-                    </option>
-
-                    {values.map((value) => (
-                      <option key={value.value} value={value.value}>
-                        {value.label}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-              )}
-
-              <label className="block font-bold">
-                メモ
-                <textarea
-                  value={memo}
-                  onChange={(event) => setMemo(event.target.value)}
-                  className="mt-2 w-full rounded-xl border border-slate-300 p-3 font-normal outline-none focus:border-blue-500"
-                  rows={3}
-                  placeholder="必要な場合のみ入力"
-                />
-              </label>
-
-              <button
-                type="button"
-                onClick={() => void start()}
-                disabled={saving || !operator.trim()}
-                className="w-full rounded-2xl bg-blue-600 py-4 text-lg font-black text-white transition hover:bg-blue-700 disabled:bg-slate-400"
-              >
-                {saving ? "開始中…" : "棚卸を開始する"}
-              </button>
+                    )}
+                  </div>
+                </article>
+              ))}
             </div>
           </section>
         )}
+
+        <section className="rounded-3xl bg-white p-5 shadow-sm sm:p-7">
+          <p className="text-sm font-bold text-indigo-600">新しい棚卸</p>
+          <h2 className="mt-1 text-2xl font-black">棚卸を開始する</h2>
+
+          <form className="mt-6 space-y-6" onSubmit={startStocktake}>
+            <div>
+              <label className="block font-bold" htmlFor="stocktake-title">
+                棚卸名
+              </label>
+              <input
+                id="stocktake-title"
+                value={title}
+                onChange={(event) => setTitle(event.target.value)}
+                placeholder="例：2026年8月 倉庫棚卸"
+                className="mt-2 w-full rounded-xl border border-slate-300 px-4 py-3 text-lg outline-none focus:border-indigo-500"
+              />
+            </div>
+
+            <div>
+              <label className="block font-bold" htmlFor="stocktake-operator">
+                担当者
+              </label>
+              <input
+                id="stocktake-operator"
+                value={operator}
+                onChange={(event) => setOperator(event.target.value)}
+                className="mt-2 w-full rounded-xl border border-slate-300 px-4 py-3 outline-none focus:border-indigo-500"
+              />
+              <p className="mt-2 text-sm text-slate-500">
+                ログイン中のユーザー名を自動入力しています。実作業者が違う場合のみ変更してください。
+              </p>
+            </div>
+
+            <div>
+              <p className="font-bold">棚卸範囲</p>
+
+              <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-4">
+                {(
+                  [
+                    ["ALL", "全在庫"],
+                    ["LOCATION", "保管場所ごと"],
+                    ["MAJOR_CATEGORY", "大分類ごと"],
+                    ["MINOR_CATEGORY", "小分類ごと"],
+                  ] as const
+                ).map(([value, label]) => (
+                  <button
+                    key={value}
+                    type="button"
+                    onClick={() => {
+                      setScopeType(value);
+                      setScopeValue("");
+                    }}
+                    className={`rounded-xl border-2 px-4 py-4 text-left font-black transition ${
+                      scopeType === value
+                        ? "border-indigo-600 bg-indigo-50 text-indigo-700"
+                        : "border-slate-200 bg-white text-slate-700 hover:border-slate-300"
+                    }`}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+
+              {scopeType !== "ALL" && (
+                <div className="mt-4">
+                  <label className="block font-bold" htmlFor="scope-value">
+                    {getScopeLabel(scopeType)}
+                  </label>
+
+                  <select
+                    id="scope-value"
+                    value={scopeValue}
+                    onChange={(event) => setScopeValue(event.target.value)}
+                    className="mt-2 w-full rounded-xl border border-slate-300 px-4 py-3 outline-none focus:border-indigo-500"
+                  >
+                    <option value="">選択してください</option>
+
+                    {scopeOptions.map((option) => (
+                      <option key={option} value={option}>
+                        {option}
+                      </option>
+                    ))}
+                  </select>
+
+                  {scopeOptions.length === 0 && (
+                    <p className="mt-2 text-sm text-orange-600">
+                      選択肢がありません。在庫データの保管場所または分類を登録してから開始してください。
+                    </p>
+                  )}
+                </div>
+              )}
+            </div>
+
+            <div>
+              <label className="block font-bold" htmlFor="stocktake-memo">
+                メモ
+              </label>
+              <textarea
+                id="stocktake-memo"
+                rows={4}
+                value={memo}
+                onChange={(event) => setMemo(event.target.value)}
+                placeholder="必要であれば入力"
+                className="mt-2 w-full rounded-xl border border-slate-300 px-4 py-3 outline-none focus:border-indigo-500"
+              />
+            </div>
+
+            <button
+              type="submit"
+              disabled={starting}
+              className="w-full rounded-xl bg-indigo-600 px-5 py-4 text-lg font-black text-white transition hover:bg-indigo-500 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {starting ? "棚卸を開始しています…" : "棚卸を開始する"}
+            </button>
+          </form>
+        </section>
       </div>
     </main>
   );

@@ -1,15 +1,46 @@
 import { NextRequest, NextResponse } from "next/server";
 import { ItemService } from "@/services/ItemService";
 import { createAdminActionLog } from "@/lib/error-report";
-import { requireAdmin } from "@/lib/auth";
+import {
+  getLoggedInUser,
+  hasAdminAccess,
+  requireAdmin,
+} from "@/lib/auth";
 
 function errorMessage(error: unknown, fallback: string) {
   return error instanceof Error ? error.message : fallback;
 }
 
-export async function GET() {
+export async function GET(request: NextRequest) {
+  const user = getLoggedInUser(request);
+
+  if (!user) {
+    return NextResponse.json(
+      {
+        code: "ITEM_LIST_AUTH_REQUIRED",
+        message: "ログイン情報を確認できませんでした。",
+      },
+      { status: 401 }
+    );
+  }
+
   try {
-    const items = await ItemService.getAll();
+    const includeArchived =
+      request.nextUrl.searchParams.get("includeArchived") === "true";
+
+    if (includeArchived && !hasAdminAccess(request)) {
+      return NextResponse.json(
+        {
+          code: "ITEM_LIST_ARCHIVED_ADMIN_REQUIRED",
+          message: "廃止商品を表示するには管理者権限が必要です。",
+        },
+        { status: 403 }
+      );
+    }
+
+    const items = await ItemService.getAll({
+      includeArchived,
+    });
 
     return NextResponse.json(items);
   } catch (error) {
@@ -18,7 +49,7 @@ export async function GET() {
     return NextResponse.json(
       {
         code: "ITEM_LIST_500",
-        message: "商品一覧を取得できませんでした。",
+        message: errorMessage(error, "商品一覧を取得できませんでした。"),
       },
       { status: 500 }
     );
@@ -143,7 +174,7 @@ export async function DELETE(request: NextRequest) {
   }
 
   try {
-    const id = new URL(request.url).searchParams.get("id");
+    const id = request.nextUrl.searchParams.get("id");
 
     if (!id) {
       return NextResponse.json(
@@ -155,23 +186,37 @@ export async function DELETE(request: NextRequest) {
       );
     }
 
-    const deleted = await ItemService.delete(id);
+    const result = await ItemService.delete(id);
+
+    if (!result.deleted) {
+      return NextResponse.json(
+        {
+          code: "ITEM_DELETE_HAS_INVENTORY",
+          message: `この商品には在庫が${result.inventoryCount}件紐づいているため削除できません。商品情報を更新するか、廃止して運用してください。`,
+          itemId: result.item.id,
+          inventoryCount: result.inventoryCount,
+        },
+        { status: 409 }
+      );
+    }
 
     await createAdminActionLog({
       adminUserId: adminUser.id,
       action: "ITEM_DELETE",
       route: "/api/items",
       detail: {
-        itemId: deleted.id,
-        name: deleted.name,
-        janCode: deleted.janCode,
-        systemBarcode: deleted.systemBarcode,
+        itemId: result.item.id,
+        name: result.item.name,
+        janCode: result.item.janCode,
+        systemBarcode: result.item.systemBarcode,
       },
     });
 
     return NextResponse.json({
       success: true,
-      deletedItemId: deleted.id,
+      code: "ITEM_DELETE_OK",
+      message: "未使用の商品を削除しました。",
+      deletedItemId: result.item.id,
     });
   } catch (error) {
     console.error("DELETE /api/items", error);

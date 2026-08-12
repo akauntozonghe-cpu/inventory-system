@@ -1,61 +1,67 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import Link from "next/link";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { useParams, useRouter } from "next/navigation";
 import BarcodeCamera from "@/components/stocktake/BarcodeCamera";
 import CategoryQrScanner from "@/components/CategoryQrScanner";
-import BarcodeCandidatePicker from "@/components/stocktake/BarcodeCandidatePicker";
-import StocktakeInputPanel from "@/components/stocktake/StocktakeInputPanel";
-import StocktakeSearchCard from "@/components/stocktake/StocktakeSearchCard";
-import { saveStocktakeRecord } from "@/lib/stocktake-record-client";
-import AdminModeDialog from "@/components/stocktake/AdminModeDialog";
-import StocktakeAdminMenu from "@/components/stocktake/StocktakeAdminMenu";
-import UnregisteredItemDialog from "@/components/stocktake/UnregisteredItemDialog";
 
-type Filter = "ALL" | "UNRECORDED" | "RECORDED" | "DIFFERENCE";
-type Action = "PAUSE" | "COMPLETE" | null;
+type FilterType = "UNRECORDED" | "RECORDED" | "DIFFERENCE" | "ALL";
+type SessionAction = "PAUSE" | "RESUME" | "COMPLETE";
 
-type AdminUser = {
-  id: string;
-  username: string;
-  displayName: string;
-};
-
-type Inventory = {
+type InventoryItem = {
   id: string;
   expectedQuantity: number;
-  countedQuantity: number | null;
   isRecorded: boolean;
+  countedQuantity: number | null;
+  difference: number | null;
   lotNo: string | null;
   expirationDate: string | null;
   unit: string | null;
+  storageLocation: {
+    id: string;
+    name: string;
+  } | null;
   item: {
+    id: string;
     name: string;
     janCode: string | null;
     systemBarcode: string | null;
     managementCode: string | null;
-    managementGroupCode: string | null;
+    managementGroupCode?: string | null;
     manufacturer: string | null;
     majorCategory: string | null;
     minorCategory: string | null;
     defaultUnit: string | null;
   };
-  storageLocation: {
-    name: string;
-  } | null;
 };
 
-type Progress = {
+type ProgressData = {
+  success: boolean;
+  code?: string;
+  message?: string;
   session: {
     id: string;
     title: string;
+    operator: string | null;
     scopeLabel: string | null;
-    status:
-      | "IN_PROGRESS"
-      | "PAUSED"
-      | "REVIEW"
-      | "CONFLICT"
-      | "COMPLETED";
+    status: "IN_PROGRESS" | "PAUSED" | "REVIEW" | "COMPLETED" | "CANCELLED";
+    startedAt: string;
+    pausedAt: string | null;
+    completedAt: string | null;
+    cancelledAt?: string | null;
+  };
+  permissions: {
+    isOperator: boolean;
+    isAdmin: boolean;
+    canOperate: boolean;
+    canManage: boolean;
   };
   summary: {
     targetCount: number;
@@ -67,315 +73,410 @@ type Progress = {
   };
 };
 
-function getMessage(data: unknown, fallback: string) {
+type ConfirmState = {
+  title: string;
+  message: string;
+  action: () => Promise<void>;
+  confirmLabel: string;
+  tone: "orange" | "blue" | "green";
+} | null;
+
+function readErrorMessage(value: unknown, fallback: string) {
   if (
-    typeof data === "object" &&
-    data !== null &&
-    "message" in data &&
-    typeof data.message === "string"
+    value &&
+    typeof value === "object" &&
+    "message" in value &&
+    typeof value.message === "string"
   ) {
-    return data.message;
+    return value.message;
   }
 
   return fallback;
 }
 
-async function readJson(response: Response): Promise<unknown> {
-  const text = await response.text();
-
-  if (!text.trim()) {
-    throw new Error(
-      `サーバーから応答がありませんでした。HTTP ${response.status}`
-    );
-  }
-
-  try {
-    return JSON.parse(text) as unknown;
-  } catch {
-    throw new Error(
-      `正しい応答を取得できませんでした。HTTP ${response.status}`
-    );
+function statusLabel(status: ProgressData["session"]["status"]) {
+  switch (status) {
+    case "IN_PROGRESS":
+      return "棚卸作業中";
+    case "PAUSED":
+      return "中断中";
+    case "REVIEW":
+      return "確認待ち";
+    case "COMPLETED":
+      return "完了";
+    case "CANCELLED":
+      return "取消";
+    default:
+      return status;
   }
 }
 
-const filters: Array<[Filter, string]> = [
-  ["UNRECORDED", "未棚卸のみ"],
-  ["RECORDED", "棚卸済み"],
-  ["DIFFERENCE", "差異あり"],
-  ["ALL", "すべて"],
-];
-
 export default function StocktakePage() {
-  const { id: sessionId } = useParams<{ id: string }>();
+  const params = useParams<{ id: string }>();
   const router = useRouter();
+  const sessionId = params.id;
 
-  const searchRef = useRef<HTMLInputElement>(null);
-  const quantityRef = useRef<HTMLInputElement>(null);
-  const scanLockRef = useRef(false);
-
-  const [progress, setProgress] = useState<Progress | null>(null);
-  const [items, setItems] = useState<Inventory[]>([]);
-  const [selected, setSelected] = useState<Inventory | null>(null);
-  const [expandedItemId, setExpandedItemId] = useState<string | null>(null);
+  const [progress, setProgress] = useState<ProgressData | null>(null);
+  const [items, setItems] = useState<InventoryItem[]>([]);
+  const [selected, setSelected] = useState<InventoryItem | null>(null);
 
   const [keyword, setKeyword] = useState("");
-  const [filter, setFilter] = useState<Filter>("UNRECORDED");
+  const [filter, setFilter] = useState<FilterType>("UNRECORDED");
   const [majorCategory, setMajorCategory] = useState<string | null>(null);
-  const [quantity, setQuantity] = useState("");
+
+  const [countedQuantity, setCountedQuantity] = useState("");
+  const [memo, setMemo] = useState("");
 
   const [loading, setLoading] = useState(true);
+  const [searching, setSearching] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [message, setMessage] = useState("");
-  const [scanMessage, setScanMessage] = useState("");
-  const [errorMessage, setErrorMessage] = useState("");
+  const [changingStatus, setChangingStatus] = useState(false);
 
-  const [singleCameraOpen, setSingleCameraOpen] = useState(false);
+  const [normalCameraOpen, setNormalCameraOpen] = useState(false);
   const [continuousCameraOpen, setContinuousCameraOpen] = useState(false);
-  const [categoryCameraOpen, setCategoryCameraOpen] = useState(false);
+  const [categoryQrOpen, setCategoryQrOpen] = useState(false);
 
-  const [candidates, setCandidates] = useState<Inventory[]>([]);
-  const [scannedCode, setScannedCode] = useState("");
-  const [confirmAction, setConfirmAction] = useState<Action>(null);
+  const [message, setMessage] = useState("");
+  const [error, setError] = useState("");
+  const [confirm, setConfirm] = useState<ConfirmState>(null);
 
-  const adminTapTimesRef = useRef<number[]>([]);
-  const [adminDialogOpen, setAdminDialogOpen] = useState(false);
-  const [adminMenuOpen, setAdminMenuOpen] = useState(false);
-  const [adminUser, setAdminUser] = useState<AdminUser | null>(null);
-  const [registerDialogOpen, setRegisterDialogOpen] = useState(false);
+  const initializedRef = useRef(false);
+  const searchRequestRef = useRef(0);
+  const barcodeBusyRef = useRef(false);
 
-  const canEdit =
-    progress?.session.status === "IN_PROGRESS" && !saving;
+  const canOperate =
+    progress?.permissions.canOperate === true &&
+    progress.session.status === "IN_PROGRESS";
 
-  const fetchProgress = useCallback(async () => {
+  const isAdmin = progress?.permissions.isAdmin === true;
+  const canManage = progress?.permissions.canManage === true;
+
+  const loadProgress = useCallback(async () => {
     const response = await fetch(
-      `/api/stocktake/session/${encodeURIComponent(sessionId)}/progress`,
-      { cache: "no-store" }
+      `/api/stocktake/session/${sessionId}/progress`,
+      {
+        cache: "no-store",
+      }
     );
 
-    const data = await readJson(response);
+    const data: unknown = await response.json().catch(() => null);
 
     if (!response.ok) {
       throw new Error(
-        getMessage(data, "棚卸進捗を取得できませんでした。")
+        readErrorMessage(data, "棚卸進捗を取得できませんでした。")
       );
     }
 
-    setProgress(data as Progress);
+    setProgress(data as ProgressData);
   }, [sessionId]);
 
-  const fetchItems = useCallback(
+  const loadItems = useCallback(
     async (
-      nextKeyword: string,
-      nextFilter: Filter,
-      nextMajorCategory: string | null
+      nextKeyword = "",
+      nextFilter: FilterType = "UNRECORDED",
+      nextMajorCategory: string | null = null
     ) => {
-      const params = new URLSearchParams({
-        sessionId,
-        q: nextKeyword,
-        filter: nextFilter,
-      });
+      const requestId = ++searchRequestRef.current;
 
-      if (nextMajorCategory) {
-        params.set("majorCategory", nextMajorCategory);
-      }
+      setSearching(true);
 
-      const response = await fetch(
-        `/api/inventory/search?${params.toString()}`,
-        { cache: "no-store" }
-      );
+      try {
+        const query = new URLSearchParams({
+          sessionId,
+          filter: nextFilter,
+          q: nextKeyword,
+        });
 
-      const data = await readJson(response);
+        if (nextMajorCategory) {
+          query.set("majorCategory", nextMajorCategory);
+        }
 
-      if (!response.ok || !Array.isArray(data)) {
-        throw new Error(
-          getMessage(data, "棚卸対象を取得できませんでした。")
+        const response = await fetch(
+          `/api/inventory/search?${query.toString()}`,
+          {
+            cache: "no-store",
+          }
         );
-      }
 
-      setItems(data as Inventory[]);
+        const data: unknown = await response.json().catch(() => null);
+
+        if (!response.ok) {
+          throw new Error(
+            readErrorMessage(data, "棚卸対象の検索に失敗しました。")
+          );
+        }
+
+        if (!Array.isArray(data)) {
+          throw new Error("棚卸対象の形式が正しくありません。");
+        }
+
+        if (requestId === searchRequestRef.current) {
+          setItems(data as InventoryItem[]);
+        }
+      } finally {
+        if (requestId === searchRequestRef.current) {
+          setSearching(false);
+        }
+      }
     },
     [sessionId]
   );
 
-  const reload = useCallback(
-    async (
-      nextKeyword = keyword,
-      nextFilter = filter,
-      nextMajorCategory = majorCategory
-    ) => {
-      setLoading(true);
-      setErrorMessage("");
+  const refresh = useCallback(async () => {
+    await Promise.all([
+      loadProgress(),
+      loadItems(keyword, filter, majorCategory),
+    ]);
+  }, [filter, keyword, loadItems, loadProgress, majorCategory]);
 
+  useEffect(() => {
+    let mounted = true;
+
+    const initialize = async () => {
       try {
+        setLoading(true);
+        setError("");
+
         await Promise.all([
-          fetchProgress(),
-          fetchItems(nextKeyword, nextFilter, nextMajorCategory),
+          loadProgress(),
+          loadItems("", "UNRECORDED", null),
         ]);
-      } catch (error) {
-        setErrorMessage(
-          error instanceof Error
-            ? error.message
-            : "棚卸データの読み込みに失敗しました。"
-        );
+
+        if (mounted) {
+          initializedRef.current = true;
+        }
+      } catch (loadError) {
+        if (mounted) {
+          setError(
+            loadError instanceof Error
+              ? loadError.message
+              : "棚卸情報を読み込めませんでした。"
+          );
+        }
       } finally {
-        setLoading(false);
+        if (mounted) {
+          setLoading(false);
+        }
       }
-    },
-    [fetchItems, fetchProgress, filter, keyword, majorCategory]
-  );
+    };
+
+    void initialize();
+
+    return () => {
+      mounted = false;
+    };
+  }, [loadItems, loadProgress]);
 
   useEffect(() => {
-    void reload("", "UNRECORDED", null);
-    // 初回だけ読み込む
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  useEffect(() => {
-    const timer = window.setTimeout(() => {
-      void reload(keyword, filter, majorCategory);
-    }, 250);
-
-    return () => window.clearTimeout(timer);
-  }, [keyword, filter, majorCategory, reload]);
-
-  const selectItem = useCallback((item: Inventory) => {
-    setSelected(item);
-    setQuantity(String(item.countedQuantity ?? item.expectedQuantity));
-    setMessage("");
-    setErrorMessage("");
-
-    window.setTimeout(() => {
-      quantityRef.current?.focus();
-      quantityRef.current?.select();
-    }, 50);
-  }, []);
-
-  const save = async () => {
-    if (!selected || saving) {
+    if (!initializedRef.current) {
       return;
     }
 
-    const countedQuantity = Number(quantity);
+    const timer = window.setTimeout(() => {
+      void loadItems(keyword, filter, majorCategory).catch((searchError) => {
+        setError(
+          searchError instanceof Error
+            ? searchError.message
+            : "棚卸対象を検索できませんでした。"
+        );
+      });
+    }, 250);
 
-    if (!Number.isInteger(countedQuantity) || countedQuantity < 0) {
-      setErrorMessage("棚卸数量は0以上の整数で入力してください。");
+    return () => {
+      window.clearTimeout(timer);
+    };
+  }, [filter, keyword, loadItems, majorCategory]);
+
+  const categorySummary = useMemo(() => {
+    const targetCount = items.length;
+    const recordedCount = items.filter((item) => item.isRecorded).length;
+    const differenceCount = items.filter(
+      (item) => item.difference !== null && item.difference !== 0
+    ).length;
+
+    return {
+      targetCount,
+      recordedCount,
+      unrecordedCount: Math.max(targetCount - recordedCount, 0),
+      differenceCount,
+    };
+  }, [items]);
+
+  const selectItem = useCallback((item: InventoryItem) => {
+    setSelected(item);
+    setCountedQuantity(
+      String(item.countedQuantity ?? item.expectedQuantity)
+    );
+    setMemo("");
+    setMessage("");
+    setError("");
+
+    window.setTimeout(() => {
+      document.getElementById("stocktake-quantity")?.focus();
+      (
+        document.getElementById("stocktake-quantity") as HTMLInputElement | null
+      )?.select();
+    }, 100);
+  }, []);
+
+  const findBarcode = useCallback(
+    async (barcode: string) => {
+      const trimmed = barcode.trim();
+
+      if (!trimmed || barcodeBusyRef.current) {
+        return;
+      }
+
+      barcodeBusyRef.current = true;
+      setError("");
+      setMessage(`読み取りました：${trimmed}`);
+
+      try {
+        const query = new URLSearchParams({
+          sessionId,
+          q: trimmed,
+          filter: "ALL",
+          exact: "true",
+        });
+
+        const response = await fetch(
+          `/api/inventory/search?${query.toString()}`,
+          {
+            cache: "no-store",
+          }
+        );
+
+        const data: unknown = await response.json().catch(() => null);
+
+        if (!response.ok) {
+          throw new Error(
+            readErrorMessage(data, "バーコード検索に失敗しました。")
+          );
+        }
+
+        if (!Array.isArray(data) || data.length === 0) {
+          setKeyword(trimmed);
+          setFilter("ALL");
+          setError(
+            "該当する棚卸対象がありません。商品名・JAN・システムバーコードを確認してください。"
+          );
+          return;
+        }
+
+        const foundItems = data as InventoryItem[];
+
+        if (foundItems.length === 1) {
+          selectItem(foundItems[0]);
+          return;
+        }
+
+        setItems(foundItems);
+        setFilter("ALL");
+        setKeyword(trimmed);
+        setError(
+          `${foundItems.length}件の商品が見つかりました。該当する商品を選択してください。`
+        );
+      } catch (lookupError) {
+        setError(
+          lookupError instanceof Error
+            ? lookupError.message
+            : "バーコード検索に失敗しました。"
+        );
+      } finally {
+        window.setTimeout(() => {
+          barcodeBusyRef.current = false;
+        }, 1000);
+      }
+    },
+    [selectItem, sessionId]
+  );
+
+  const saveRecord = async () => {
+    if (!selected || !canOperate) {
+      return;
+    }
+
+    const quantity = Number(countedQuantity);
+
+    if (
+      countedQuantity.trim() === "" ||
+      !Number.isInteger(quantity) ||
+      quantity < 0
+    ) {
+      setError("棚卸数量には0以上の整数を入力してください。");
       return;
     }
 
     setSaving(true);
-    setErrorMessage("");
+    setError("");
 
     try {
-      await saveStocktakeRecord({
-        sessionId,
-        inventoryInstanceId: selected.id,
-        countedQuantity,
+      const response = await fetch("/api/stocktake/record", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          sessionId,
+          inventoryInstanceId: selected.id,
+          countedQuantity: quantity,
+          memo: memo.trim() || null,
+        }),
       });
 
-      setMessage("保存しました。");
-      setScanMessage("保存しました。次の商品を読み取れます。");
+      const data: unknown = await response.json().catch(() => null);
+
+      if (!response.ok) {
+        throw new Error(
+          readErrorMessage(data, "棚卸入力を保存できませんでした。")
+        );
+      }
+
+      const difference = quantity - selected.expectedQuantity;
+
+      setMessage(
+        difference === 0
+          ? "一致で保存しました。次の商品を入力できます。"
+          : `差異 ${difference > 0 ? "+" : ""}${difference} で保存しました。`
+      );
+
       setSelected(null);
-      setQuantity("");
+      setCountedQuantity("");
+      setMemo("");
 
-      await reload(keyword, filter, majorCategory);
-
-      window.setTimeout(() => {
-        searchRef.current?.focus();
-      }, 50);
-    } catch (error) {
-      setErrorMessage(
-        error instanceof Error
-          ? error.message
-          : "棚卸の保存に失敗しました。"
+      await Promise.all([
+        loadProgress(),
+        loadItems(keyword, filter, majorCategory),
+      ]);
+    } catch (saveError) {
+      setError(
+        saveError instanceof Error
+          ? saveError.message
+          : "棚卸入力を保存できませんでした。"
       );
     } finally {
       setSaving(false);
     }
   };
 
-  const scanBarcode = async (barcode: string) => {
-    const code = barcode.trim();
-
-    if (!code || scanLockRef.current || !canEdit) {
-      return;
-    }
-
-    scanLockRef.current = true;
-    setScannedCode(code);
-    setScanMessage(`読み取りました：${code}`);
-    setErrorMessage("");
+  const changeSessionStatus = async (action: SessionAction) => {
+    setChangingStatus(true);
+    setError("");
 
     try {
-      const params = new URLSearchParams({
-        sessionId,
-        q: code,
-        filter: "ALL",
+      const response = await fetch(`/api/stocktake/session/${sessionId}`, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ action }),
       });
 
-      const response = await fetch(
-        `/api/inventory/search?${params.toString()}`,
-        { cache: "no-store" }
-      );
-
-      const data = await readJson(response);
-
-      if (!response.ok || !Array.isArray(data)) {
-        throw new Error(
-          getMessage(data, "バーコード検索に失敗しました。")
-        );
-      }
-
-      const results = data as Inventory[];
-
-      if (results.length === 0) {
-        setErrorMessage(
-          `「${code}」に該当する棚卸対象がありません。検索欄から商品名でも確認してください。`
-        );
-        return;
-      }
-
-      if (results.length === 1) {
-        setItems(results);
-        selectItem(results[0]);
-        return;
-      }
-
-      setCandidates(results);
-    } catch (error) {
-      setErrorMessage(
-        error instanceof Error
-          ? error.message
-          : "バーコード検索に失敗しました。"
-      );
-    } finally {
-      window.setTimeout(() => {
-        scanLockRef.current = false;
-      }, 900);
-    }
-  };
-
-  const updateSession = async (
-    action: "PAUSE" | "RESUME" | "COMPLETE"
-  ) => {
-    setErrorMessage("");
-
-    try {
-      const response = await fetch(
-        `/api/stocktake/session/${encodeURIComponent(sessionId)}`,
-        {
-          method: "PATCH",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({ action }),
-        }
-      );
-
-      const data = await readJson(response);
+      const data: unknown = await response.json().catch(() => null);
 
       if (!response.ok) {
         throw new Error(
-          getMessage(data, "棚卸状態を更新できませんでした。")
+          readErrorMessage(data, "棚卸状態を更新できませんでした。")
         );
       }
 
@@ -384,539 +485,637 @@ export default function StocktakePage() {
 
         window.setTimeout(() => {
           router.push("/stocktake/start");
-        }, 1800);
+        }, 1300);
 
         return;
+      }
+
+      if (action === "RESUME") {
+        setMessage("棚卸を再開しました。");
       }
 
       if (action === "COMPLETE") {
-        setMessage(
-          getMessage(
-            data,
-            "棚卸を終了し、入力済み内容を在庫へ反映しました。"
-          )
-        );
-
-        window.setTimeout(() => {
-          router.push(`/stocktake/${sessionId}/result`);
-        }, 700);
-
+        router.push(`/stocktake/${sessionId}/result`);
         return;
       }
 
-      setMessage("棚卸を再開しました。");
-      await reload(keyword, filter, majorCategory);
-    } catch (error) {
-      setErrorMessage(
-        error instanceof Error
-          ? error.message
+      await refresh();
+    } catch (statusError) {
+      setError(
+        statusError instanceof Error
+          ? statusError.message
           : "棚卸状態を更新できませんでした。"
       );
+    } finally {
+      setChangingStatus(false);
     }
   };
 
-  const applyMajorCategory = (category: string) => {
-    const value = category.trim();
-
-    if (!value || !canEdit) {
-      return;
-    }
-
-    setMajorCategory(value);
+  const handleCategoryDetected = useCallback((category: string) => {
+    setCategoryQrOpen(false);
+    setMajorCategory(category);
     setKeyword("");
     setFilter("UNRECORDED");
     setSelected(null);
-    setQuantity("");
-    setCategoryCameraOpen(false);
-    setMessage(`大分類「${value}」で棚卸対象を絞り込みました。`);
-  };
+    setCountedQuantity("");
+    setMemo("");
+    setMessage(`大分類「${category}」に絞り込みました。`);
+    setError("");
+  }, []);
 
-  const handleTitleTap = () => {
-    const now = Date.now();
+  const difference =
+    selected && countedQuantity.trim() !== ""
+      ? Number(countedQuantity) - selected.expectedQuantity
+      : null;
 
-    adminTapTimesRef.current = [
-      ...adminTapTimesRef.current.filter((time) => now - time < 1200),
-      now,
-    ];
+  if (loading) {
+    return (
+      <main className="min-h-screen bg-slate-950 p-5 text-white sm:p-8">
+        <div className="mx-auto max-w-6xl rounded-3xl bg-white p-8 text-slate-900">
+          棚卸情報を読み込んでいます…
+        </div>
+      </main>
+    );
+  }
 
-    if (adminTapTimesRef.current.length >= 3) {
-      adminTapTimesRef.current = [];
-      setAdminDialogOpen(true);
-    }
-  };
+  if (!progress) {
+    return (
+      <main className="min-h-screen bg-slate-950 p-5 text-white sm:p-8">
+        <div className="mx-auto max-w-3xl rounded-3xl bg-white p-8 text-slate-900">
+          <h1 className="text-2xl font-bold">棚卸を開けませんでした</h1>
+          <p className="mt-3 text-slate-600">
+            {error || "棚卸情報を取得できませんでした。"}
+          </p>
+          <Link
+            href="/stocktake/start"
+            className="mt-6 inline-flex rounded-xl bg-indigo-600 px-5 py-3 font-bold text-white"
+          >
+            棚卸開始へ戻る
+          </Link>
+        </div>
+      </main>
+    );
+  }
 
   return (
-    <main className="min-h-screen overflow-x-hidden bg-slate-950 px-3 py-5 text-slate-900 sm:px-6 sm:py-8">
-      <div className="mx-auto w-full max-w-7xl">
-        <header className="mb-5 flex flex-col gap-4 text-white md:flex-row md:items-start md:justify-between">
-          <div className="min-w-0">
-            <p className="text-sm font-bold text-blue-300">
-              棚卸作業
+    <main className="min-h-screen bg-slate-950 pb-12 text-slate-950">
+      <header className="border-b border-slate-800 bg-slate-950 px-5 py-5 text-white sm:px-8">
+        <div className="mx-auto flex max-w-7xl flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+          <div>
+            <p className="text-sm font-bold text-indigo-300">棚卸作業</p>
+            <h1 className="mt-1 text-3xl font-black sm:text-4xl">
+              {progress.session.title}
+            </h1>
+            <p className="mt-2 text-slate-300">
+              対象：{progress.session.scopeLabel || "全在庫"}
             </p>
+            <p className="mt-1 text-sm text-slate-400">
+              担当者：{progress.session.operator || "未設定"} ／ 状態：
+              {statusLabel(progress.session.status)}
+            </p>
+          </div>
+
+          <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap">
+            <button
+              type="button"
+              onClick={() => setCategoryQrOpen(true)}
+              disabled={!canOperate}
+              className="rounded-xl bg-violet-600 px-4 py-3 font-bold text-white transition hover:bg-violet-500 disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              大分類QR
+            </button>
 
             <button
               type="button"
-              onClick={handleTitleTap}
-              className="mt-1 cursor-default select-none text-left"
-              aria-label="棚卸タイトル"
+              onClick={() => setContinuousCameraOpen(true)}
+              disabled={!canOperate}
+              className="rounded-xl bg-slate-700 px-4 py-3 font-bold text-white transition hover:bg-slate-600 disabled:cursor-not-allowed disabled:opacity-40"
             >
-              <h1 className="break-words text-3xl font-black tracking-tight">
-                {progress?.session.title ?? "棚卸"}
-              </h1>
+              連続スキャン
             </button>
 
-            <p className="mt-2 text-sm text-slate-300">
-              対象：{progress?.session.scopeLabel ?? "全在庫"}
-            </p>
-
-            {adminUser && (
-              <div className="mt-3 flex flex-wrap items-center gap-2">
-                <span className="rounded-full bg-violet-500/20 px-3 py-1 text-xs font-black text-violet-200">
-                  管理者モード：{adminUser.displayName}
-                </span>
-
-                <button
-                  type="button"
-                  onClick={() => setAdminMenuOpen(true)}
-                  className="rounded-xl bg-violet-600 px-3 py-2 text-xs font-bold text-white"
-                >
-                  管理者メニュー
-                </button>
-              </div>
+            {canOperate && (
+              <button
+                type="button"
+                onClick={() =>
+                  setConfirm({
+                    title: "棚卸を中断しますか？",
+                    message:
+                      "保存済みの棚卸入力は残ります。再開するまで入力・カメラ・検索操作は停止します。",
+                    confirmLabel: "中断する",
+                    tone: "orange",
+                    action: () => changeSessionStatus("PAUSE"),
+                  })
+                }
+                disabled={changingStatus}
+                className="rounded-xl bg-orange-500 px-4 py-3 font-bold text-white transition hover:bg-orange-400 disabled:opacity-50"
+              >
+                中断
+              </button>
             )}
-          </div>
 
-          <div className="grid w-full grid-cols-2 gap-2 sm:flex sm:w-auto sm:flex-wrap">
-            {progress?.session.status === "IN_PROGRESS" && (
-              <>
-                {adminUser && (
-                  <button
-                    type="button"
-                    onClick={() => setAdminMenuOpen(true)}
-                    className="min-h-12 w-full rounded-xl bg-violet-600 px-3 py-3 text-sm font-bold text-white sm:w-auto"
-                  >
-                    管理者
-                  </button>
-                )}
-
+            {progress.session.status === "PAUSED" &&
+              (progress.permissions.isOperator || canManage) && (
                 <button
                   type="button"
-                  onClick={() => setCategoryCameraOpen(true)}
-                  className="min-h-12 w-full rounded-xl bg-indigo-600 px-3 py-3 text-sm font-bold text-white sm:w-auto"
+                  onClick={() =>
+                    setConfirm({
+                      title: "棚卸を再開しますか？",
+                      message: "棚卸入力・検索・カメラ操作を再開します。",
+                      confirmLabel: "再開する",
+                      tone: "green",
+                      action: () => changeSessionStatus("RESUME"),
+                    })
+                  }
+                  disabled={changingStatus}
+                  className="rounded-xl bg-emerald-600 px-4 py-3 font-bold text-white transition hover:bg-emerald-500 disabled:opacity-50"
                 >
-                  大分類QR
+                  再開
                 </button>
+              )}
 
+            {(canOperate || canManage) &&
+              progress.session.status === "IN_PROGRESS" && (
                 <button
                   type="button"
-                  onClick={() => setContinuousCameraOpen(true)}
-                  className="min-h-12 w-full rounded-xl bg-slate-700 px-3 py-3 text-sm font-bold text-white sm:w-auto"
-                >
-                  連続スキャン
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => setConfirmAction("PAUSE")}
-                  className="min-h-12 w-full rounded-xl bg-orange-500 px-3 py-3 text-sm font-bold text-white sm:w-auto"
-                >
-                  中断
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => setConfirmAction("COMPLETE")}
-                  className="min-h-12 w-full rounded-xl bg-blue-600 px-3 py-3 text-sm font-bold text-white sm:w-auto"
+                  onClick={() =>
+                    setConfirm({
+                      title: "棚卸を終了しますか？",
+                      message:
+                        "未棚卸の商品が残っていても終了できます。保存済みの棚卸結果を確認する画面へ進みます。",
+                      confirmLabel: "終了して確認する",
+                      tone: "blue",
+                      action: () => changeSessionStatus("COMPLETE"),
+                    })
+                  }
+                  disabled={changingStatus}
+                  className="rounded-xl bg-indigo-600 px-4 py-3 font-bold text-white transition hover:bg-indigo-500 disabled:opacity-50"
                 >
                   終了
                 </button>
-              </>
-            )}
+              )}
 
-            {progress?.session.status === "PAUSED" && (
-              <button
-                type="button"
-                onClick={() => void updateSession("RESUME")}
-                className="min-h-12 w-full rounded-xl bg-emerald-600 px-4 py-3 font-bold text-white sm:w-auto"
+            {isAdmin && (
+              <Link
+                href="/admin"
+                className="rounded-xl border border-slate-600 px-4 py-3 text-center font-bold text-white transition hover:bg-slate-800"
               >
-                再開する
-              </button>
+                管理者メニュー
+              </Link>
             )}
           </div>
-        </header>
+        </div>
+      </header>
 
-        {progress && (
-          <section className="mb-5 rounded-3xl bg-white p-5 shadow-sm sm:p-7">
-            <div className="flex items-end justify-between gap-4">
-              <div>
-                <p className="text-sm font-medium text-slate-500">
-                  棚卸進捗
-                </p>
-
-                <p className="mt-1 text-3xl font-black sm:text-4xl">
-                  {progress.summary.recordedCount}
-
-                  <span className="mx-1 text-base font-medium text-slate-500 sm:text-lg">
-                    /
-                  </span>
-
-                  <span className="text-lg font-semibold text-slate-600 sm:text-2xl">
-                    {progress.summary.targetCount}件
-                  </span>
-                </p>
-              </div>
-
-              <p className="shrink-0 text-3xl font-black text-blue-600">
-                {progress.summary.progressPercent}%
-              </p>
-            </div>
-
-            <div className="mt-4 h-3 overflow-hidden rounded-full bg-slate-200">
-              <div
-                className="h-full rounded-full bg-blue-600 transition-all"
-                style={{
-                  width: `${progress.summary.progressPercent}%`,
-                }}
-              />
-            </div>
-
-            <div className="mt-4 grid grid-cols-3 gap-2 sm:gap-4">
-              <div className="rounded-2xl bg-slate-100 px-2 py-3 text-center">
-                <p className="text-xs text-slate-500">一致</p>
-                <p className="mt-1 text-2xl font-black text-emerald-600">
-                  {progress.summary.matchedCount}
-                </p>
-              </div>
-
-              <div className="rounded-2xl bg-slate-100 px-2 py-3 text-center">
-                <p className="text-xs text-slate-500">差異</p>
-                <p className="mt-1 text-2xl font-black text-red-600">
-                  {progress.summary.differenceCount}
-                </p>
-              </div>
-
-              <div className="rounded-2xl bg-slate-100 px-2 py-3 text-center">
-                <p className="text-xs text-slate-500">未棚卸</p>
-                <p className="mt-1 text-2xl font-black text-orange-600">
-                  {progress.summary.unrecordedCount}
-                </p>
-              </div>
-            </div>
-          </section>
+      <div className="mx-auto max-w-7xl space-y-6 p-5 sm:p-8">
+        {(message || error) && (
+          <div
+            className={`rounded-2xl border px-5 py-4 font-medium ${
+              error
+                ? "border-red-200 bg-red-50 text-red-800"
+                : "border-emerald-200 bg-emerald-50 text-emerald-800"
+            }`}
+          >
+            {error || message}
+          </div>
         )}
 
-        {message && (
-          <section className="mb-5 rounded-2xl bg-white px-4 py-3 font-medium text-slate-700">
-            {message}
-          </section>
-        )}
-
-        {scanMessage && (
-          <section className="mb-5 rounded-2xl border border-blue-200 bg-blue-50 px-4 py-3 font-bold text-blue-900">
-            {scanMessage}
-          </section>
-        )}
-
-        {errorMessage && (
-          <section className="mb-5 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 font-bold text-red-800">
-            {errorMessage}
-          </section>
-        )}
-
-        {progress?.session.status === "CONFLICT" && (
-          <section className="mb-5 rounded-3xl border border-red-300 bg-red-50 p-5">
-            <h2 className="font-black text-red-950">
-              在庫競合のため安全停止中です
-            </h2>
-
-            <p className="mt-2 text-sm leading-6 text-red-800">
-              棚卸開始後に在庫数が変更された商品を検知しました。
-              上書きを防ぐため、この棚卸の操作を停止しています。
-              管理者メニューからエラー内容を確認してください。
+        {!canOperate && progress.session.status !== "COMPLETED" && (
+          <div className="rounded-2xl border border-amber-200 bg-amber-50 px-5 py-4 text-amber-900">
+            <p className="font-bold">
+              {progress.session.status === "PAUSED"
+                ? "棚卸は中断中です"
+                : "この棚卸は現在操作できません"}
             </p>
-          </section>
+            <p className="mt-1 text-sm">
+              再開されるまで、棚卸入力・バーコード読取・検索からの入力はできません。
+            </p>
+          </div>
         )}
 
-        {majorCategory && (
-          <section className="mb-5 flex flex-col gap-3 rounded-3xl border border-indigo-200 bg-indigo-50 p-4 sm:flex-row sm:items-center sm:justify-between sm:p-5">
+        <section className="rounded-3xl bg-white p-5 shadow-sm sm:p-7">
+          <div className="flex items-end justify-between gap-4">
             <div>
-              <p className="text-sm font-bold text-indigo-700">
-                大分類ごとに棚卸中
+              <p className="text-sm font-bold text-slate-500">棚卸進捗</p>
+              <p className="mt-1 text-3xl font-black sm:text-4xl">
+                {progress.summary.recordedCount}
+                <span className="text-xl font-medium text-slate-500">
+                  {" "}
+                  / {progress.summary.targetCount} 件
+                </span>
               </p>
-
-              <h2 className="mt-1 break-words text-xl font-black text-indigo-950">
-                {majorCategory}
-              </h2>
             </div>
-
-            <button
-              type="button"
-              onClick={() => setMajorCategory(null)}
-              className="min-h-11 rounded-xl bg-white px-4 py-2 text-sm font-bold text-indigo-800 shadow-sm"
-            >
-              絞り込み解除
-            </button>
-          </section>
-        )}
-
-        {selected && (
-          <section className="mb-5">
-            <StocktakeInputPanel
-              selected={selected}
-              quantity={quantity}
-              saving={saving}
-              disabled={!canEdit}
-              inputRef={quantityRef}
-              onQuantityChange={setQuantity}
-              onSave={() => void save()}
-              onCancel={() => {
-                setSelected(null);
-                setQuantity("");
-                searchRef.current?.focus();
-              }}
-            />
-          </section>
-        )}
-
-        {progress?.session.status === "PAUSED" && (
-          <section className="mb-5 rounded-3xl border border-amber-200 bg-amber-50 p-5">
-            <h2 className="font-black text-amber-900">
-              棚卸は中断中です
-            </h2>
-
-            <p className="mt-1 text-sm leading-6 text-amber-800">
-              再開するまで、検索・カメラ・棚卸入力は利用できません。
+            <p className="text-3xl font-black text-indigo-600">
+              {progress.summary.progressPercent}%
             </p>
-          </section>
-        )}
+          </div>
 
-        <section className="rounded-3xl bg-white p-4 shadow-sm sm:p-5">
-          <div className="grid grid-cols-[minmax(0,1fr)_3.5rem] gap-2 sm:grid-cols-[minmax(0,1fr)_auto]">
-            <input
-              ref={searchRef}
-              value={keyword}
-              disabled={!canEdit}
-              onChange={(event) => setKeyword(event.target.value)}
-              placeholder="JAN・商品名・メーカー・分類・保管場所で検索"
-              className="min-w-0 rounded-2xl border-2 border-slate-200 px-4 py-3 text-base outline-none focus:border-blue-500 disabled:bg-slate-100"
+          <div className="mt-5 h-3 overflow-hidden rounded-full bg-slate-200">
+            <div
+              className="h-full rounded-full bg-indigo-500 transition-all"
+              style={{ width: `${progress.summary.progressPercent}%` }}
             />
-
-            <button
-              type="button"
-              disabled={!canEdit}
-              onClick={() => setSingleCameraOpen(true)}
-              className="flex min-h-14 items-center justify-center rounded-2xl bg-blue-600 px-0 text-xl text-white disabled:bg-slate-300 sm:px-4"
-              aria-label="カメラでバーコードを読み取る"
-            >
-              📷
-            </button>
           </div>
 
-          <div className="mt-3 flex gap-2 overflow-x-auto pb-1">
-            {filters.map(([value, label]) => (
-              <button
-                key={value}
-                type="button"
-                disabled={!canEdit}
-                onClick={() => setFilter(value)}
-                className={`shrink-0 rounded-full px-4 py-2 text-sm font-bold ${
-                  filter === value
-                    ? "bg-blue-600 text-white"
-                    : "bg-slate-100 text-slate-700"
-                } disabled:opacity-50`}
-              >
-                {label}
-              </button>
-            ))}
-          </div>
-        </section>
-
-        <section className="mt-5 space-y-4">
-          {loading ? (
-            <div className="rounded-3xl bg-white p-8 text-center text-slate-500 shadow-sm">
-              棚卸対象を読み込んでいます…
-            </div>
-          ) : items.length === 0 ? (
-            <div className="rounded-3xl bg-white p-8 text-center shadow-sm">
-              <p className="font-bold text-slate-700">
-                該当する棚卸対象がありません。
+          <div className="mt-5 grid grid-cols-3 gap-3">
+            <div className="rounded-2xl bg-slate-100 p-3 text-center">
+              <p className="text-sm text-slate-500">一致</p>
+              <p className="mt-1 text-2xl font-black text-emerald-600">
+                {progress.summary.matchedCount}
               </p>
             </div>
-          ) : (
-            items.map((item) => (
-              <StocktakeSearchCard
-                key={item.id}
-                item={item}
-                expanded={expandedItemId === item.id}
-                disabled={!canEdit}
-                onToggle={() =>
-                  setExpandedItemId((current) =>
-                    current === item.id ? null : item.id
-                  )
-                }
-                onSelect={() => selectItem(item)}
-              />
-            ))
-          )}
+            <div className="rounded-2xl bg-slate-100 p-3 text-center">
+              <p className="text-sm text-slate-500">差異</p>
+              <p className="mt-1 text-2xl font-black text-red-600">
+                {progress.summary.differenceCount}
+              </p>
+            </div>
+            <div className="rounded-2xl bg-slate-100 p-3 text-center">
+              <p className="text-sm text-slate-500">未棚卸</p>
+              <p className="mt-1 text-2xl font-black text-orange-600">
+                {progress.summary.unrecordedCount}
+              </p>
+            </div>
+          </div>
         </section>
+
+        <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_380px]">
+          <div className="space-y-6">
+            <section className="rounded-3xl bg-white p-5 shadow-sm">
+              <div className="flex flex-col gap-3 sm:flex-row">
+                <input
+                  value={keyword}
+                  onChange={(event) => setKeyword(event.target.value)}
+                  disabled={!canOperate}
+                  placeholder="JAN・商品名・メーカー・分類・保管場所で検索"
+                  className="min-w-0 flex-1 rounded-2xl border-2 border-slate-200 px-4 py-4 text-lg outline-none transition focus:border-indigo-500 disabled:bg-slate-100"
+                />
+
+                <button
+                  type="button"
+                  disabled={!canOperate}
+                  onClick={() => setNormalCameraOpen(true)}
+                  className="rounded-2xl bg-indigo-600 px-5 py-4 text-xl font-bold text-white transition hover:bg-indigo-500 disabled:cursor-not-allowed disabled:opacity-40"
+                  aria-label="カメラでバーコードを読み取る"
+                >
+                  📷
+                </button>
+              </div>
+
+              <div className="mt-4 flex flex-wrap gap-2">
+                {(
+                  [
+                    ["UNRECORDED", "未棚卸のみ"],
+                    ["RECORDED", "棚卸済み"],
+                    ["DIFFERENCE", "差異あり"],
+                    ["ALL", "すべて"],
+                  ] as const
+                ).map(([value, label]) => (
+                  <button
+                    key={value}
+                    type="button"
+                    disabled={!canOperate}
+                    onClick={() => setFilter(value)}
+                    className={`rounded-full px-4 py-2 font-bold transition disabled:opacity-40 ${
+                      filter === value
+                        ? "bg-indigo-600 text-white"
+                        : "bg-slate-100 text-slate-700 hover:bg-slate-200"
+                    }`}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+
+              {majorCategory && (
+                <div className="mt-4 flex flex-wrap items-center gap-3 rounded-2xl bg-violet-50 px-4 py-3 text-violet-900">
+                  <span className="font-bold">
+                    大分類QRで絞り込み中：{majorCategory}
+                  </span>
+                  <span className="text-sm">
+                    {categorySummary.recordedCount} /{" "}
+                    {categorySummary.targetCount} 件 棚卸済み
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setMajorCategory(null);
+                      setMessage("大分類の絞り込みを解除しました。");
+                    }}
+                    className="ml-auto rounded-lg bg-white px-3 py-1.5 text-sm font-bold text-violet-700 shadow-sm"
+                  >
+                    解除
+                  </button>
+                </div>
+              )}
+            </section>
+
+            <section className="space-y-3">
+              {searching ? (
+                <div className="rounded-3xl bg-white p-8 text-center text-slate-500 shadow-sm">
+                  棚卸対象を検索しています…
+                </div>
+              ) : items.length === 0 ? (
+                <div className="rounded-3xl bg-white p-8 text-center text-slate-500 shadow-sm">
+                  該当する棚卸対象がありません。
+                </div>
+              ) : (
+                items.map((item) => {
+                  const itemDifference =
+                    item.countedQuantity === null
+                      ? null
+                      : item.countedQuantity - item.expectedQuantity;
+
+                  const status =
+                    !item.isRecorded
+                      ? "未棚卸"
+                      : itemDifference === 0
+                        ? "一致"
+                        : "差異あり";
+
+                  return (
+                    <button
+                      key={item.id}
+                      type="button"
+                      disabled={!canOperate}
+                      onClick={() => selectItem(item)}
+                      className="block w-full rounded-3xl bg-white p-5 text-left shadow-sm transition hover:ring-2 hover:ring-indigo-400 disabled:cursor-default disabled:hover:ring-0 sm:p-6"
+                    >
+                      <div className="flex items-start justify-between gap-4">
+                        <div className="min-w-0">
+                          <h2 className="break-words text-xl font-black text-slate-950 sm:text-2xl">
+                            {item.item.name}
+                          </h2>
+                          <p className="mt-2 text-sm text-slate-600">
+                            JAN：{item.item.janCode || "-"}
+                          </p>
+                          {item.item.systemBarcode && (
+                            <p className="mt-1 text-sm text-slate-600">
+                              システムバーコード：{item.item.systemBarcode}
+                            </p>
+                          )}
+                          <p className="mt-1 text-sm text-slate-600">
+                            保管場所：{item.storageLocation?.name || "未設定"}
+                          </p>
+                          <p className="mt-1 text-sm text-slate-600">
+                            分類：
+                            {item.item.majorCategory || "-"}
+                            {item.item.minorCategory
+                              ? ` ／ ${item.item.minorCategory}`
+                              : ""}
+                          </p>
+                        </div>
+
+                        <span
+                          className={`shrink-0 rounded-full px-3 py-1.5 text-sm font-black ${
+                            status === "一致"
+                              ? "bg-emerald-100 text-emerald-700"
+                              : status === "差異あり"
+                                ? "bg-red-100 text-red-700"
+                                : "bg-orange-100 text-orange-700"
+                          }`}
+                        >
+                          {status}
+                        </span>
+                      </div>
+
+                      <div className="mt-4 flex flex-wrap gap-3 text-sm">
+                        <span className="font-bold text-indigo-600">
+                          現在庫：{item.expectedQuantity}
+                          {item.unit ? ` ${item.unit}` : " 個"}
+                        </span>
+                        {item.isRecorded && (
+                          <span className="font-bold text-slate-700">
+                            棚卸：{item.countedQuantity}
+                            {item.unit ? ` ${item.unit}` : " 個"}
+                          </span>
+                        )}
+                        {itemDifference !== null && itemDifference !== 0 && (
+                          <span className="font-bold text-red-600">
+                            差異：{itemDifference > 0 ? "+" : ""}
+                            {itemDifference}
+                          </span>
+                        )}
+                      </div>
+                    </button>
+                  );
+                })
+              )}
+            </section>
+          </div>
+
+          <aside className="xl:sticky xl:top-5 xl:h-fit">
+            <section className="rounded-3xl bg-white p-5 shadow-sm sm:p-6">
+              <h2 className="text-2xl font-black">棚卸入力</h2>
+
+              {!selected ? (
+                <div className="mt-5 rounded-2xl bg-slate-100 p-5 text-slate-600">
+                  商品カードを選ぶか、バーコードを読み取ってください。
+                </div>
+              ) : (
+                <div className="mt-5 space-y-5">
+                  <div>
+                    <p className="text-sm font-bold text-indigo-600">
+                      選択中の商品
+                    </p>
+                    <h3 className="mt-1 text-xl font-black">
+                      {selected.item.name}
+                    </h3>
+                    <p className="mt-2 text-slate-600">
+                      現在庫：{selected.expectedQuantity}
+                      {selected.unit ? ` ${selected.unit}` : " 個"}
+                    </p>
+                  </div>
+
+                  <div>
+                    <label
+                      htmlFor="stocktake-quantity"
+                      className="block font-bold text-slate-800"
+                    >
+                      棚卸数量
+                    </label>
+                    <input
+                      id="stocktake-quantity"
+                      type="number"
+                      min="0"
+                      inputMode="numeric"
+                      value={countedQuantity}
+                      onChange={(event) =>
+                        setCountedQuantity(event.target.value)
+                      }
+                      disabled={!canOperate || saving}
+                      className="mt-2 w-full rounded-2xl border-2 border-indigo-500 px-4 py-4 text-3xl font-black outline-none disabled:bg-slate-100"
+                    />
+                    <p className="mt-2 text-sm text-slate-500">
+                      {selected.unit ? `単位：${selected.unit}` : "単位：個"}
+                    </p>
+                  </div>
+
+                  {difference !== null && Number.isFinite(difference) && (
+                    <div
+                      className={`rounded-2xl px-4 py-4 font-black ${
+                        difference === 0
+                          ? "bg-emerald-100 text-emerald-700"
+                          : "bg-red-100 text-red-700"
+                      }`}
+                    >
+                      差異：{difference > 0 ? "+" : ""}
+                      {difference}
+                      {selected.unit ? ` ${selected.unit}` : " 個"}
+                    </div>
+                  )}
+
+                  <div>
+                    <label
+                      htmlFor="stocktake-memo"
+                      className="block font-bold text-slate-800"
+                    >
+                      メモ
+                    </label>
+                    <textarea
+                      id="stocktake-memo"
+                      rows={3}
+                      value={memo}
+                      onChange={(event) => setMemo(event.target.value)}
+                      disabled={!canOperate || saving}
+                      placeholder="必要な場合のみ入力"
+                      className="mt-2 w-full rounded-2xl border border-slate-200 px-4 py-3 outline-none focus:border-indigo-500 disabled:bg-slate-100"
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSelected(null);
+                        setCountedQuantity("");
+                        setMemo("");
+                      }}
+                      disabled={saving}
+                      className="rounded-2xl bg-slate-100 px-4 py-4 font-black text-slate-700"
+                    >
+                      戻る
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => void saveRecord()}
+                      disabled={!canOperate || saving}
+                      className="rounded-2xl bg-indigo-600 px-4 py-4 font-black text-white transition hover:bg-indigo-500 disabled:opacity-50"
+                    >
+                      {saving ? "保存中…" : "保存して次へ"}
+                    </button>
+                  </div>
+                </div>
+              )}
+            </section>
+          </aside>
+        </div>
       </div>
 
-      {singleCameraOpen && (
+      {normalCameraOpen && (
         <BarcodeCamera
+          title="バーコードを読み取る"
+          notice="読み取ると自動でカメラを閉じ、棚卸入力へ進みます。"
           closeOnDetect
-          notice={scanMessage}
-          onDetected={(barcode) => void scanBarcode(barcode)}
-          onClose={() => setSingleCameraOpen(false)}
+          onClose={() => setNormalCameraOpen(false)}
+          onDetected={(barcode) => {
+            setNormalCameraOpen(false);
+            void findBarcode(barcode);
+          }}
         />
       )}
 
       {continuousCameraOpen && (
         <BarcodeCamera
-          notice={scanMessage}
-          onDetected={(barcode) => void scanBarcode(barcode)}
-          onClose={() => {
-            setContinuousCameraOpen(false);
-            setSelected(null);
-            setQuantity("");
-            setScanMessage("");
+          title="連続スキャン中"
+          notice="保存後、そのまま次の商品を読み取れます。終了するまでカメラは閉じません。"
+          closeOnDetect={false}
+          onClose={() => setContinuousCameraOpen(false)}
+          onDetected={(barcode) => {
+            void findBarcode(barcode);
           }}
         >
-          <StocktakeInputPanel
-            selected={selected}
-            quantity={quantity}
-            saving={saving}
-            disabled={!canEdit}
-            inputRef={quantityRef}
-            onQuantityChange={setQuantity}
-            onSave={() => void save()}
-            onCancel={() => {
-              setSelected(null);
-              setQuantity("");
-            }}
-            continuous
-          />
+          <div className="rounded-3xl bg-white p-5 text-slate-950 shadow-xl">
+            <p className="text-sm font-bold text-indigo-600">連続スキャン中</p>
+            {selected ? (
+              <>
+                <h2 className="mt-2 text-2xl font-black">
+                  {selected.item.name}
+                </h2>
+                <p className="mt-2 text-slate-600">
+                  現在庫：{selected.expectedQuantity}
+                  {selected.unit ? ` ${selected.unit}` : " 個"}
+                </p>
+                <input
+                  type="number"
+                  min="0"
+                  inputMode="numeric"
+                  value={countedQuantity}
+                  onChange={(event) => setCountedQuantity(event.target.value)}
+                  className="mt-4 w-full rounded-2xl border-2 border-indigo-500 px-4 py-3 text-2xl font-black"
+                />
+                <button
+                  type="button"
+                  onClick={() => void saveRecord()}
+                  disabled={saving}
+                  className="mt-3 w-full rounded-2xl bg-indigo-600 px-4 py-4 font-black text-white disabled:opacity-50"
+                >
+                  {saving ? "保存中…" : "保存して次を読む"}
+                </button>
+              </>
+            ) : (
+              <p className="mt-3 text-slate-600">
+                バーコードをカメラへ向けてください。
+              </p>
+            )}
+          </div>
         </BarcodeCamera>
       )}
 
-      {categoryCameraOpen && (
+      {categoryQrOpen && (
         <CategoryQrScanner
-          currentCategory={majorCategory}
-          onDetected={applyMajorCategory}
-          onClose={() => setCategoryCameraOpen(false)}
+          onDetected={handleCategoryDetected}
+          onClose={() => setCategoryQrOpen(false)}
         />
       )}
 
-      {candidates.length > 0 && (
-        <BarcodeCandidatePicker
-          barcode={scannedCode}
-          candidates={candidates}
-          onClose={() => setCandidates([])}
-          onSelect={(candidate) => {
-            const item = candidate as Inventory;
-            setCandidates([]);
-            setItems([item]);
-            selectItem(item);
-          }}
-        />
-      )}
-
-      <AdminModeDialog
-        open={adminDialogOpen}
-        sessionId={sessionId}
-        onClose={() => setAdminDialogOpen(false)}
-        onAuthenticated={(admin) => {
-          setAdminUser(admin);
-          setAdminDialogOpen(false);
-          setMessage(`管理者モードを開始しました：${admin.displayName}`);
-        }}
-      />
-
-      <StocktakeAdminMenu
-        open={adminMenuOpen}
-        adminName={adminUser?.displayName ?? ""}
-        onClose={() => setAdminMenuOpen(false)}
-        onRegisterItem={() => {
-          setAdminMenuOpen(false);
-          setRegisterDialogOpen(true);
-        }}
-        onIssueBarcode={() => {
-          setAdminMenuOpen(false);
-          router.push("/items");
-        }}
-        onOpenErrorReports={() => {
-          setAdminMenuOpen(false);
-          router.push("/admin/error-reports");
-        }}
-        onReload={() => {
-          setAdminMenuOpen(false);
-          void reload(keyword, filter, majorCategory);
-          setMessage("棚卸対象を再読み込みしました。");
-        }}
-        onExitAdminMode={() => {
-          setAdminMenuOpen(false);
-          setAdminUser(null);
-          setMessage("管理者モードを終了しました。");
-        }}
-      />
-
-      <UnregisteredItemDialog
-        open={registerDialogOpen}
-        sessionId={sessionId}
-        initialJanCode={scannedCode || keyword}
-        onClose={() => setRegisterDialogOpen(false)}
-        onRegistered={() => {
-          setRegisterDialogOpen(false);
-          setMessage("商品を登録し、今回の棚卸対象へ追加しました。");
-          setKeyword("");
-          setFilter("UNRECORDED");
-          void reload("", "UNRECORDED", majorCategory);
-        }}
-      />
-
-      {confirmAction && (
-        <div className="fixed inset-0 z-[70] grid place-items-center bg-slate-950/70 p-4">
-          <section className="w-full max-w-md rounded-3xl bg-white p-5 shadow-2xl sm:p-6">
-            <h2 className="text-xl font-black text-slate-950">
-              {confirmAction === "PAUSE"
-                ? "棚卸を中断しますか？"
-                : "棚卸を終了しますか？"}
-            </h2>
-
-            <p className="mt-3 text-sm leading-6 text-slate-600">
-              {confirmAction === "PAUSE"
-                ? "保存済みの棚卸データは残ります。あとで開始画面から再開できます。"
-                : "入力済みの棚卸数を在庫へ反映して終了します。未棚卸の商品は在庫数を変更せず、そのまま残ります。"}
-            </p>
+      {confirm && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/70 p-5">
+          <div className="w-full max-w-md rounded-3xl bg-white p-6 shadow-2xl">
+            <h2 className="text-2xl font-black">{confirm.title}</h2>
+            <p className="mt-4 leading-7 text-slate-600">{confirm.message}</p>
 
             <div className="mt-6 grid grid-cols-2 gap-3">
               <button
                 type="button"
-                onClick={() => setConfirmAction(null)}
-                className="min-h-12 rounded-xl bg-slate-100 px-4 py-3 font-bold text-slate-700"
+                onClick={() => setConfirm(null)}
+                disabled={changingStatus}
+                className="rounded-2xl bg-slate-100 px-4 py-3 font-black text-slate-700"
               >
-                やめる
+                キャンセル
               </button>
 
               <button
                 type="button"
-                onClick={() => {
-                  const action = confirmAction;
-                  setConfirmAction(null);
-
-                  void updateSession(
-                    action === "PAUSE" ? "PAUSE" : "COMPLETE"
-                  );
+                disabled={changingStatus}
+                onClick={async () => {
+                  const action = confirm.action;
+                  setConfirm(null);
+                  await action();
                 }}
-                className={`min-h-12 rounded-xl px-4 py-3 font-black text-white ${
-                  confirmAction === "PAUSE"
+                className={`rounded-2xl px-4 py-3 font-black text-white disabled:opacity-50 ${
+                  confirm.tone === "orange"
                     ? "bg-orange-500"
-                    : "bg-blue-600"
+                    : confirm.tone === "green"
+                      ? "bg-emerald-600"
+                      : "bg-indigo-600"
                 }`}
               >
-                はい、実行する
+                {changingStatus ? "処理中…" : confirm.confirmLabel}
               </button>
             </div>
-          </section>
+          </div>
         </div>
       )}
     </main>

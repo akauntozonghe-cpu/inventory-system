@@ -1,9 +1,19 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import {
-  getLoggedInUser,
-  hasAdminAccess,
-} from "@/lib/auth";
+import { getLoggedInUser, hasAdminAccess } from "@/lib/auth";
+
+function getErrorMessage(value: unknown, fallback: string) {
+  if (
+    value &&
+    typeof value === "object" &&
+    "message" in value &&
+    typeof value.message === "string"
+  ) {
+    return value.message;
+  }
+
+  return fallback;
+}
 
 export async function GET(
   request: NextRequest,
@@ -14,7 +24,7 @@ export async function GET(
   if (!user) {
     return NextResponse.json(
       {
-        code: "RESULT_AUTH_401",
+        code: "STOCKTAKE_RESULT_AUTH_401",
         message: "ログイン情報を確認できませんでした。",
       },
       { status: 401 }
@@ -22,16 +32,19 @@ export async function GET(
   }
 
   try {
-    const { id } = await params;
+    const { id: sessionId } = await params;
 
     const session = await prisma.stocktakeSession.findUnique({
-      where: { id },
+      where: {
+        id: sessionId,
+      },
       select: {
         id: true,
         title: true,
-        status: true,
         operator: true,
         operatorUserId: true,
+        scopeLabel: true,
+        status: true,
         startedAt: true,
         completedAt: true,
       },
@@ -40,23 +53,23 @@ export async function GET(
     if (!session) {
       return NextResponse.json(
         {
-          code: "RESULT_SESSION_404",
+          code: "STOCKTAKE_RESULT_SESSION_404",
           message: "棚卸セッションが見つかりません。",
         },
         { status: 404 }
       );
     }
 
-    const canView =
+    const isAdmin = hasAdminAccess(request);
+    const isOperator =
       session.operatorUserId === null ||
-      session.operatorUserId === user.id ||
-      hasAdminAccess(request);
+      session.operatorUserId === user.id;
 
-    if (!canView) {
+    if (!isOperator && !isAdmin) {
       return NextResponse.json(
         {
-          code: "RESULT_FORBIDDEN",
-          message: "この棚卸結果を閲覧する権限がありません。",
+          code: "STOCKTAKE_RESULT_FORBIDDEN",
+          message: "この棚卸結果を表示する権限がありません。",
         },
         { status: 403 }
       );
@@ -64,18 +77,18 @@ export async function GET(
 
     const [targets, records] = await Promise.all([
       prisma.stocktakeTarget.findMany({
-        where: { sessionId: id },
-        orderBy: { createdAt: "asc" },
+        where: {
+          sessionId,
+        },
         select: {
           inventoryInstanceId: true,
           expectedQuantity: true,
           inventoryInstance: {
             select: {
               id: true,
-              quantity: true,
-              unit: true,
               lotNo: true,
               expirationDate: true,
+              unit: true,
               storageLocation: {
                 select: {
                   name: true,
@@ -83,134 +96,136 @@ export async function GET(
               },
               item: {
                 select: {
-                  id: true,
                   name: true,
                   janCode: true,
                   systemBarcode: true,
-                  managementCode: true,
-                  managementGroupCode: true,
                   manufacturer: true,
                   majorCategory: true,
                   minorCategory: true,
+                  defaultUnit: true,
                 },
               },
             },
           },
         },
+        orderBy: {
+          createdAt: "asc",
+        },
       }),
 
       prisma.stocktakeRecord.findMany({
-        where: { sessionId: id },
+        where: {
+          sessionId,
+        },
         select: {
+          id: true,
           inventoryInstanceId: true,
           countedQuantity: true,
           memo: true,
           updatedAt: true,
         },
+        orderBy: {
+          updatedAt: "desc",
+        },
       }),
     ]);
 
-    const recordByInventoryId = new Map(
-      records.map((record) => [
-        record.inventoryInstanceId,
-        record,
-      ])
+    const targetMap = new Map(
+      targets.map((target) => [target.inventoryInstanceId, target])
     );
 
-    const items = targets.map((target) => {
-      const record = recordByInventoryId.get(
-        target.inventoryInstanceId
+    const recordsWithDetail = records
+      .map((record) => {
+        const target = targetMap.get(record.inventoryInstanceId);
+
+        if (!target) {
+          return null;
+        }
+
+        const inventory = target.inventoryInstance;
+        const unit = inventory.unit ?? inventory.item.defaultUnit;
+
+        return {
+          id: record.id,
+          inventoryInstanceId: record.inventoryInstanceId,
+          expectedQuantity: target.expectedQuantity,
+          countedQuantity: record.countedQuantity,
+          difference: record.countedQuantity - target.expectedQuantity,
+          memo: record.memo,
+          recordedAt: record.updatedAt.toISOString(),
+          lotNo: inventory.lotNo,
+          expirationDate: inventory.expirationDate,
+          unit,
+          storageLocation: inventory.storageLocation
+            ? {
+                name: inventory.storageLocation.name,
+              }
+            : null,
+          item: {
+            name: inventory.item.name,
+            janCode: inventory.item.janCode,
+            systemBarcode: inventory.item.systemBarcode,
+            manufacturer: inventory.item.manufacturer,
+            majorCategory: inventory.item.majorCategory,
+            minorCategory: inventory.item.minorCategory,
+          },
+        };
+      })
+      .filter(
+        (
+          record
+        ): record is NonNullable<typeof record> => record !== null
       );
 
-      const countedQuantity =
-        record?.countedQuantity ?? null;
-
-      return {
-        id: target.inventoryInstanceId,
-        expectedQuantity: target.expectedQuantity,
-        countedQuantity,
-        difference:
-          countedQuantity === null
-            ? null
-            : countedQuantity - target.expectedQuantity,
-        memo: record?.memo ?? null,
-        recordedAt: record?.updatedAt.toISOString() ?? null,
-
-        location:
-          target.inventoryInstance.storageLocation?.name ??
-          "未設定",
-        unit: target.inventoryInstance.unit,
-        lotNo: target.inventoryInstance.lotNo,
-        expirationDate:
-          target.inventoryInstance.expirationDate,
-
-        item: {
-          id: target.inventoryInstance.item.id,
-          name: target.inventoryInstance.item.name,
-          janCode: target.inventoryInstance.item.janCode,
-          systemBarcode:
-            target.inventoryInstance.item.systemBarcode,
-          managementCode:
-            target.inventoryInstance.item.managementCode,
-          managementGroupCode:
-            target.inventoryInstance.item.managementGroupCode,
-          manufacturer:
-            target.inventoryInstance.item.manufacturer,
-          majorCategory:
-            target.inventoryInstance.item.majorCategory,
-          minorCategory:
-            target.inventoryInstance.item.minorCategory,
-        },
-      };
-    });
-
-    const recordedItems = items.filter(
-      (item) => item.countedQuantity !== null
-    );
-
-    const matchedCount = recordedItems.filter(
-      (item) => item.difference === 0
+    const recordedCount = recordsWithDetail.length;
+    const matchedCount = recordsWithDetail.filter(
+      (record) => record.difference === 0
     ).length;
-
-    const differenceCount = recordedItems.filter(
-      (item) =>
-        item.difference !== null &&
-        item.difference !== 0
-    ).length;
+    const differenceCount = recordedCount - matchedCount;
+    const targetCount = targets.length;
+    const unrecordedCount = Math.max(targetCount - recordedCount, 0);
 
     return NextResponse.json({
+      success: true,
+      code: "STOCKTAKE_RESULT_OK",
+
       session: {
         id: session.id,
         title: session.title,
-        status: session.status,
         operator: session.operator,
+        scopeLabel: session.scopeLabel,
+        status: session.status,
         startedAt: session.startedAt.toISOString(),
-        completedAt:
-          session.completedAt?.toISOString() ?? null,
-        isOperator:
-          session.operatorUserId === null ||
-          session.operatorUserId === user.id,
+        completedAt: session.completedAt?.toISOString() ?? null,
       },
+
+      permissions: {
+        isOperator,
+        isAdmin,
+        canApply:
+          (isOperator || isAdmin) && session.status === "REVIEW",
+      },
+
       summary: {
-        targetCount: items.length,
-        recordedCount: recordedItems.length,
+        targetCount,
+        recordedCount,
         matchedCount,
         differenceCount,
-        unrecordedCount:
-          items.length - recordedItems.length,
+        unrecordedCount,
       },
-      items,
+
+      records: recordsWithDetail,
     });
   } catch (error) {
-    console.error(
-      "GET /api/stocktake/session/[id]/result",
-      error
-    );
+    console.error("GET /api/stocktake/session/[id]/result", error);
 
     return NextResponse.json(
       {
-        code: "RESULT_FETCH_500",
-        message: "棚卸結果の取得に失敗しました。",
+        code: "STOCKTAKE_RESULT_FAILED",
+        message: getErrorMessage(
+          error,
+          "棚卸結果の取得に失敗しました。"
+        ),
       },
       { status: 500 }
     );

@@ -57,25 +57,30 @@ export default function StocktakeSearchCard({
   onSelect,
 }: Props) {
   const unit = item.unit ?? item.item.defaultUnit ?? "";
+
   const difference =
     item.countedQuantity === null
       ? null
       : item.countedQuantity - item.expectedQuantity;
 
-  const badge = !item.isRecorded
+  const status = !item.isRecorded
     ? {
         label: "未棚卸",
-        className: "bg-amber-100 text-amber-700",
+        className: "bg-amber-100 text-amber-800",
       }
     : difference === 0
       ? {
           label: "一致",
-          className: "bg-emerald-100 text-emerald-700",
+          className: "bg-emerald-100 text-emerald-800",
         }
       : {
           label: "差異あり",
-          className: "bg-red-100 text-red-700",
+          className: "bg-red-100 text-red-800",
         };
+
+  const category = [item.item.majorCategory, item.item.minorCategory]
+    .filter((value): value is string => Boolean(value))
+    .join(" / ");
 
   return (
     <article className="overflow-hidden rounded-3xl bg-white shadow-sm">
@@ -87,10 +92,16 @@ export default function StocktakeSearchCard({
             </h2>
 
             <p className="mt-2 break-all text-sm text-slate-600">
-              JAN：{item.item.janCode ?? "-"}
+              JAN：{item.item.janCode ?? "未登録"}
             </p>
 
-            <p className="mt-1 text-sm text-slate-600">
+            {item.item.systemBarcode && (
+              <p className="mt-1 break-all text-xs font-medium text-slate-500">
+                システムバーコード：{item.item.systemBarcode}
+              </p>
+            )}
+
+            <p className="mt-2 text-sm text-slate-600">
               保管場所：{item.storageLocation?.name ?? "未設定"}
             </p>
 
@@ -101,9 +112,9 @@ export default function StocktakeSearchCard({
           </div>
 
           <span
-            className={`shrink-0 rounded-full px-3 py-1.5 text-xs font-black ${badge.className}`}
+            className={`shrink-0 rounded-full px-3 py-1.5 text-xs font-black ${status.className}`}
           >
-            {badge.label}
+            {status.label}
           </span>
         </div>
 
@@ -136,16 +147,16 @@ export default function StocktakeSearchCard({
           <button
             type="button"
             onClick={onToggle}
-            className="min-h-12 rounded-xl bg-slate-100 px-3 py-3 text-sm font-bold text-slate-700"
+            className="min-h-12 rounded-xl bg-slate-100 px-3 py-3 text-sm font-bold text-slate-700 transition hover:bg-slate-200"
           >
-            {expanded ? "詳細を閉じる" : "詳細を表示"}
+            {expanded ? "詳細を閉じる" : "詳細を見る"}
           </button>
 
           <button
             type="button"
             disabled={disabled}
             onClick={onSelect}
-            className="min-h-12 rounded-xl bg-blue-600 px-3 py-3 text-sm font-black text-white disabled:bg-slate-300"
+            className="min-h-12 rounded-xl bg-blue-600 px-3 py-3 text-sm font-black text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-slate-300"
           >
             棚卸入力
           </button>
@@ -156,19 +167,17 @@ export default function StocktakeSearchCard({
         <div className="border-t border-slate-200 bg-slate-50 p-4 sm:p-5">
           <dl className="grid grid-cols-1 gap-x-5 gap-y-4 sm:grid-cols-2">
             <Detail label="JANコード" value={item.item.janCode} />
-            <Detail label="システムバーコード" value={item.item.systemBarcode} />
+            <Detail
+              label="システムバーコード"
+              value={item.item.systemBarcode}
+            />
             <Detail label="管理コード" value={item.item.managementCode} />
             <Detail
               label="管理グループコード"
               value={item.item.managementGroupCode}
             />
             <Detail label="メーカー" value={item.item.manufacturer} />
-            <Detail
-              label="分類"
-              value={[item.item.majorCategory, item.item.minorCategory]
-                .filter(Boolean)
-                .join(" / ")}
-            />
+            <Detail label="分類" value={category} />
             <Detail label="保管場所" value={item.storageLocation?.name} />
             <Detail label="ロット番号" value={item.lotNo} />
             <Detail label="使用期限" value={item.expirationDate} />

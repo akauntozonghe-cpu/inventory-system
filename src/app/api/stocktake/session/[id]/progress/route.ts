@@ -1,9 +1,19 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import {
-  getLoggedInUser,
-  hasAdminAccess,
-} from "@/lib/auth";
+import { getLoggedInUser, hasAdminAccess } from "@/lib/auth";
+
+function getErrorMessage(value: unknown, fallback: string) {
+  if (
+    value &&
+    typeof value === "object" &&
+    "message" in value &&
+    typeof value.message === "string"
+  ) {
+    return value.message;
+  }
+
+  return fallback;
+}
 
 export async function GET(
   request: NextRequest,
@@ -22,10 +32,12 @@ export async function GET(
   }
 
   try {
-    const { id } = await params;
+    const { id: sessionId } = await params;
 
     const session = await prisma.stocktakeSession.findUnique({
-      where: { id },
+      where: {
+        id: sessionId,
+      },
       select: {
         id: true,
         title: true,
@@ -36,6 +48,7 @@ export async function GET(
         startedAt: true,
         pausedAt: true,
         completedAt: true,
+        cancelledAt: true,
       },
     });
 
@@ -49,15 +62,16 @@ export async function GET(
       );
     }
 
-    const canView =
-      session.operatorUserId === user.id ||
-      hasAdminAccess(request);
+    const isAdmin = hasAdminAccess(request);
+    const isOperator =
+      session.operatorUserId === null ||
+      session.operatorUserId === user.id;
 
-    if (!canView) {
+    if (!isOperator && !isAdmin) {
       return NextResponse.json(
         {
           code: "STOCKTAKE_PROGRESS_FORBIDDEN",
-          message: "この棚卸の進捗を閲覧する権限がありません。",
+          message: "この棚卸を表示する権限がありません。",
         },
         { status: 403 }
       );
@@ -65,7 +79,9 @@ export async function GET(
 
     const [targets, records] = await Promise.all([
       prisma.stocktakeTarget.findMany({
-        where: { sessionId: id },
+        where: {
+          sessionId,
+        },
         select: {
           inventoryInstanceId: true,
           expectedQuantity: true,
@@ -73,7 +89,9 @@ export async function GET(
       }),
 
       prisma.stocktakeRecord.findMany({
-        where: { sessionId: id },
+        where: {
+          sessionId,
+        },
         select: {
           inventoryInstanceId: true,
           countedQuantity: true,
@@ -82,30 +100,61 @@ export async function GET(
       }),
     ]);
 
-    const expectedByInventoryId = new Map(
+    const expectedQuantityMap = new Map(
       targets.map((target) => [
         target.inventoryInstanceId,
         target.expectedQuantity,
       ])
     );
 
-    const matchedCount = records.filter(
-      (record) =>
-        expectedByInventoryId.get(
-          record.inventoryInstanceId
-        ) === record.countedQuantity
-    ).length;
-
-    const targetCount = targets.length;
     const recordedCount = records.length;
+
+    const matchedCount = records.filter((record) => {
+      const expectedQuantity = expectedQuantityMap.get(
+        record.inventoryInstanceId
+      );
+
+      return expectedQuantity === record.countedQuantity;
+    }).length;
+
     const differenceCount = recordedCount - matchedCount;
-    const unrecordedCount = Math.max(
-      targetCount - recordedCount,
-      0
-    );
+    const targetCount = targets.length;
+    const unrecordedCount = Math.max(targetCount - recordedCount, 0);
+
+    const latestRecord =
+      records.length > 0
+        ? records.reduce((latest, record) =>
+            record.updatedAt > latest.updatedAt ? record : latest
+          )
+        : null;
 
     return NextResponse.json({
-      session,
+      success: true,
+      code: "STOCKTAKE_PROGRESS_OK",
+
+      session: {
+        id: session.id,
+        title: session.title,
+        operator: session.operator,
+        scopeLabel: session.scopeLabel || "全在庫",
+        status: session.status,
+        startedAt: session.startedAt.toISOString(),
+        pausedAt: session.pausedAt?.toISOString() ?? null,
+        completedAt: session.completedAt?.toISOString() ?? null,
+        cancelledAt: session.cancelledAt?.toISOString() ?? null,
+      },
+
+      permissions: {
+        isOperator,
+        isAdmin,
+
+        // 作業者だけが、作業中の棚卸へ入力できます。
+        canOperate: isOperator && session.status === "IN_PROGRESS",
+
+        // 管理者は他人の棚卸を含め、状態確認・中断・再開・終了を管理できます。
+        canManage: isAdmin,
+      },
+
       summary: {
         targetCount,
         recordedCount,
@@ -115,31 +164,21 @@ export async function GET(
         progressPercent:
           targetCount === 0
             ? 0
-            : Math.round(
-                (recordedCount / targetCount) * 100
-              ),
+            : Math.round((recordedCount / targetCount) * 100),
       },
-      lastRecordedAt:
-        records.length > 0
-          ? records.reduce(
-              (latest, record) =>
-                record.updatedAt > latest
-                  ? record.updatedAt
-                  : latest,
-              records[0].updatedAt
-            )
-          : null,
+
+      lastRecordedAt: latestRecord?.updatedAt.toISOString() ?? null,
     });
   } catch (error) {
-    console.error(
-      "GET /api/stocktake/session/[id]/progress",
-      error
-    );
+    console.error("GET /api/stocktake/session/[id]/progress", error);
 
     return NextResponse.json(
       {
-        code: "STOCKTAKE_PROGRESS_500",
-        message: "棚卸進捗の取得に失敗しました。",
+        code: "STOCKTAKE_PROGRESS_FAILED",
+        message: getErrorMessage(
+          error,
+          "棚卸進捗を取得できませんでした。"
+        ),
       },
       { status: 500 }
     );

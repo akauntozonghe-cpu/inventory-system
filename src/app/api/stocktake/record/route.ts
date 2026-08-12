@@ -1,9 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import {
-  getLoggedInUser,
-  hasAdminAccess,
-} from "@/lib/auth";
+import { getLoggedInUser, hasAdminAccess } from "@/lib/auth";
 
 type RecordBody = {
   sessionId?: unknown;
@@ -35,10 +32,7 @@ export async function POST(request: NextRequest) {
     const body = (await request.json()) as RecordBody;
 
     const sessionId = getText(body.sessionId, 100);
-    const inventoryInstanceId = getText(
-      body.inventoryInstanceId,
-      100
-    );
+    const inventoryInstanceId = getText(body.inventoryInstanceId, 100);
     const countedQuantity = Number(body.countedQuantity);
     const memo = getText(body.memo, 1000) || null;
 
@@ -46,8 +40,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(
         {
           code: "STOCKTAKE_RECORD_INPUT_400",
-          message:
-            "棚卸セッションまたは在庫が指定されていません。",
+          message: "棚卸セッションまたは対象在庫が指定されていません。",
         },
         { status: 400 }
       );
@@ -57,39 +50,34 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(
         {
           code: "STOCKTAKE_RECORD_QUANTITY_400",
-          message:
-            "棚卸数量は0以上の整数で入力してください。",
+          message: "棚卸数量は0以上の整数で入力してください。",
         },
         { status: 400 }
       );
     }
 
-    const record = await prisma.$transaction(
+    const result = await prisma.$transaction(
       async (transaction) => {
-        const session =
-          await transaction.stocktakeSession.findUnique({
-            where: {
-              id: sessionId,
-            },
-            select: {
-              id: true,
-              status: true,
-              operatorUserId: true,
-            },
-          });
+        const session = await transaction.stocktakeSession.findUnique({
+          where: {
+            id: sessionId,
+          },
+          select: {
+            id: true,
+            status: true,
+            operatorUserId: true,
+          },
+        });
 
         if (!session) {
           throw new Error("STOCKTAKE_SESSION_NOT_FOUND");
         }
 
-        // ログイン機能追加前に作られた棚卸は、
-        // operatorUserId がないためログイン済みユーザーに限り継続を許可する。
-        const canOperate =
+        const isOperator =
           session.operatorUserId === null ||
-          session.operatorUserId === user.id ||
-          hasAdminAccess(request);
+          session.operatorUserId === user.id;
 
-        if (!canOperate) {
+        if (!isOperator && !hasAdminAccess(request)) {
           throw new Error("STOCKTAKE_OPERATOR_FORBIDDEN");
         }
 
@@ -101,30 +89,23 @@ export async function POST(request: NextRequest) {
           throw new Error("STOCKTAKE_NOT_IN_PROGRESS");
         }
 
-        const target =
-          await transaction.stocktakeTarget.findUnique({
-            where: {
-              sessionId_inventoryInstanceId: {
-                sessionId,
-                inventoryInstanceId,
-              },
+        const target = await transaction.stocktakeTarget.findUnique({
+          where: {
+            sessionId_inventoryInstanceId: {
+              sessionId,
+              inventoryInstanceId,
             },
-            select: {
-              inventoryInstanceId: true,
-            },
-          });
+          },
+          select: {
+            expectedQuantity: true,
+          },
+        });
 
         if (!target) {
           throw new Error("STOCKTAKE_TARGET_NOT_FOUND");
         }
 
-        /*
-         * ここでは InventoryInstance.quantity を絶対に更新しない。
-         * 保存するのは棚卸記録だけ。
-         * 棚卸終了時に開始時在庫との競合確認を行ったうえで、
-         * 安全に在庫へ正式反映する。
-         */
-        return transaction.stocktakeRecord.upsert({
+        const record = await transaction.stocktakeRecord.upsert({
           where: {
             sessionId_inventoryInstanceId: {
               sessionId,
@@ -151,6 +132,12 @@ export async function POST(request: NextRequest) {
             updatedAt: true,
           },
         });
+
+        return {
+          record,
+          expectedQuantity: target.expectedQuantity,
+          difference: countedQuantity - target.expectedQuantity,
+        };
       },
       {
         maxWait: 10_000,
@@ -160,28 +147,29 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({
       success: true,
-      message: "棚卸内容を保存しました。",
-      record,
+      code: "STOCKTAKE_RECORD_SAVED",
+      message: "棚卸入力を保存しました。",
+      record: result.record,
+      expectedQuantity: result.expectedQuantity,
+      difference: result.difference,
     });
   } catch (error) {
     console.error("POST /api/stocktake/record", error);
 
     const code =
-      error instanceof Error
-        ? error.message
-        : "STOCKTAKE_RECORD_500";
+      error instanceof Error ? error.message : "STOCKTAKE_RECORD_500";
 
-    const messageByCode: Record<string, string> = {
+    const messages: Record<string, string> = {
       STOCKTAKE_SESSION_NOT_FOUND:
         "棚卸セッションが見つかりません。",
       STOCKTAKE_OPERATOR_FORBIDDEN:
         "この棚卸を入力する権限がありません。",
       STOCKTAKE_NOT_IN_PROGRESS:
-        "中断中または終了済みの棚卸には入力できません。",
+        "作業中ではない棚卸には入力できません。",
       STOCKTAKE_CONFLICT_LOCKED:
-        "在庫競合を検知したため、この棚卸は安全停止中です。管理者の確認が必要です。",
+        "在庫データの競合が検出されたため、この棚卸は管理者確認まで停止しています。",
       STOCKTAKE_TARGET_NOT_FOUND:
-        "この在庫は棚卸対象に含まれていません。",
+        "この在庫は現在の棚卸対象に含まれていません。",
     };
 
     const status =
@@ -195,10 +183,9 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json(
       {
+        success: false,
         code,
-        message:
-          messageByCode[code] ??
-          "棚卸内容の保存に失敗しました。",
+        message: messages[code] ?? "棚卸入力の保存に失敗しました。",
       },
       { status }
     );

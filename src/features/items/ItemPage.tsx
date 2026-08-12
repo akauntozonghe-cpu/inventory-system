@@ -14,10 +14,16 @@ import type { Item } from "./types";
 
 type SortType = "nameAsc" | "nameDesc" | "barcodeAsc" | "barcodeDesc";
 
+type CurrentUser = {
+  id: string;
+  displayName: string;
+  role: "ADMIN" | "WORKER";
+};
+
 function getMessage(data: unknown, fallback: string) {
   if (
+    data &&
     typeof data === "object" &&
-    data !== null &&
     "message" in data &&
     typeof data.message === "string"
   ) {
@@ -32,7 +38,7 @@ async function readJson(response: Response): Promise<unknown> {
 
   if (!text.trim()) {
     throw new Error(
-      `サーバーから応答を確認できませんでした（HTTP ${response.status}）。`
+      `サーバーから応答を取得できませんでした。HTTP ${response.status}`
     );
   }
 
@@ -40,16 +46,18 @@ async function readJson(response: Response): Promise<unknown> {
     return JSON.parse(text) as unknown;
   } catch {
     throw new Error(
-      `サーバーから正しい応答を確認できませんでした（HTTP ${response.status}）。`
+      `サーバーから正しい応答を取得できませんでした。HTTP ${response.status}`
     );
   }
 }
 
 export default function ItemPage() {
   const [items, setItems] = useState<Item[]>([]);
+  const [currentUser, setCurrentUser] = useState<CurrentUser | null>(null);
   const [search, setSearch] = useState("");
   const [majorCategory, setMajorCategory] = useState("");
   const [sort, setSort] = useState<SortType>("nameAsc");
+  const [showArchived, setShowArchived] = useState(false);
   const [loading, setLoading] = useState(true);
   const [scannerOpen, setScannerOpen] = useState(false);
   const [message, setMessage] = useState("");
@@ -60,12 +68,45 @@ export default function ItemPage() {
   const [editJanCode, setEditJanCode] = useState("");
   const [savingEdit, setSavingEdit] = useState(false);
 
+  const isAdmin = currentUser?.role === "ADMIN";
+
+  const fetchUser = useCallback(async () => {
+    try {
+      const response = await fetch("/api/auth/me", {
+        cache: "no-store",
+      });
+
+      const data = await readJson(response);
+
+      if (
+        !response.ok ||
+        !data ||
+        typeof data !== "object" ||
+        !("id" in data) ||
+        !("displayName" in data) ||
+        !("role" in data)
+      ) {
+        return;
+      }
+
+      const user = data as CurrentUser;
+
+      if (user.role === "ADMIN" || user.role === "WORKER") {
+        setCurrentUser(user);
+      }
+    } catch {
+      // 権限が判定できない場合は管理者操作を表示しない
+    }
+  }, []);
+
   const fetchItems = useCallback(async () => {
     setLoading(true);
     setError("");
 
     try {
-      const response = await fetch("/api/items", {
+      const query = showArchived ? "?includeArchived=true" : "";
+
+      const response = await fetch(`/api/items${query}`, {
         cache: "no-store",
       });
 
@@ -84,14 +125,25 @@ export default function ItemPage() {
           ? loadError.message
           : "商品一覧を取得できませんでした。"
       );
+      setItems([]);
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [showArchived]);
+
+  useEffect(() => {
+    void fetchUser();
+  }, [fetchUser]);
 
   useEffect(() => {
     void fetchItems();
   }, [fetchItems]);
+
+  useEffect(() => {
+    if (!isAdmin && showArchived) {
+      setShowArchived(false);
+    }
+  }, [isAdmin, showArchived]);
 
   const categories = useMemo(() => {
     return Array.from(
@@ -107,22 +159,30 @@ export default function ItemPage() {
     const keyword = search.trim().toLowerCase();
 
     return items.filter((item) => {
-      const normalizedCategory = item.majorCategory?.trim() ?? "";
+      const category = item.majorCategory?.trim() ?? "";
 
       const matchesCategory =
-        !majorCategory || normalizedCategory === majorCategory;
+        !majorCategory || category === majorCategory;
 
-      const matchesKeyword =
-        !keyword ||
-        item.name.toLowerCase().includes(keyword) ||
-        (item.janCode ?? "").toLowerCase().includes(keyword) ||
-        (item.systemBarcode ?? "").toLowerCase().includes(keyword) ||
-        (item.managementCode ?? "").toLowerCase().includes(keyword) ||
-        (item.manufacturer ?? "").toLowerCase().includes(keyword) ||
-        (item.majorCategory ?? "").toLowerCase().includes(keyword) ||
-        (item.minorCategory ?? "").toLowerCase().includes(keyword);
+      const searchableText = [
+        item.name,
+        item.janCode,
+        item.systemBarcode,
+        item.managementCode,
+        item.managementGroupCode,
+        item.manufacturer,
+        item.majorCategory,
+        item.minorCategory,
+        item.defaultUnit,
+      ]
+        .filter((value): value is string => Boolean(value))
+        .join(" ")
+        .toLowerCase();
 
-      return matchesCategory && matchesKeyword;
+      return (
+        matchesCategory &&
+        (!keyword || searchableText.includes(keyword))
+      );
     });
   }, [items, majorCategory, search]);
 
@@ -151,6 +211,9 @@ export default function ItemPage() {
     }
   }, [filteredItems, sort]);
 
+  const activeItemCount = items.filter((item) => !item.isArchived).length;
+  const archivedItemCount = items.filter((item) => item.isArchived).length;
+
   const handleQrDetected = useCallback((category: string) => {
     setMajorCategory(category);
     setSearch("");
@@ -159,6 +222,11 @@ export default function ItemPage() {
   }, []);
 
   const startEdit = (item: Item) => {
+    if (!isAdmin) {
+      setError("商品情報の編集には管理者権限が必要です。");
+      return;
+    }
+
     setEditingItem(item);
     setEditName(item.name);
     setEditJanCode(item.janCode ?? "");
@@ -190,15 +258,15 @@ export default function ItemPage() {
     setError("");
 
     try {
-      const response = await fetch("/api/items", {
+      const response = await fetch(`/api/items/${editingItem.id}`, {
         method: "PUT",
         headers: {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          id: editingItem.id,
           name: editName.trim(),
           janCode: editJanCode.trim() || null,
+          reason: "商品一覧からの編集",
         }),
       });
 
@@ -234,45 +302,79 @@ export default function ItemPage() {
             </p>
 
             <h1 className="mt-1 text-3xl font-black text-slate-900">
-              商品一覧・ラベル発行
+              商品一覧・ラベル管理
             </h1>
 
             <p className="mt-2 text-slate-600">
-              商品を確認し、バーコードラベルを発行できます。大分類QRでも絞り込めます。
+              商品情報の検索、詳細確認、バーコードラベル印刷を行えます。
             </p>
           </div>
 
           <div className="flex flex-wrap gap-2">
-            <Link
-              href="/add"
-              className="rounded-xl bg-blue-600 px-4 py-3 font-bold text-white hover:bg-blue-700"
-            >
-              ＋ 商品登録
-            </Link>
+            {isAdmin && (
+              <>
+                <Link
+                  href="/add"
+                  className="rounded-xl bg-blue-600 px-4 py-3 font-bold text-white transition hover:bg-blue-700"
+                >
+                  商品を登録
+                </Link>
 
-            <Link
-              href="/admin/category-qr"
-              className="rounded-xl bg-indigo-600 px-4 py-3 font-bold text-white hover:bg-indigo-700"
-            >
-              大分類QRを発行
-            </Link>
+                <Link
+                  href="/admin/category-qr"
+                  className="rounded-xl bg-indigo-600 px-4 py-3 font-bold text-white transition hover:bg-indigo-700"
+                >
+                  大分類QRを発行
+                </Link>
+              </>
+            )}
 
             <button
               type="button"
               onClick={() => void fetchItems()}
               disabled={loading}
-              className="rounded-xl bg-white px-4 py-3 font-bold text-slate-700 shadow-sm hover:bg-slate-50 disabled:text-slate-400"
+              className="rounded-xl bg-white px-4 py-3 font-bold text-slate-700 shadow-sm transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:text-slate-400"
             >
               更新
             </button>
           </div>
         </header>
 
+        {isAdmin && (
+          <section className="mb-5 rounded-2xl border border-indigo-200 bg-indigo-50 p-4">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <p className="font-bold text-indigo-900">管理者モード</p>
+                <p className="mt-1 text-sm text-indigo-800">
+                  商品の編集・廃止・復元・複数選択による一括操作ができます。
+                </p>
+              </div>
+
+              <label className="flex cursor-pointer items-center gap-3 rounded-xl bg-white px-4 py-3 font-bold text-slate-700 shadow-sm">
+                <input
+                  type="checkbox"
+                  checked={showArchived}
+                  onChange={(event) => {
+                    setShowArchived(event.target.checked);
+                    setMajorCategory("");
+                    setMessage("");
+                  }}
+                  className="h-5 w-5"
+                />
+                廃止済みも表示
+              </label>
+            </div>
+
+            <p className="mt-3 text-sm text-indigo-800">
+              通常商品：{activeItemCount}件
+              {showArchived && ` ／ 廃止済み：${archivedItemCount}件`}
+            </p>
+          </section>
+        )}
+
         {error && (
           <section className="mb-5 rounded-2xl border border-red-200 bg-red-50 p-5">
-            <p className="text-sm font-bold text-red-600">
-              商品一覧エラー
-            </p>
+            <p className="text-sm font-bold text-red-600">システムエラー</p>
             <p className="mt-2 text-slate-700">{error}</p>
           </section>
         )}
@@ -287,10 +389,7 @@ export default function ItemPage() {
           <section className="mb-6 rounded-2xl bg-white p-5 shadow-sm sm:p-7">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
               <div>
-                <p className="text-sm font-bold text-amber-600">
-                  商品情報の編集
-                </p>
-
+                <p className="text-sm font-bold text-amber-600">商品情報の編集</p>
                 <h2 className="mt-1 text-xl font-black text-slate-900">
                   {editingItem.name}
                 </h2>
@@ -299,7 +398,7 @@ export default function ItemPage() {
               <button
                 type="button"
                 onClick={cancelEdit}
-                className="rounded-xl bg-slate-100 px-4 py-2 font-bold text-slate-700 hover:bg-slate-200"
+                className="rounded-xl bg-slate-100 px-4 py-2 font-bold text-slate-700 transition hover:bg-slate-200"
               >
                 編集をやめる
               </button>
@@ -322,7 +421,7 @@ export default function ItemPage() {
               </label>
 
               <label>
-                <span className="font-bold">既存JANコード</span>
+                <span className="font-bold">JANコード</span>
 
                 <input
                   value={editJanCode}
@@ -336,7 +435,7 @@ export default function ItemPage() {
                 <button
                   type="submit"
                   disabled={savingEdit}
-                  className="rounded-xl bg-amber-500 px-5 py-3 font-bold text-white hover:bg-amber-600 disabled:bg-slate-400"
+                  className="rounded-xl bg-amber-500 px-5 py-3 font-bold text-white transition hover:bg-amber-600 disabled:cursor-not-allowed disabled:bg-slate-400"
                 >
                   {savingEdit ? "更新中…" : "商品情報を更新"}
                 </button>
@@ -350,29 +449,27 @@ export default function ItemPage() {
             <input
               value={search}
               onChange={(event) => setSearch(event.target.value)}
-              placeholder="商品名・JAN・システムJAN・管理コードで検索"
+              placeholder="商品名・JAN・システムバーコード・管理番号・メーカー・分類で検索"
               className="w-full rounded-xl border border-slate-300 px-4 py-3 outline-none focus:border-blue-600"
             />
 
             <button
               type="button"
               onClick={() => setScannerOpen(true)}
-              className="rounded-xl bg-indigo-600 px-4 py-3 font-bold text-white hover:bg-indigo-700"
+              className="rounded-xl bg-indigo-600 px-4 py-3 font-bold text-white transition hover:bg-indigo-700"
             >
               QRで大分類を読む
             </button>
 
             <select
               value={sort}
-              onChange={(event) =>
-                setSort(event.target.value as SortType)
-              }
+              onChange={(event) => setSort(event.target.value as SortType)}
               className="rounded-xl border border-slate-300 bg-white px-4 py-3 font-bold text-slate-700 outline-none"
             >
               <option value="nameAsc">商品名：昇順</option>
               <option value="nameDesc">商品名：降順</option>
-              <option value="barcodeAsc">JAN：昇順</option>
-              <option value="barcodeDesc">JAN：降順</option>
+              <option value="barcodeAsc">識別コード：昇順</option>
+              <option value="barcodeDesc">識別コード：降順</option>
             </select>
           </div>
 
@@ -386,7 +483,7 @@ export default function ItemPage() {
                   : "bg-slate-100 text-slate-700"
               }`}
             >
-              すべて（{items.length}）
+              すべて（{items.length}件）
             </button>
 
             {categories.map((category) => {
@@ -405,7 +502,7 @@ export default function ItemPage() {
                       : "bg-slate-100 text-slate-700"
                   }`}
                 >
-                  {category}（{count}）
+                  {category}（{count}件）
                 </button>
               );
             })}
@@ -445,7 +542,6 @@ export default function ItemPage() {
 
       {scannerOpen && (
         <CategoryQrScanner
-          currentCategory={majorCategory || null}
           onDetected={handleQrDetected}
           onClose={() => setScannerOpen(false)}
         />

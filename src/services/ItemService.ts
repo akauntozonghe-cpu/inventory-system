@@ -24,17 +24,21 @@ type ItemUpdateInput = Partial<{
   defaultUnit: string;
 }>;
 
+type ItemListOptions = {
+  includeArchived?: boolean;
+};
+
 export class ItemService {
-  static async getAll() {
-    return ItemRepository.findAll();
+  static async getAll(options: ItemListOptions = {}) {
+    return ItemRepository.findAll(options);
   }
 
-  static async search(keyword: string) {
+  static async search(keyword: string, options: ItemListOptions = {}) {
     if (!keyword.trim()) {
       return [];
     }
 
-    return ItemRepository.search(keyword);
+    return ItemRepository.search(keyword, options);
   }
 
   static async create(data: ItemCreateInput) {

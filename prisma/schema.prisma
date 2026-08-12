@@ -25,6 +25,7 @@ model AppUser {
   itemRegistrationRequests ItemRegistrationRequest[] @relation("RegistrationRequester")
   inventoryEvents          InventoryEvent[]          @relation("InventoryEventActor")
   notifications            Notification[]            @relation("NotificationRecipient")
+  systemCheckRuns          SystemCheckRun[]
 }
 
 model Item {
@@ -38,10 +39,19 @@ model Item {
   majorCategory       String?
   minorCategory       String?
   defaultUnit         String?
+
+  // 削除せず廃止状態へ移し、在庫・棚卸履歴を保護する
+  isArchived          Boolean  @default(false)
+  archivedAt          DateTime?
+  archiveReason       String?
+
   createdAt           DateTime @default(now())
   updatedAt           DateTime @updatedAt
 
-  inventoryInstances InventoryInstance[]
+  inventoryInstances  InventoryInstance[]
+
+  @@index([isArchived, name])
+  @@index([isArchived, majorCategory])
 }
 
 model StorageLocation {
@@ -59,7 +69,7 @@ model InventoryInstance {
   id String @id @default(cuid())
 
   itemId String
-  item   Item   @relation(fields: [itemId], references: [id])
+  item   Item @relation(fields: [itemId], references: [id])
 
   storageLocationId String?
   storageLocation   StorageLocation? @relation(fields: [storageLocationId], references: [id])
@@ -79,7 +89,7 @@ model InventoryInstance {
   allocationType AllocationType
   status         String
 
-    stocktakeStatus String @default("未棚卸")
+  stocktakeStatus String   @default("未棚卸")
   stocktakeAt     DateTime?
 
   createdAt DateTime @default(now())
@@ -109,7 +119,7 @@ model StocktakeSession {
   id String @id @default(cuid())
 
   title    String
-    operator String? @default("管理者")
+  operator String? @default("管理者")
 
   operatorUserId String?
   operatorUser   AppUser? @relation(fields: [operatorUserId], references: [id])
@@ -270,7 +280,7 @@ model Notification {
   stocktakeSession   StocktakeSession? @relation(fields: [stocktakeSessionId], references: [id], onDelete: SetNull)
 
   readAt    DateTime?
-  createdAt DateTime  @default(now())
+  createdAt DateTime @default(now())
 
   @@index([audience, readAt, createdAt])
   @@index([recipientUserId, readAt, createdAt])
@@ -329,6 +339,48 @@ model AdminActionLog {
   @@index([adminUserId, createdAt])
   @@index([errorReportId, createdAt])
   @@index([targetSessionId, createdAt])
+}
+
+model SystemCheckRun {
+  id String @id @default(cuid())
+
+  mode    SystemCheckMode
+  status  SystemCheckStatus
+  summary String?
+
+  executedByUserId String
+  executedBy       AppUser @relation(fields: [executedByUserId], references: [id], onDelete: Restrict)
+
+  startedAt   DateTime @default(now())
+  completedAt DateTime?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  items SystemCheckItem[]
+
+  @@index([createdAt])
+  @@index([executedByUserId, createdAt])
+  @@index([status, createdAt])
+}
+
+model SystemCheckItem {
+  id String @id @default(cuid())
+
+  runId String
+  run   SystemCheckRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+
+  code      String
+  title     String
+  type      SystemCheckItemType
+  status    SystemCheckItemStatus
+  detail    String?
+  expected  String?
+  actual    String?
+  errorCode String?
+
+  checkedAt DateTime @default(now())
+
+  @@index([runId, status])
 }
 
 enum AllocationType {
@@ -412,4 +464,27 @@ enum RecoveryStatus {
   RECOVERED
   FAILED
   ADMIN_REQUIRED
+}
+
+enum SystemCheckMode {
+  AUTO
+  MANUAL
+}
+
+enum SystemCheckStatus {
+  PASSED
+  WARNING
+  FAILED
+}
+
+enum SystemCheckItemType {
+  AUTO
+  MANUAL
+}
+
+enum SystemCheckItemStatus {
+  PASS
+  WARNING
+  FAIL
+  NOT_RUN
 }

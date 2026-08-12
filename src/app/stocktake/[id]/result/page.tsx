@@ -1,51 +1,54 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
-import { useParams } from "next/navigation";
-import ConflictResolutionPanel from "@/components/stocktake/ConflictResolutionPanel";
+import { useCallback, useEffect, useState } from "react";
+import { useParams, useRouter } from "next/navigation";
 
-type FilterMode = "DIFFERENCE" | "UNRECORDED" | "ALL";
+type StocktakeStatus =
+  | "IN_PROGRESS"
+  | "PAUSED"
+  | "REVIEW"
+  | "COMPLETED"
+  | "CANCELLED";
 
-type ResultItem = {
+type ResultRecord = {
   id: string;
+  inventoryInstanceId: string;
+  countedQuantity: number;
   expectedQuantity: number;
-  countedQuantity: number | null;
-  difference: number | null;
+  difference: number;
   memo: string | null;
-  recordedAt: string | null;
-  location: string;
-  unit: string | null;
-  lotNo: string | null;
-  expirationDate: string | null;
   item: {
-    id: string;
     name: string;
     janCode: string | null;
     systemBarcode: string | null;
-    managementCode: string | null;
-    managementGroupCode: string | null;
     manufacturer: string | null;
     majorCategory: string | null;
     minorCategory: string | null;
   };
+  storageLocation: {
+    name: string;
+  } | null;
+  unit: string | null;
 };
 
 type ResultData = {
+  success: boolean;
+  code?: string;
+  message?: string;
   session: {
     id: string;
     title: string;
-    status:
-      | "IN_PROGRESS"
-      | "PAUSED"
-      | "REVIEW"
-      | "CONFLICT"
-      | "COMPLETED"
-      | "CANCELLED";
     operator: string | null;
+    scopeLabel: string | null;
+    status: StocktakeStatus;
     startedAt: string;
     completedAt: string | null;
+  };
+  permissions: {
     isOperator: boolean;
+    isAdmin: boolean;
+    canApply: boolean;
   };
   summary: {
     targetCount: number;
@@ -54,13 +57,13 @@ type ResultData = {
     differenceCount: number;
     unrecordedCount: number;
   };
-  items: ResultItem[];
+  records: ResultRecord[];
 };
 
-function getMessage(value: unknown, fallback: string) {
+function readMessage(value: unknown, fallback: string) {
   if (
+    value &&
     typeof value === "object" &&
-    value !== null &&
     "message" in value &&
     typeof value.message === "string"
   ) {
@@ -70,87 +73,75 @@ function getMessage(value: unknown, fallback: string) {
   return fallback;
 }
 
-function isResultData(value: unknown): value is ResultData {
-  return (
-    typeof value === "object" &&
-    value !== null &&
-    "session" in value &&
-    "summary" in value &&
-    "items" in value &&
-    Array.isArray(value.items)
-  );
-}
-
-async function readJson(response: Response): Promise<unknown> {
-  const text = await response.text();
-
-  if (!text.trim()) {
-    throw new Error(
-      `結果データが空です。HTTP ${response.status}`
-    );
+function formatDate(value: string | null) {
+  if (!value) {
+    return "-";
   }
 
-  try {
-    return JSON.parse(text) as unknown;
-  } catch {
-    throw new Error(
-      `結果データの形式が正しくありません。HTTP ${response.status}`
-    );
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) {
+    return "-";
   }
+
+  return new Intl.DateTimeFormat("ja-JP", {
+    year: "numeric",
+    month: "numeric",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(date);
 }
 
 export default function StocktakeResultPage() {
-  const { id } = useParams<{ id: string }>();
+  const params = useParams<{ id: string }>();
+  const router = useRouter();
+  const sessionId = params.id;
 
   const [data, setData] = useState<ResultData | null>(null);
-  const [filterMode, setFilterMode] =
-    useState<FilterMode>("DIFFERENCE");
   const [loading, setLoading] = useState(true);
+  const [applying, setApplying] = useState(false);
   const [error, setError] = useState("");
+  const [message, setMessage] = useState("");
+  const [showConfirm, setShowConfirm] = useState(false);
+
+  const loadResult = useCallback(async () => {
+    const response = await fetch(
+      `/api/stocktake/session/${sessionId}/result`,
+      {
+        cache: "no-store",
+      }
+    );
+
+    const result: unknown = await response.json().catch(() => null);
+
+    if (!response.ok) {
+      throw new Error(
+        readMessage(result, "棚卸結果の取得に失敗しました。")
+      );
+    }
+
+    setData(result as ResultData);
+  }, [sessionId]);
 
   useEffect(() => {
-    let cancelled = false;
+    let mounted = true;
 
     const load = async () => {
-      setLoading(true);
-      setError("");
-
       try {
-        const response = await fetch(
-          `/api/stocktake/session/${encodeURIComponent(id)}/result`,
-          { cache: "no-store" }
-        );
-
-        const payload = await readJson(response);
-
-        if (!response.ok) {
-          throw new Error(
-            getMessage(
-              payload,
-              "棚卸結果の取得に失敗しました。"
-            )
-          );
-        }
-
-        if (!isResultData(payload)) {
-          throw new Error(
-            "棚卸結果のデータ形式が正しくありません。"
-          );
-        }
-
-        if (!cancelled) {
-          setData(payload);
-        }
-      } catch (caughtError) {
-        if (!cancelled) {
+        setLoading(true);
+        setError("");
+        await loadResult();
+      } catch (loadError) {
+        if (mounted) {
           setError(
-            caughtError instanceof Error
-              ? caughtError.message
+            loadError instanceof Error
+              ? loadError.message
               : "棚卸結果の取得に失敗しました。"
           );
         }
       } finally {
-        if (!cancelled) {
+        if (mounted) {
           setLoading(false);
         }
       }
@@ -159,382 +150,347 @@ export default function StocktakeResultPage() {
     void load();
 
     return () => {
-      cancelled = true;
+      mounted = false;
     };
-  }, [id]);
+  }, [loadResult]);
 
-  const visibleItems = useMemo(() => {
-    if (!data) {
-      return [];
-    }
+  const applyStocktake = async () => {
+    setApplying(true);
+    setError("");
+    setMessage("");
 
-    return data.items.filter((item) => {
-      if (filterMode === "ALL") {
-        return true;
-      }
-
-      if (filterMode === "UNRECORDED") {
-        return item.countedQuantity === null;
-      }
-
-      return (
-        item.difference !== null &&
-        item.difference !== 0
+    try {
+      const response = await fetch(
+        `/api/stocktake/session/${sessionId}/apply`,
+        {
+          method: "POST",
+        }
       );
-    });
-  }, [data, filterMode]);
+
+      const result: unknown = await response.json().catch(() => null);
+
+      if (!response.ok) {
+        throw new Error(
+          readMessage(result, "棚卸結果を正式確定できませんでした。")
+        );
+      }
+
+      setShowConfirm(false);
+      setMessage(
+        readMessage(
+          result,
+          "棚卸データを正式確定し、在庫へ反映しました。"
+        )
+      );
+
+      await loadResult();
+
+      window.setTimeout(() => {
+        router.push("/stocktake/start");
+      }, 1800);
+    } catch (applyError) {
+      setError(
+        applyError instanceof Error
+          ? applyError.message
+          : "棚卸結果を正式確定できませんでした。"
+      );
+      setShowConfirm(false);
+    } finally {
+      setApplying(false);
+    }
+  };
 
   if (loading) {
     return (
-      <main className="grid min-h-screen place-items-center bg-slate-50 p-6 text-slate-700">
-        棚卸結果を読み込んでいます…
+      <main className="min-h-screen bg-slate-950 p-5 text-white sm:p-8">
+        <div className="mx-auto max-w-5xl rounded-3xl bg-white p-8 text-slate-900">
+          棚卸結果を読み込んでいます…
+        </div>
       </main>
     );
   }
 
   if (!data) {
     return (
-      <main className="min-h-screen bg-slate-50 p-6 text-slate-900">
-        <section className="mx-auto max-w-xl rounded-3xl bg-white p-6 shadow-sm">
-          <h1 className="text-2xl font-black">
-            棚卸結果を表示できません
-          </h1>
-
-          <p className="mt-4 text-red-700">
-            {error || "データを取得できませんでした。"}
+      <main className="min-h-screen bg-slate-950 p-5 text-white sm:p-8">
+        <div className="mx-auto max-w-3xl rounded-3xl bg-white p-8 text-slate-900">
+          <h1 className="text-2xl font-black">棚卸結果を開けませんでした</h1>
+          <p className="mt-3 text-slate-600">
+            {error || "棚卸結果を取得できませんでした。"}
           </p>
-
           <Link
             href="/stocktake/start"
-            className="mt-6 inline-flex rounded-2xl bg-slate-800 px-5 py-3 font-bold text-white"
+            className="mt-6 inline-flex rounded-xl bg-indigo-600 px-5 py-3 font-bold text-white"
           >
             棚卸開始へ戻る
           </Link>
-        </section>
+        </div>
       </main>
     );
   }
 
+  const isWorking =
+    data.session.status === "IN_PROGRESS" ||
+    data.session.status === "PAUSED";
+
+  const isReview = data.session.status === "REVIEW";
   const isCompleted = data.session.status === "COMPLETED";
-  const isConflict = data.session.status === "CONFLICT";
-  const isCancelled = data.session.status === "CANCELLED";
-
-  const statusLabel = isCompleted
-    ? "終了・在庫反映済み"
-    : isConflict
-      ? "競合により安全停止中"
-      : isCancelled
-        ? "安全終了（在庫未反映）"
-        : "棚卸作業中";
-
-  const statusClass = isCompleted
-    ? "bg-emerald-100 text-emerald-700"
-    : isConflict
-      ? "bg-red-100 text-red-700"
-      : isCancelled
-        ? "bg-slate-200 text-slate-700"
-        : "bg-amber-100 text-amber-800";
-
-  const filters: Array<{
-    mode: FilterMode;
-    label: string;
-  }> = [
-    { mode: "DIFFERENCE", label: "差異あり" },
-    { mode: "UNRECORDED", label: "未棚卸" },
-    { mode: "ALL", label: "すべて" },
-  ];
 
   return (
-    <main className="min-h-screen bg-slate-50 text-slate-900">
-      <div className="mx-auto max-w-5xl p-4 sm:p-8">
-        <header className="flex flex-wrap items-start justify-between gap-4">
+    <main className="min-h-screen bg-slate-950 pb-12 text-slate-950">
+      <header className="border-b border-slate-800 bg-slate-950 px-5 py-6 text-white sm:px-8">
+        <div className="mx-auto flex max-w-7xl flex-col gap-5 sm:flex-row sm:items-start sm:justify-between">
           <div>
-            <p className="text-sm font-bold text-blue-600">
-              棚卸結果
-            </p>
-
-            <h1 className="mt-1 break-words text-3xl font-black">
+            <p className="text-sm font-bold text-indigo-300">棚卸結果</p>
+            <h1 className="mt-1 text-3xl font-black sm:text-4xl">
               {data.session.title}
             </h1>
-
-            {data.session.operator && (
-              <p className="mt-2 text-sm text-slate-600">
-                担当者：{data.session.operator}
-              </p>
-            )}
-
-            <span
-              className={`mt-3 inline-flex rounded-full px-3 py-1 text-sm font-bold ${statusClass}`}
-            >
-              {statusLabel}
-            </span>
+            <p className="mt-2 text-slate-300">
+              担当者：{data.session.operator || "未設定"}
+            </p>
+            <p className="mt-1 text-sm text-slate-400">
+              対象：{data.session.scopeLabel || "全在庫"}
+            </p>
           </div>
 
           <Link
             href="/stocktake/start"
-            className="rounded-2xl bg-slate-800 px-5 py-3 font-bold text-white"
+            className="rounded-xl bg-slate-700 px-5 py-3 text-center font-bold text-white transition hover:bg-slate-600"
           >
             棚卸開始へ戻る
           </Link>
-        </header>
+        </div>
+      </header>
 
-        {isCompleted && (
-          <section className="mt-5 rounded-3xl border border-emerald-200 bg-emerald-50 p-5">
-            <h2 className="font-black text-emerald-950">
-              棚卸を終了しました
-            </h2>
-
-            <p className="mt-2 text-sm leading-6 text-emerald-800">
-              保存済みの棚卸入力を在庫数へ反映しました。
-              未棚卸の商品は、開始時点以降の在庫数を変更せず維持しています。
-            </p>
-          </section>
+      <div className="mx-auto max-w-7xl space-y-6 p-5 sm:p-8">
+        {message && (
+          <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-5 py-4 font-bold text-emerald-800">
+            {message}
+          </div>
         )}
 
-        {isConflict && (
-          <>
-            <section className="mt-5 rounded-3xl border border-red-200 bg-red-50 p-5">
-              <h2 className="font-black text-red-950">
-                在庫競合のため安全停止中です
-              </h2>
-
-              <p className="mt-2 text-sm leading-6 text-red-800">
-                棚卸開始後に在庫数が変更されたため、誤った反映を防止しました。
-                在庫数は変更されていません。
-              </p>
-            </section>
-
-            <ConflictResolutionPanel
-              sessionId={data.session.id}
-            />
-          </>
+        {error && (
+          <div className="rounded-2xl border border-red-200 bg-red-50 px-5 py-4 font-bold text-red-800">
+            {error}
+          </div>
         )}
 
-        {isCancelled && (
-          <section className="mt-5 rounded-3xl border border-slate-300 bg-slate-100 p-5">
-            <h2 className="font-black text-slate-900">
-              この棚卸は安全終了しました
-            </h2>
-
-            <p className="mt-2 text-sm leading-6 text-slate-700">
-              在庫競合または安全上の理由により、在庫数を変更せず終了しました。
-              棚卸入力と管理者の対応記録は履歴として保存されています。
-            </p>
-          </section>
-        )}
-
-        {!isCompleted && !isConflict && !isCancelled && (
-          <section className="mt-5 rounded-3xl border border-amber-200 bg-amber-50 p-5">
-            <h2 className="font-black text-amber-900">
+        {isWorking && (
+          <section className="rounded-3xl border border-amber-200 bg-amber-50 p-6">
+            <h2 className="text-2xl font-black text-amber-900">
               この棚卸はまだ終了していません
             </h2>
-
-            <p className="mt-2 text-sm leading-6 text-amber-800">
-              作業画面へ戻り、棚卸を終了すると保存済み入力が在庫数へ反映されます。
+            <p className="mt-3 leading-7 text-amber-800">
+              作業画面へ戻り、棚卸を終了すると結果確認・正式確定へ進めます。
+              保存済みの棚卸入力は保護されています。
             </p>
-
             <Link
-              href={`/stocktake/${id}`}
-              className="mt-4 inline-flex rounded-2xl bg-amber-600 px-4 py-3 text-sm font-bold text-white"
+              href={`/stocktake/${sessionId}`}
+              className="mt-5 inline-flex rounded-xl bg-amber-600 px-5 py-3 font-black text-white transition hover:bg-amber-500"
             >
               棚卸作業へ戻る
             </Link>
           </section>
         )}
 
-        <section className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-5">
-          <SummaryCard
-            label="対象"
-            value={data.summary.targetCount}
-            color="text-slate-900"
-          />
-          <SummaryCard
-            label="棚卸済"
-            value={data.summary.recordedCount}
-            color="text-blue-600"
-          />
-          <SummaryCard
-            label="一致"
-            value={data.summary.matchedCount}
-            color="text-emerald-600"
-          />
-          <SummaryCard
-            label="差異"
-            value={data.summary.differenceCount}
-            color="text-red-600"
-          />
-          <SummaryCard
-            label="未棚卸"
-            value={data.summary.unrecordedCount}
-            color="text-orange-600"
-          />
-        </section>
-
-        <section className="mt-5 rounded-3xl bg-white p-4 shadow-sm">
-          <div className="flex gap-2 overflow-x-auto">
-            {filters.map((filter) => (
-              <button
-                key={filter.mode}
-                type="button"
-                onClick={() => setFilterMode(filter.mode)}
-                className={`shrink-0 rounded-full px-4 py-2 text-sm font-bold ${
-                  filterMode === filter.mode
-                    ? "bg-blue-600 text-white"
-                    : "bg-slate-100 text-slate-700"
-                }`}
-              >
-                {filter.label}
-              </button>
-            ))}
-          </div>
-        </section>
-
-        <section className="mt-5 overflow-hidden rounded-3xl bg-white shadow-sm">
-          <div className="divide-y divide-slate-100">
-            {visibleItems.map((item) => (
-              <ResultRow key={item.id} item={item} />
-            ))}
-
-            {visibleItems.length === 0 && (
-              <p className="p-10 text-center text-slate-500">
-                該当する棚卸対象はありません。
-              </p>
-            )}
-          </div>
-        </section>
-      </div>
-    </main>
-  );
-}
-
-function SummaryCard({
-  label,
-  value,
-  color,
-}: {
-  label: string;
-  value: number;
-  color: string;
-}) {
-  return (
-    <div className="rounded-2xl bg-white p-4 shadow-sm">
-      <p className="text-sm text-slate-500">{label}</p>
-      <p className={`mt-1 text-2xl font-black ${color}`}>
-        {value}
-      </p>
-    </div>
-  );
-}
-
-function ResultRow({ item }: { item: ResultItem }) {
-  const isUnrecorded = item.countedQuantity === null;
-  const isMatched = item.difference === 0;
-
-  const status = isUnrecorded
-    ? "未棚卸"
-    : isMatched
-      ? "一致"
-      : `差異 ${
-          item.difference !== null && item.difference > 0
-            ? "+"
-            : ""
-        }${item.difference ?? ""}`;
-
-  const statusClass = isUnrecorded
-    ? "bg-orange-100 text-orange-700"
-    : isMatched
-      ? "bg-emerald-100 text-emerald-700"
-      : "bg-red-100 text-red-700";
-
-  return (
-    <article className="p-4 sm:p-5">
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <h2 className="break-words text-lg font-black">
-            {item.item.name}
-          </h2>
-
-          <p className="mt-1 break-all text-sm text-slate-600">
-            JAN：{item.item.janCode ?? "-"}
-          </p>
-
-          <p className="mt-1 break-all text-sm text-slate-600">
-            システムバーコード：
-            {item.item.systemBarcode ?? "-"}
-          </p>
-
-          <p className="mt-1 text-sm text-slate-600">
-            保管場所：{item.location}
-          </p>
-        </div>
-
-        <span
-          className={`shrink-0 rounded-full px-3 py-1 text-sm font-bold ${statusClass}`}
-        >
-          {status}
-        </span>
-      </div>
-
-      <div className="mt-4 grid grid-cols-2 gap-3 text-sm sm:grid-cols-4">
-        <Detail
-          label="開始時在庫"
-          value={`${item.expectedQuantity}${item.unit ?? ""}`}
-        />
-        <Detail
-          label="棚卸数量"
-          value={
-            item.countedQuantity === null
-              ? "-"
-              : `${item.countedQuantity}${item.unit ?? ""}`
-          }
-        />
-        <Detail label="ロット" value={item.lotNo ?? "-"} />
-        <Detail label="期限" value={item.expirationDate ?? "-"} />
-      </div>
-
-      {(item.item.majorCategory ||
-        item.item.minorCategory ||
-        item.item.manufacturer) && (
-        <div className="mt-3 text-sm text-slate-600">
-          {item.item.manufacturer && (
-            <p>メーカー：{item.item.manufacturer}</p>
-          )}
-
-          {(item.item.majorCategory ||
-            item.item.minorCategory) && (
-            <p className="mt-1">
-              分類：
-              {item.item.majorCategory ?? "-"}
-              {item.item.minorCategory
-                ? ` / ${item.item.minorCategory}`
-                : ""}
+        {isReview && (
+          <section className="rounded-3xl border border-indigo-200 bg-indigo-50 p-6">
+            <p className="text-sm font-bold text-indigo-600">確認待ち</p>
+            <h2 className="mt-1 text-2xl font-black text-indigo-950">
+              内容を確認して正式確定してください
+            </h2>
+            <p className="mt-3 leading-7 text-indigo-900">
+              正式確定すると、保存済みの棚卸数量が在庫数へ反映され、棚卸履歴が作成されます。
+              確定後も履歴から確認できます。
             </p>
+
+            {data.permissions.canApply && (
+              <button
+                type="button"
+                onClick={() => setShowConfirm(true)}
+                className="mt-5 rounded-xl bg-indigo-600 px-5 py-3 font-black text-white transition hover:bg-indigo-500"
+              >
+                正式確定へ進む
+              </button>
+            )}
+          </section>
+        )}
+
+        {isCompleted && (
+          <section className="rounded-3xl border border-emerald-200 bg-emerald-50 p-6">
+            <p className="text-sm font-bold text-emerald-600">正式確定済み</p>
+            <h2 className="mt-1 text-2xl font-black text-emerald-950">
+              在庫へ反映済みです
+            </h2>
+            <p className="mt-3 text-emerald-900">
+              確定日時：{formatDate(data.session.completedAt)}
+            </p>
+          </section>
+        )}
+
+        <section className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+          <div className="rounded-2xl bg-white p-5 shadow-sm">
+            <p className="text-sm text-slate-500">対象</p>
+            <p className="mt-2 text-3xl font-black">
+              {data.summary.targetCount}
+            </p>
+          </div>
+
+          <div className="rounded-2xl bg-white p-5 shadow-sm">
+            <p className="text-sm text-slate-500">棚卸済</p>
+            <p className="mt-2 text-3xl font-black text-indigo-600">
+              {data.summary.recordedCount}
+            </p>
+          </div>
+
+          <div className="rounded-2xl bg-white p-5 shadow-sm">
+            <p className="text-sm text-slate-500">一致</p>
+            <p className="mt-2 text-3xl font-black text-emerald-600">
+              {data.summary.matchedCount}
+            </p>
+          </div>
+
+          <div className="rounded-2xl bg-white p-5 shadow-sm">
+            <p className="text-sm text-slate-500">差異</p>
+            <p className="mt-2 text-3xl font-black text-red-600">
+              {data.summary.differenceCount}
+            </p>
+          </div>
+
+          <div className="rounded-2xl bg-white p-5 shadow-sm">
+            <p className="text-sm text-slate-500">未棚卸</p>
+            <p className="mt-2 text-3xl font-black text-orange-600">
+              {data.summary.unrecordedCount}
+            </p>
+          </div>
+        </section>
+
+        <section className="rounded-3xl bg-white p-5 shadow-sm sm:p-7">
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+            <div>
+              <h2 className="text-2xl font-black">差異・棚卸入力一覧</h2>
+              <p className="mt-1 text-sm text-slate-500">
+                保存済みの棚卸入力を確認できます。
+              </p>
+            </div>
+
+            <p className="text-sm text-slate-500">
+              作業開始：{formatDate(data.session.startedAt)}
+            </p>
+          </div>
+
+          {data.records.length === 0 ? (
+            <div className="mt-6 rounded-2xl bg-slate-100 p-6 text-center text-slate-600">
+              保存済みの棚卸入力がありません。
+            </div>
+          ) : (
+            <div className="mt-6 space-y-3">
+              {data.records.map((record) => (
+                <article
+                  key={record.id}
+                  className={`rounded-2xl border p-5 ${
+                    record.difference === 0
+                      ? "border-slate-200"
+                      : "border-red-200 bg-red-50"
+                  }`}
+                >
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                    <div>
+                      <h3 className="text-lg font-black">
+                        {record.item.name}
+                      </h3>
+
+                      <div className="mt-2 space-y-1 text-sm text-slate-600">
+                        <p>JAN：{record.item.janCode || "-"}</p>
+                        <p>
+                          保管場所：
+                          {record.storageLocation?.name || "未設定"}
+                        </p>
+                        <p>
+                          分類：
+                          {record.item.majorCategory || "-"}
+                          {record.item.minorCategory
+                            ? ` ／ ${record.item.minorCategory}`
+                            : ""}
+                        </p>
+                      </div>
+                    </div>
+
+                    <div
+                      className={`rounded-xl px-4 py-2 text-center font-black ${
+                        record.difference === 0
+                          ? "bg-emerald-100 text-emerald-700"
+                          : "bg-red-100 text-red-700"
+                      }`}
+                    >
+                      {record.difference === 0
+                        ? "一致"
+                        : `差異 ${record.difference > 0 ? "+" : ""}${
+                            record.difference
+                          }`}
+                    </div>
+                  </div>
+
+                  <div className="mt-4 grid grid-cols-2 gap-3 text-sm">
+                    <div className="rounded-xl bg-slate-100 p-3">
+                      <p className="text-slate-500">理論在庫</p>
+                      <p className="mt-1 text-xl font-black">
+                        {record.expectedQuantity}
+                        {record.unit ? ` ${record.unit}` : " 個"}
+                      </p>
+                    </div>
+
+                    <div className="rounded-xl bg-slate-100 p-3">
+                      <p className="text-slate-500">棚卸数量</p>
+                      <p className="mt-1 text-xl font-black">
+                        {record.countedQuantity}
+                        {record.unit ? ` ${record.unit}` : " 個"}
+                      </p>
+                    </div>
+                  </div>
+
+                  {record.memo && (
+                    <p className="mt-4 rounded-xl bg-slate-100 p-3 text-sm text-slate-700">
+                      メモ：{record.memo}
+                    </p>
+                  )}
+                </article>
+              ))}
+            </div>
           )}
+        </section>
+      </div>
+
+      {showConfirm && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/70 p-5">
+          <section className="w-full max-w-md rounded-3xl bg-white p-6 shadow-2xl">
+            <h2 className="text-2xl font-black">正式確定しますか？</h2>
+            <p className="mt-4 leading-7 text-slate-600">
+              棚卸数量を在庫数へ反映します。確定後は通常の棚卸入力へ戻せません。
+            </p>
+
+            <div className="mt-6 grid grid-cols-2 gap-3">
+              <button
+                type="button"
+                onClick={() => setShowConfirm(false)}
+                disabled={applying}
+                className="rounded-xl bg-slate-100 px-4 py-3 font-black text-slate-700"
+              >
+                戻る
+              </button>
+
+              <button
+                type="button"
+                onClick={() => void applyStocktake()}
+                disabled={applying}
+                className="rounded-xl bg-indigo-600 px-4 py-3 font-black text-white disabled:opacity-50"
+              >
+                {applying ? "確定中…" : "正式確定する"}
+              </button>
+            </div>
+          </section>
         </div>
       )}
-
-      {item.memo && (
-        <p className="mt-3 rounded-xl bg-amber-50 px-3 py-2 text-sm text-amber-900">
-          メモ：{item.memo}
-        </p>
-      )}
-    </article>
-  );
-}
-
-function Detail({
-  label,
-  value,
-}: {
-  label: string;
-  value: string;
-}) {
-  return (
-    <div className="rounded-xl bg-slate-50 p-3">
-      <p className="text-slate-500">{label}</p>
-      <p className="mt-1 break-all text-base font-black">
-        {value}
-      </p>
-    </div>
+    </main>
   );
 }

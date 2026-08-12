@@ -1,282 +1,318 @@
 import { NextRequest, NextResponse } from "next/server";
+import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
+import { getLoggedInUser, hasAdminAccess } from "@/lib/auth";
 
-type Filter = "ALL" | "UNRECORDED" | "RECORDED" | "DIFFERENCE";
+type FilterType = "UNRECORDED" | "RECORDED" | "DIFFERENCE" | "ALL";
 
-function normalizeText(value: string | null | undefined) {
-  return (value ?? "")
-    .normalize("NFKC")
-    .trim()
-    .toLocaleLowerCase("ja-JP");
-}
-
-function normalizeCode(value: string | null | undefined) {
-  return normalizeText(value).replace(/[\s-]/g, "");
-}
-
-function getFilter(value: string | null): Filter {
-  if (
+function isFilterType(value: string | null): value is FilterType {
+  return (
     value === "UNRECORDED" ||
     value === "RECORDED" ||
-    value === "DIFFERENCE"
-  ) {
-    return value;
-  }
-
-  return "ALL";
+    value === "DIFFERENCE" ||
+    value === "ALL"
+  );
 }
 
-const targetInclude = {
-  inventoryInstance: {
-    include: {
-      item: true,
-      storageLocation: true,
-      stocktakeRecords: {
-        where: {
-          sessionId: "",
-        },
-        select: {
-          countedQuantity: true,
-        },
-      },
-    },
-  },
-} as const;
-
 export async function GET(request: NextRequest) {
+  const user = getLoggedInUser(request);
+
+  if (!user) {
+    return NextResponse.json(
+      {
+        code: "INVENTORY_SEARCH_AUTH_401",
+        message: "ログイン情報を確認できませんでした。",
+      },
+      { status: 401 }
+    );
+  }
+
   try {
-    const sessionId =
-      request.nextUrl.searchParams.get("sessionId")?.trim() ?? "";
-    const keyword =
-      request.nextUrl.searchParams.get("q")?.trim() ?? "";
-    const majorCategory =
-      request.nextUrl.searchParams.get("majorCategory")?.trim() ?? "";
-    const filter = getFilter(request.nextUrl.searchParams.get("filter"));
-    const exactOnly = request.nextUrl.searchParams.get("exact") === "1";
+    const { searchParams } = new URL(request.url);
+
+    const sessionId = searchParams.get("sessionId")?.trim() ?? "";
+    const keyword = searchParams.get("q")?.trim() ?? "";
+    const exact = searchParams.get("exact") === "true";
+    const majorCategory = searchParams.get("majorCategory")?.trim() ?? "";
+    const rawFilter = searchParams.get("filter");
+
+    const filter: FilterType = isFilterType(rawFilter)
+      ? rawFilter
+      : "UNRECORDED";
 
     if (!sessionId) {
       return NextResponse.json(
         {
           code: "INVENTORY_SEARCH_SESSION_REQUIRED",
-          message: "棚卸セッションIDがありません。",
+          message: "棚卸セッションを指定してください。",
         },
         { status: 400 }
       );
     }
 
-    const include = {
-      inventoryInstance: {
-        include: {
-          item: true,
-          storageLocation: true,
-          stocktakeRecords: {
-            where: {
-              sessionId,
-            },
-            select: {
-              countedQuantity: true,
-            },
-          },
-        },
+    const session = await prisma.stocktakeSession.findUnique({
+      where: { id: sessionId },
+      select: {
+        id: true,
+        operatorUserId: true,
+        status: true,
       },
-    } as const;
+    });
 
-    const directCodeConditions = keyword
-      ? [
-          {
-            inventoryInstance: {
-              is: {
-                item: {
-                  is: {
-                    janCode: keyword,
-                  },
-                },
-              },
-            },
-          },
-          {
-            inventoryInstance: {
-              is: {
-                item: {
-                  is: {
-                    systemBarcode: keyword,
-                  },
-                },
-              },
-            },
-          },
-          {
-            inventoryInstance: {
-              is: {
-                item: {
-                  is: {
-                    managementCode: keyword,
-                  },
-                },
-              },
-            },
-          },
-          {
-            inventoryInstance: {
-              is: {
-                managementCode: keyword,
-              },
-            },
-          },
-        ]
-      : [];
-
-    let targets = exactOnly
-      ? await prisma.stocktakeTarget.findMany({
-          where: {
-            sessionId,
-            OR: directCodeConditions,
-          },
-          include,
-          orderBy: {
-            createdAt: "asc",
-          },
-        })
-      : [];
-
-    // JANがハイフン付きなどで登録されている場合も、
-    // 下の正規化比較で確実に探せるようにする。
-    if (!exactOnly || targets.length === 0) {
-      targets = await prisma.stocktakeTarget.findMany({
-        where: {
-          sessionId,
+    if (!session) {
+      return NextResponse.json(
+        {
+          code: "INVENTORY_SEARCH_SESSION_NOT_FOUND",
+          message: "棚卸セッションが見つかりません。",
         },
-        include,
-        orderBy: {
-          createdAt: "asc",
+        { status: 404 }
+      );
+    }
+
+    const isAdmin = hasAdminAccess(request);
+    const isOperator =
+      session.operatorUserId === null ||
+      session.operatorUserId === user.id;
+
+    if (!isOperator && !isAdmin) {
+      return NextResponse.json(
+        {
+          code: "INVENTORY_SEARCH_FORBIDDEN",
+          message: "この棚卸を表示する権限がありません。",
+        },
+        { status: 403 }
+      );
+    }
+
+    const inventoryFilters: Prisma.InventoryInstanceWhereInput[] = [];
+
+    if (majorCategory) {
+      inventoryFilters.push({
+        item: {
+          is: {
+            majorCategory,
+          },
         },
       });
     }
 
-    const normalizedKeyword = normalizeText(keyword);
-    const normalizedCode = normalizeCode(keyword);
-    const normalizedMajorCategory = normalizeText(majorCategory);
+    if (keyword) {
+      const textCondition = exact
+        ? keyword
+        : {
+            contains: keyword,
+            mode: Prisma.QueryMode.insensitive,
+          };
 
-    const searched = targets
+      inventoryFilters.push({
+        OR: [
+          {
+            item: {
+              is: {
+                janCode: textCondition,
+              },
+            },
+          },
+          {
+            item: {
+              is: {
+                systemBarcode: textCondition,
+              },
+            },
+          },
+          {
+            item: {
+              is: {
+                name: textCondition,
+              },
+            },
+          },
+          {
+            item: {
+              is: {
+                managementCode: textCondition,
+              },
+            },
+          },
+          {
+            item: {
+              is: {
+                managementGroupCode: textCondition,
+              },
+            },
+          },
+          {
+            item: {
+              is: {
+                manufacturer: textCondition,
+              },
+            },
+          },
+          {
+            item: {
+              is: {
+                majorCategory: textCondition,
+              },
+            },
+          },
+          {
+            item: {
+              is: {
+                minorCategory: textCondition,
+              },
+            },
+          },
+          {
+            managementCode: textCondition,
+          },
+          {
+            managementGroupCode: textCondition,
+          },
+          {
+            manufacturer: textCondition,
+          },
+          {
+            majorCategory: textCondition,
+          },
+          {
+            minorCategory: textCondition,
+          },
+          {
+            lotNo: textCondition,
+          },
+          {
+            storageLocation: {
+              is: {
+                name: textCondition,
+              },
+            },
+          },
+        ],
+      });
+    }
+
+    const where: Prisma.StocktakeTargetWhereInput = {
+      sessionId,
+      ...(inventoryFilters.length > 0
+        ? {
+            inventoryInstance: {
+              is: {
+                AND: inventoryFilters,
+              },
+            },
+          }
+        : {}),
+    };
+
+    const targets = await prisma.stocktakeTarget.findMany({
+      where,
+      include: {
+        inventoryInstance: {
+          include: {
+            item: true,
+            storageLocation: true,
+          },
+        },
+      },
+      orderBy: {
+        createdAt: "asc",
+      },
+      take: 1000,
+    });
+
+    const records = await prisma.stocktakeRecord.findMany({
+      where: {
+        sessionId,
+        inventoryInstanceId: {
+          in: targets.map((target) => target.inventoryInstanceId),
+        },
+      },
+      select: {
+        inventoryInstanceId: true,
+        countedQuantity: true,
+        memo: true,
+        updatedAt: true,
+      },
+    });
+
+    const recordMap = new Map(
+      records.map((record) => [record.inventoryInstanceId, record])
+    );
+
+    const result = targets
       .map((target) => {
-        const { stocktakeRecords, ...inventory } =
-          target.inventoryInstance;
+        const inventory = target.inventoryInstance;
+        const record = recordMap.get(inventory.id);
 
-        const record = stocktakeRecords[0];
-        const item = inventory.item;
-
-        if (
-          normalizedMajorCategory &&
-          normalizeText(item.majorCategory) !== normalizedMajorCategory
-        ) {
-          return null;
-        }
-
-        const isRecorded = Boolean(record);
         const countedQuantity = record?.countedQuantity ?? null;
         const difference =
           countedQuantity === null
             ? null
             : countedQuantity - target.expectedQuantity;
 
-        if (filter === "UNRECORDED" && isRecorded) {
-          return null;
-        }
-
-        if (filter === "RECORDED" && !isRecorded) {
-          return null;
-        }
-
-        if (
-          filter === "DIFFERENCE" &&
-          (!isRecorded || difference === 0)
-        ) {
-          return null;
-        }
-
-        let searchScore = 0;
-
-        if (keyword) {
-          const codes = [
-            item.janCode,
-            item.systemBarcode,
-            item.managementCode,
-            inventory.managementCode,
-          ]
-            .map(normalizeCode)
-            .filter(Boolean);
-
-          if (codes.some((code) => code === normalizedCode)) {
-            searchScore = 1000;
-          } else if (
-            normalizedCode.length >= 3 &&
-            codes.some((code) => code.startsWith(normalizedCode))
-          ) {
-            searchScore = 700;
-          } else {
-            const textCandidates = [
-              item.name,
-              item.manufacturer,
-              item.majorCategory,
-              item.minorCategory,
-              item.managementGroupCode,
-              inventory.managementGroupCode,
-              inventory.lotNo,
-              inventory.storageLocation?.name,
-            ]
-              .map(normalizeText)
-              .filter(Boolean);
-
-            if (
-              normalizedKeyword &&
-              textCandidates.some((text) =>
-                text.includes(normalizedKeyword)
-              )
-            ) {
-              searchScore = 100;
-            }
-          }
-
-          if (searchScore === 0) {
-            return null;
-          }
-        }
-
         return {
-          ...inventory,
+          id: inventory.id,
           expectedQuantity: target.expectedQuantity,
-          isRecorded,
+          isRecorded: countedQuantity !== null,
           countedQuantity,
           difference,
-          searchScore,
+          memo: record?.memo ?? null,
+          recordedAt: record?.updatedAt.toISOString() ?? null,
+
+          lotNo: inventory.lotNo,
+          expirationDate: inventory.expirationDate,
+          unit: inventory.unit ?? inventory.item.defaultUnit,
+
+          storageLocation: inventory.storageLocation
+            ? {
+                id: inventory.storageLocation.id,
+                name: inventory.storageLocation.name,
+              }
+            : null,
+
+          item: {
+            id: inventory.item.id,
+            name: inventory.item.name,
+            janCode: inventory.item.janCode,
+            systemBarcode: inventory.item.systemBarcode,
+            managementCode:
+              inventory.managementCode ?? inventory.item.managementCode,
+            managementGroupCode:
+              inventory.managementGroupCode ??
+              inventory.item.managementGroupCode,
+            manufacturer: inventory.manufacturer ?? inventory.item.manufacturer,
+            majorCategory:
+              inventory.majorCategory ?? inventory.item.majorCategory,
+            minorCategory:
+              inventory.minorCategory ?? inventory.item.minorCategory,
+            defaultUnit: inventory.item.defaultUnit,
+          },
         };
       })
-      .filter(
-        (
-          item
-        ): item is NonNullable<typeof item> => item !== null
-      )
-      .sort((left, right) => {
-        if (right.searchScore !== left.searchScore) {
-          return right.searchScore - left.searchScore;
+      .filter((inventory) => {
+        if (filter === "ALL") {
+          return true;
         }
 
-        if (left.isRecorded !== right.isRecorded) {
-          return Number(left.isRecorded) - Number(right.isRecorded);
+        if (filter === "UNRECORDED") {
+          return !inventory.isRecorded;
         }
 
-        return left.item.name.localeCompare(right.item.name, "ja");
-      })
-      .map(({ searchScore, ...item }) => item);
+        if (filter === "RECORDED") {
+          return inventory.isRecorded;
+        }
 
-    return NextResponse.json(searched);
+        return inventory.difference !== null && inventory.difference !== 0;
+      });
+
+    return NextResponse.json(result);
   } catch (error) {
-    console.error("INVENTORY_SEARCH_500", error);
+    console.error("GET /api/inventory/search", error);
 
     return NextResponse.json(
       {
-        code: "INVENTORY_SEARCH_500",
-        message: "在庫検索に失敗しました。",
+        code: "INVENTORY_SEARCH_FAILED",
+        message: "棚卸対象の検索に失敗しました。",
       },
       { status: 500 }
     );

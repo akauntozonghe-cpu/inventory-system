@@ -1,39 +1,83 @@
 import { randomInt } from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
+import {
+  InventoryEventType,
+  NotificationAudience,
+  NotificationType,
+  Prisma,
+} from "@prisma/client";
 import { prisma } from "@/lib/prisma";
-import { requireAdmin } from "@/lib/auth";
+import {
+  getLoggedInUser,
+  hasAdminAccess,
+  requireLogin,
+} from "@/lib/auth";
 import { createAdminActionLog } from "@/lib/error-report";
 
-function getText(value: unknown, maxLength = 300) {
-  return typeof value === "string"
-    ? value.trim().slice(0, maxLength)
-    : "";
-}
+type RegisterBody = {
+  name?: unknown;
+  janCode?: unknown;
+  managementCode?: unknown;
+  managementGroupCode?: unknown;
+  manufacturer?: unknown;
+  majorCategory?: unknown;
+  minorCategory?: unknown;
+  unit?: unknown;
+  storageLocationId?: unknown;
+  quantity?: unknown;
+  lotNo?: unknown;
+  expirationDate?: unknown;
+  memo?: unknown;
+  generateSystemBarcode?: unknown;
+};
 
-function getOptionalText(value: unknown, maxLength = 300) {
-  return getText(value, maxLength) || null;
-}
-
-function createCheckDigit(body: string) {
-  let total = 0;
-
-  for (let index = 0; index < body.length; index += 1) {
-    total += Number(body[index]) * (index % 2 === 0 ? 1 : 3);
+function requiredText(value: unknown, maxLength: number) {
+  if (typeof value !== "string") {
+    return "";
   }
+
+  return value.trim().slice(0, maxLength);
+}
+
+function optionalText(value: unknown, maxLength: number) {
+  return requiredText(value, maxLength) || null;
+}
+
+function validQuantity(value: unknown) {
+  const quantity = Number(value);
+
+  return Number.isInteger(quantity) && quantity >= 0 ? quantity : null;
+}
+
+function jsonValue(value: unknown): Prisma.InputJsonValue {
+  return JSON.parse(JSON.stringify(value)) as Prisma.InputJsonValue;
+}
+
+function createCheckDigit(base12: string) {
+  const total = base12
+    .split("")
+    .reverse()
+    .reduce((sum, digit, index) => {
+      const value = Number(digit);
+
+      return sum + value * (index % 2 === 0 ? 3 : 1);
+    }, 0);
 
   return String((10 - (total % 10)) % 10);
 }
 
-async function createSystemBarcode() {
-  for (let attempt = 0; attempt < 20; attempt += 1) {
-    const serial = String(
-      randomInt(0, 10_000_000_000)
-    ).padStart(10, "0");
+async function createUniqueSystemBarcode() {
+  for (let attempt = 0; attempt < 30; attempt += 1) {
+    const serial = String(randomInt(0, 10_000_000_000)).padStart(
+      10,
+      "0"
+    );
 
-    const body = `20${serial}`;
-    const systemBarcode = `${body}${createCheckDigit(body)}`;
+    // 「20」から始まる、システム専用の13桁コード
+    const base12 = `20${serial}`;
+    const systemBarcode = `${base12}${createCheckDigit(base12)}`;
 
-    const exists = await prisma.item.findUnique({
+    const existing = await prisma.item.findUnique({
       where: {
         systemBarcode,
       },
@@ -42,7 +86,7 @@ async function createSystemBarcode() {
       },
     });
 
-    if (!exists) {
+    if (!existing) {
       return systemBarcode;
     }
   }
@@ -51,21 +95,23 @@ async function createSystemBarcode() {
 }
 
 export async function POST(request: NextRequest) {
-  const auth = requireAdmin(request);
+  const login = requireLogin(request);
 
-  if (auth.response) {
-    return auth.response;
+  if (login.response) {
+    return login.response;
   }
 
-  const adminUser = auth.user;
+  const currentUser = getLoggedInUser(request);
 
-  if (!adminUser) {
+  if (!currentUser) {
     return NextResponse.json(
       {
-        code: "ADMIN_REQUIRED",
-        message: "商品登録には管理者権限が必要です。",
+        code: "AUTH_REQUIRED",
+        message: "ログイン情報を確認できませんでした。",
       },
-      { status: 403 }
+      {
+        status: 401,
+      }
     );
   }
 
@@ -75,54 +121,86 @@ export async function POST(request: NextRequest) {
     if (typeof rawBody !== "object" || rawBody === null) {
       return NextResponse.json(
         {
-          code: "ITEM_REGISTER_BODY_400",
+          code: "ITEM_REGISTER_BODY_INVALID",
           message: "登録内容が正しくありません。",
         },
-        { status: 400 }
+        {
+          status: 400,
+        }
       );
     }
 
-    const body = rawBody as Record<string, unknown>;
+    const body = rawBody as RegisterBody;
+    const canRegisterImmediately = hasAdminAccess(request);
 
-    const name = getText(body.name, 200);
-    const janCode = getOptionalText(body.janCode, 30);
-    const quantity = Number(body.quantity ?? 0);
-    const storageLocationId = getOptionalText(
-      body.storageLocationId,
+    const name = requiredText(body.name, 200);
+    const janCode = optionalText(body.janCode, 30);
+    const managementCode = optionalText(body.managementCode, 100);
+    const managementGroupCode = optionalText(
+      body.managementGroupCode,
       100
     );
+    const manufacturer = optionalText(body.manufacturer, 200);
+    const majorCategory = optionalText(body.majorCategory, 100);
+    const minorCategory = optionalText(body.minorCategory, 100);
+    const unit = optionalText(body.unit, 30);
+    const storageLocationId = optionalText(body.storageLocationId, 100);
+    const lotNo = optionalText(body.lotNo, 100);
+    const expirationDate = optionalText(body.expirationDate, 30);
+    const memo = optionalText(body.memo, 500);
+    const quantity = validQuantity(body.quantity);
+
     const generateSystemBarcode =
-      body.generateSystemJan === true ||
-      body.generateSystemBarcode === true;
+      body.generateSystemBarcode === true && canRegisterImmediately;
 
     if (!name) {
       return NextResponse.json(
         {
-          code: "ITEM_REGISTER_NAME_400",
+          code: "ITEM_REGISTER_NAME_REQUIRED",
           message: "商品名を入力してください。",
         },
-        { status: 400 }
+        {
+          status: 400,
+        }
       );
     }
 
-    if (!Number.isInteger(quantity) || quantity < 0) {
+    if (quantity === null) {
       return NextResponse.json(
         {
-          code: "ITEM_REGISTER_QUANTITY_400",
-          message: "在庫数は0以上の整数で入力してください。",
+          code: "ITEM_REGISTER_QUANTITY_INVALID",
+          message: "数量は0以上の整数で入力してください。",
         },
-        { status: 400 }
+        {
+          status: 400,
+        }
       );
     }
 
-    if (!janCode && !generateSystemBarcode) {
+    if (body.generateSystemBarcode === true && !canRegisterImmediately) {
       return NextResponse.json(
         {
-          code: "ITEM_REGISTER_BARCODE_REQUIRED_400",
+          code: "ITEM_REGISTER_SYSTEM_BARCODE_FORBIDDEN",
+          message: "システムバーコードの発行は管理者のみ実行できます。",
+        },
+        {
+          status: 403,
+        }
+      );
+    }
+
+    // 管理者の直接登録では、JANまたはシステムバーコードが必須。
+    // 一般ユーザーはJAN未確認でも申請でき、承認時に管理者が判断する。
+    if (canRegisterImmediately && !janCode && !generateSystemBarcode) {
+      return NextResponse.json(
+        {
+          code: "ITEM_REGISTER_BARCODE_REQUIRED",
           message:
-            "既存JANコードを入力するか、システムバーコードを発行してください。",
+            "JANコードを入力するか、システムバーコードを発行してください。",
         },
-        { status: 400 }
+        {
+          status: 400,
+        }
       );
     }
 
@@ -139,65 +217,123 @@ export async function POST(request: NextRequest) {
       if (!location) {
         return NextResponse.json(
           {
-            code: "ITEM_REGISTER_LOCATION_404",
-            message: "指定した保管場所が見つかりません。",
+            code: "ITEM_REGISTER_LOCATION_NOT_FOUND",
+            message: "指定された保管場所が見つかりません。",
           },
-          { status: 404 }
+          {
+            status: 400,
+          }
         );
       }
     }
 
-    const managementCode = getOptionalText(
-      body.managementCode,
-      100
-    );
-
     if (janCode) {
-      const duplicateJan = await prisma.item.findFirst({
+      const existingJanItem = await prisma.item.findFirst({
         where: {
           janCode,
         },
         select: {
           id: true,
+          name: true,
         },
       });
 
-      if (duplicateJan) {
+      if (existingJanItem) {
         return NextResponse.json(
           {
-            code: "ITEM_REGISTER_JAN_DUPLICATE_409",
-            message:
-              "このJANコードはすでに登録されています。在庫追加は既存の商品から行ってください。",
+            code: "ITEM_REGISTER_JAN_DUPLICATE",
+            message: `このJANコードは「${existingJanItem.name}」に登録されています。既存商品を確認してください。`,
+            item: existingJanItem,
           },
-          { status: 409 }
+          {
+            status: 409,
+          }
         );
       }
     }
 
     if (managementCode) {
-      const duplicateManagementCode =
-        await prisma.item.findUnique({
-          where: {
-            managementCode,
-          },
-          select: {
-            id: true,
-          },
-        });
+      const existingManagementCode = await prisma.item.findUnique({
+        where: {
+          managementCode,
+        },
+        select: {
+          id: true,
+          name: true,
+        },
+      });
 
-      if (duplicateManagementCode) {
+      if (existingManagementCode) {
         return NextResponse.json(
           {
-            code: "ITEM_REGISTER_MANAGEMENT_CODE_DUPLICATE_409",
-            message: "この管理コードはすでに登録されています。",
+            code: "ITEM_REGISTER_MANAGEMENT_CODE_DUPLICATE",
+            message: `この管理番号は「${existingManagementCode.name}」に登録されています。`,
+            item: existingManagementCode,
           },
-          { status: 409 }
+          {
+            status: 409,
+          }
         );
       }
     }
 
+    // 一般ユーザーは、商品マスタや在庫を直接変更せず申請を作成する。
+    if (!canRegisterImmediately) {
+      const requestRecord = await prisma.itemRegistrationRequest.create({
+        data: {
+          requestedByUserId: currentUser.id,
+          scannedCode: janCode,
+          name,
+          manufacturer,
+          managementCode,
+          managementGroupCode,
+          majorCategory,
+          minorCategory,
+          storageLocationId,
+          quantity,
+          unit,
+          lotNo,
+          expirationDate,
+          memo,
+        },
+      });
+
+      await prisma.notification.create({
+        data: {
+          type: NotificationType.REGISTRATION_REQUEST,
+          audience: NotificationAudience.ADMIN,
+          title: "商品登録の申請",
+          message: `${currentUser.displayName}さんから「${name}」の登録申請があります。`,
+          detail: jsonValue({
+            requestId: requestRecord.id,
+            requestedByUserId: currentUser.id,
+            requestedByName: currentUser.displayName,
+            name,
+            janCode,
+            quantity,
+          }),
+        },
+      });
+
+      return NextResponse.json(
+        {
+          success: true,
+          mode: "REQUEST",
+          message:
+            "商品登録を申請しました。管理者の確認後に正式登録されます。",
+          request: {
+            id: requestRecord.id,
+            status: requestRecord.status,
+          },
+        },
+        {
+          status: 201,
+        }
+      );
+    }
+
     const systemBarcode = generateSystemBarcode
-      ? await createSystemBarcode()
+      ? await createUniqueSystemBarcode()
       : null;
 
     const result = await prisma.$transaction(
@@ -208,60 +344,62 @@ export async function POST(request: NextRequest) {
             janCode,
             systemBarcode,
             managementCode,
-            managementGroupCode: getOptionalText(
-              body.managementGroupCode,
-              100
-            ),
-            manufacturer: getOptionalText(
-              body.manufacturer,
-              200
-            ),
-            majorCategory: getOptionalText(
-              body.majorCategory,
-              100
-            ),
-            minorCategory: getOptionalText(
-              body.minorCategory,
-              100
-            ),
-            defaultUnit: getOptionalText(body.unit, 30),
+            managementGroupCode,
+            manufacturer,
+            majorCategory,
+            minorCategory,
+            defaultUnit: unit,
           },
         });
 
-        const inventory =
-          await transaction.inventoryInstance.create({
-            data: {
-              itemId: item.id,
-              storageLocationId,
-              managementCode: item.managementCode,
-              managementGroupCode:
-                item.managementGroupCode,
-              manufacturer: item.manufacturer,
-              majorCategory: item.majorCategory,
-              minorCategory: item.minorCategory,
-              lotNo: getOptionalText(body.lotNo, 100),
-              expirationDate: getOptionalText(
-                body.expirationDate,
-                30
-              ),
-              unit: getOptionalText(body.unit, 30),
-              quantity,
-              actualQuantity: quantity,
-              allocationType: "home",
-              status: "在庫中",
-              stocktakeStatus: "未棚卸",
-            },
-            include: {
-              item: true,
-              storageLocation: true,
-            },
-          });
+        const inventory = await transaction.inventoryInstance.create({
+          data: {
+            itemId: item.id,
+            storageLocationId,
+            managementCode,
+            managementGroupCode,
+            manufacturer,
+            majorCategory,
+            minorCategory,
+            lotNo,
+            expirationDate,
+            unit,
+            quantity,
+            actualQuantity: quantity,
+            allocationType: "home",
+            status: "在庫中",
+            stocktakeStatus: "未棚卸",
+          },
+          include: {
+            item: true,
+            storageLocation: true,
+          },
+        });
 
         await transaction.inventoryHistory.create({
           data: {
             inventoryInstanceId: inventory.id,
             changeQuantity: quantity,
-            action: "管理者による商品・在庫登録",
+            action: "商品新規登録による初期在庫登録",
+          },
+        });
+
+        await transaction.inventoryEvent.create({
+          data: {
+            inventoryInstanceId: inventory.id,
+            eventType: InventoryEventType.OPENING_BALANCE,
+            quantityBefore: 0,
+            quantityChange: quantity,
+            quantityAfter: quantity,
+            reason: "商品新規登録時の初期在庫",
+            memo,
+            performedByUserId: currentUser.id,
+            detail: jsonValue({
+              source: "item_register",
+              janCode,
+              systemBarcode,
+              generatedSystemBarcode: Boolean(systemBarcode),
+            }),
           },
         });
 
@@ -277,29 +415,34 @@ export async function POST(request: NextRequest) {
     );
 
     await createAdminActionLog({
-      adminUserId: adminUser.id,
+      adminUserId: currentUser.id,
       action: "ITEM_REGISTER",
       route: "/api/items/register",
-      detail: {
+      detail: jsonValue({
         itemId: result.item.id,
         inventoryInstanceId: result.inventory.id,
         itemName: result.item.name,
-        janCode: result.item.janCode ?? "",
-        systemBarcode: result.item.systemBarcode ?? "",
+        janCode: result.item.janCode,
+        systemBarcode: result.item.systemBarcode,
         quantity: result.inventory.quantity,
-        generatedSystemBarcode: generateSystemBarcode,
-      },
+        storageLocationId: result.inventory.storageLocationId,
+        generatedSystemBarcode: Boolean(systemBarcode),
+      }),
     });
 
     return NextResponse.json(
       {
         success: true,
-        message: generateSystemBarcode
-          ? "商品を登録し、システムバーコードを発行しました。"
-          : "商品を登録しました。",
-        ...result,
+        mode: "DIRECT",
+        message: systemBarcode
+          ? "商品を正式登録し、システムバーコードを発行しました。"
+          : "商品と初期在庫を正式登録しました。",
+        item: result.item,
+        inventory: result.inventory,
       },
-      { status: 201 }
+      {
+        status: 201,
+      }
     );
   } catch (error) {
     console.error("POST /api/items/register", error);
@@ -307,18 +450,20 @@ export async function POST(request: NextRequest) {
     const code =
       error instanceof Error &&
       error.message === "SYSTEM_BARCODE_GENERATE_FAILED"
-        ? "ITEM_REGISTER_SYSTEM_BARCODE_500"
-        : "ITEM_REGISTER_500";
+        ? "ITEM_REGISTER_SYSTEM_BARCODE_GENERATE_FAILED"
+        : "ITEM_REGISTER_FAILED";
 
     return NextResponse.json(
       {
         code,
         message:
-          code === "ITEM_REGISTER_SYSTEM_BARCODE_500"
+          code === "ITEM_REGISTER_SYSTEM_BARCODE_GENERATE_FAILED"
             ? "システムバーコードを発行できませんでした。もう一度お試しください。"
             : "商品登録に失敗しました。",
       },
-      { status: 500 }
+      {
+        status: 500,
+      }
     );
   }
 }

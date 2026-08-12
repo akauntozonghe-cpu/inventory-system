@@ -2,71 +2,73 @@
 
 import { useEffect, useRef, useState } from "react";
 import {
-  BrowserMultiFormatReader,
-  type IScannerControls,
-} from "@zxing/browser";
-import { BarcodeFormat, DecodeHintType } from "@zxing/library";
+  BarcodeFormat,
+  DecodeHintType,
+  NotFoundException,
+} from "@zxing/library";
+import { BrowserMultiFormatReader } from "@zxing/browser";
 
 type CategoryQrScannerProps = {
-  currentCategory: string | null;
   onDetected: (category: string) => void;
   onClose: () => void;
 };
 
-const PREFIX = "INVENTORY_OS:CATEGORY:MAJOR:";
+function normalizeCategory(value: string) {
+  const text = value.trim();
 
-function parseCategoryQr(value: string) {
-  if (!value.startsWith(PREFIX)) {
-    return null;
+  if (!text) {
+    return "";
+  }
+
+  if (text.startsWith("CATEGORY:")) {
+    return text.replace(/^CATEGORY:/i, "").trim();
+  }
+
+  if (text.startsWith("大分類:")) {
+    return text.replace(/^大分類:/, "").trim();
   }
 
   try {
-    const category = decodeURIComponent(
-      value.slice(PREFIX.length)
-    ).trim();
+    const json: unknown = JSON.parse(text);
 
-    return category || null;
+    if (
+      json &&
+      typeof json === "object" &&
+      "majorCategory" in json &&
+      typeof json.majorCategory === "string"
+    ) {
+      return json.majorCategory.trim();
+    }
+
+    if (
+      json &&
+      typeof json === "object" &&
+      "category" in json &&
+      typeof json.category === "string"
+    ) {
+      return json.category.trim();
+    }
   } catch {
-    return null;
-  }
-}
-
-function getCameraErrorMessage(error: unknown) {
-  if (error instanceof DOMException) {
-    if (error.name === "NotAllowedError") {
-      return "カメラの使用が許可されていません。ブラウザのカメラ許可を確認してください。";
-    }
-
-    if (error.name === "NotFoundError") {
-      return "利用できるカメラが見つかりませんでした。";
-    }
-
-    if (error.name === "NotReadableError") {
-      return "カメラがほかのアプリで使用されています。ほかのカメラ利用を終了してから再試行してください。";
-    }
+    // 通常の文字列QRとして扱う
   }
 
-  return "カメラを開始できませんでした。カメラの使用許可を確認してください。";
+  return text;
 }
 
 export default function CategoryQrScanner({
-  currentCategory,
   onDetected,
   onClose,
 }: CategoryQrScannerProps) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
-  const controlsRef = useRef<IScannerControls | null>(null);
+  const readerRef = useRef<BrowserMultiFormatReader | null>(null);
+  const controlsRef = useRef<{ stop: () => void } | null>(null);
+  const detectedRef = useRef(false);
+
   const onDetectedRef = useRef(onDetected);
   const onCloseRef = useRef(onClose);
-  const lastValueRef = useRef("");
-  const lastDetectedAtRef = useRef(0);
 
-  const [message, setMessage] = useState(
-    "大分類QRを正方形の枠に合わせてください。"
-  );
-  const [lastCategory, setLastCategory] =
-    useState<string | null>(null);
-  const [cameraReady, setCameraReady] = useState(false);
+  const [status, setStatus] = useState("カメラを起動しています…");
+  const [error, setError] = useState("");
 
   useEffect(() => {
     onDetectedRef.current = onDetected;
@@ -74,204 +76,186 @@ export default function CategoryQrScanner({
   }, [onDetected, onClose]);
 
   useEffect(() => {
-    let disposed = false;
-
-    const hints = new Map();
-    hints.set(DecodeHintType.POSSIBLE_FORMATS, [
-      BarcodeFormat.QR_CODE,
-    ]);
-    hints.set(DecodeHintType.TRY_HARDER, true);
-
-    const reader = new BrowserMultiFormatReader(hints, {
-      delayBetweenScanAttempts: 150,
-      delayBetweenScanSuccess: 700,
-    });
-
-    const stopCamera = () => {
-      controlsRef.current?.stop();
-      controlsRef.current = null;
-      setCameraReady(false);
-    };
+    let active = true;
 
     const startCamera = async () => {
       try {
-        if (!videoRef.current || disposed) {
+        const hints = new Map<DecodeHintType, BarcodeFormat[]>();
+        hints.set(DecodeHintType.POSSIBLE_FORMATS, [BarcodeFormat.QR_CODE]);
+
+        const reader = new BrowserMultiFormatReader(hints, {
+          delayBetweenScanAttempts: 300,
+          delayBetweenScanSuccess: 800,
+        });
+
+        readerRef.current = reader;
+
+        if (!videoRef.current) {
           return;
         }
 
-        setMessage("背面カメラを起動しています…");
-
-        controlsRef.current =
-          await reader.decodeFromConstraints(
-            {
-              audio: false,
-              video: {
-                facingMode: {
-                  ideal: "environment",
-                },
-                width: {
-                  ideal: 1920,
-                },
-                height: {
-                  ideal: 1080,
-                },
+        const controls = await reader.decodeFromConstraints(
+          {
+            audio: false,
+            video: {
+              facingMode: {
+                ideal: "environment",
               },
+              width: { ideal: 1280 },
+              height: { ideal: 1280 },
             },
-            videoRef.current,
-            (result) => {
-              if (disposed || !result) {
-                return;
-              }
+          },
+          videoRef.current,
+          (result, scanError) => {
+            if (!active || detectedRef.current) {
+              return;
+            }
 
-              const rawValue = result.getText().trim();
-              const category = parseCategoryQr(rawValue);
+            if (result) {
+              const category = normalizeCategory(result.getText());
 
               if (!category) {
+                setError(
+                  "大分類を判定できないQRコードです。正しい大分類QRを読み取ってください。"
+                );
                 return;
               }
 
-              const now = Date.now();
-              const duplicate =
-                rawValue === lastValueRef.current &&
-                now - lastDetectedAtRef.current < 1800;
+              detectedRef.current = true;
+              setStatus(`読み取りました：${category}`);
 
-              if (duplicate) {
-                return;
+              try {
+                controlsRef.current?.stop();
+              } catch {
+                // 停止済みなら何もしない
               }
 
-              lastValueRef.current = rawValue;
-              lastDetectedAtRef.current = now;
+              window.setTimeout(() => {
+                if (active) {
+                  onDetectedRef.current(category);
+                }
+              }, 350);
 
-              navigator.vibrate?.(100);
-              setLastCategory(category);
-              setMessage(`「${category}」を読み取りました。`);
-
-              onDetectedRef.current(category);
+              return;
             }
-          );
 
-        if (!disposed) {
-          setCameraReady(true);
-          setMessage(
-            "大分類QRを正方形の枠に合わせてください。"
+            if (
+              scanError &&
+              !(scanError instanceof NotFoundException) &&
+              scanError.name !== "NotFoundException"
+            ) {
+              console.warn("CATEGORY_QR_SCAN_WARNING", scanError);
+            }
+          }
+        );
+
+        controlsRef.current = controls;
+
+        if (active) {
+          setStatus("大分類QRを枠内に合わせてください");
+        }
+      } catch (cameraError) {
+        console.error("CATEGORY_QR_CAMERA_ERROR", cameraError);
+
+        if (active) {
+          setError(
+            "カメラを起動できませんでした。カメラの利用を許可しているか、ほかのアプリが使用していないか確認してください。"
           );
         }
-      } catch (error) {
-        // ZXingはカメラ停止・画面遷移時にfalseを返すことがある。
-        // これは異常ではないため、利用者にエラー表示しない。
-        if (disposed || error === false) {
-          return;
-        }
-
-        console.error("CATEGORY_QR_CAMERA_ERROR", error);
-
-        setCameraReady(false);
-        setMessage(getCameraErrorMessage(error));
       }
     };
 
     void startCamera();
 
     return () => {
-      disposed = true;
-      stopCamera();
+      active = false;
+
+      try {
+        controlsRef.current?.stop();
+      } catch {
+        // 停止済みなら何もしない
+      }
+
+      controlsRef.current = null;
+      readerRef.current = null;
     };
   }, []);
 
   return (
-    <div className="fixed inset-0 z-50 overflow-y-auto bg-[#050816] text-white">
-      <div className="mx-auto min-h-[100dvh] max-w-2xl">
-        <header className="border-b border-white/10 bg-gradient-to-r from-indigo-950 via-slate-950 to-cyan-950 px-5 py-5">
-          <div className="flex items-start justify-between gap-4">
-            <div>
-              <div className="flex items-center gap-2">
-                <span
-                  className={`h-2.5 w-2.5 rounded-full ${
-                    cameraReady
-                      ? "animate-pulse bg-emerald-400"
-                      : "bg-amber-400"
-                  }`}
-                />
-
-                <p className="text-xs font-black tracking-[0.18em] text-cyan-200">
-                  CATEGORY QR SCANNER
-                </p>
-              </div>
-
-              <h2 className="mt-2 text-2xl font-black">
-                大分類を読み取る
-              </h2>
-
-              <p className="mt-2 text-sm leading-6 text-slate-300">
-                QRコードを読み取ると大分類で棚卸対象を絞り込みます。
-                作業が終わったら「閉じる」で棚卸画面へ戻ります。
-              </p>
-            </div>
-
-            <button
-              type="button"
-              onClick={() => onCloseRef.current()}
-              className="shrink-0 rounded-2xl border border-white/15 bg-white/10 px-4 py-3 text-sm font-bold transition hover:bg-white/20"
-            >
-              閉じる
-            </button>
+    <div className="fixed inset-0 z-[120] overflow-y-auto bg-slate-950">
+      <div className="mx-auto min-h-screen max-w-3xl bg-slate-950 text-white">
+        <header className="flex items-start justify-between gap-4 border-b border-slate-800 px-5 py-5 sm:px-7">
+          <div>
+            <p className="text-sm font-bold text-violet-300">大分類QR読取</p>
+            <h1 className="mt-1 text-2xl font-black sm:text-3xl">
+              大分類を選択
+            </h1>
+            <p className="mt-2 text-sm text-slate-300">
+              大分類QRを読み取ると、対象の商品だけを表示します。
+            </p>
           </div>
+
+          <button
+            type="button"
+            onClick={() => onCloseRef.current()}
+            className="shrink-0 rounded-xl bg-slate-700 px-4 py-3 font-bold text-white transition hover:bg-slate-600"
+          >
+            閉じる
+          </button>
         </header>
 
-        <main className="space-y-5 bg-slate-950 p-4 sm:p-6">
-          <section className="relative aspect-square overflow-hidden rounded-[2rem] border border-cyan-300/30 bg-black shadow-[0_0_80px_rgba(34,211,238,0.15)]">
-            <video
-              ref={videoRef}
-              autoPlay
-              muted
-              playsInline
-              className="h-full w-full object-cover"
-            />
+        <main className="space-y-5 p-5 sm:p-7">
+          <section className="rounded-3xl bg-black p-3 shadow-2xl">
+            <div className="relative aspect-square overflow-hidden rounded-2xl border-4 border-violet-400 bg-black">
+              <video
+                ref={videoRef}
+                autoPlay
+                muted
+                playsInline
+                className="h-full w-full object-cover"
+              />
 
-            <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-slate-950/35 via-transparent to-slate-950/45" />
-
-            <div className="pointer-events-none absolute left-1/2 top-1/2 aspect-square w-[74%] -translate-x-1/2 -translate-y-1/2">
-              <span className="absolute left-0 top-0 h-12 w-12 rounded-tl-2xl border-l-4 border-t-4 border-cyan-300" />
-              <span className="absolute right-0 top-0 h-12 w-12 rounded-tr-2xl border-r-4 border-t-4 border-cyan-300" />
-              <span className="absolute bottom-0 left-0 h-12 w-12 rounded-bl-2xl border-b-4 border-l-4 border-cyan-300" />
-              <span className="absolute bottom-0 right-0 h-12 w-12 rounded-br-2xl border-b-4 border-r-4 border-cyan-300" />
-
-              <span className="absolute inset-x-4 top-1/2 h-0.5 animate-pulse bg-cyan-300 shadow-[0_0_18px_rgba(103,232,249,1)]" />
-            </div>
-
-            <div className="absolute inset-x-4 bottom-4 rounded-2xl border border-white/15 bg-slate-950/80 px-4 py-3 text-center text-sm font-bold backdrop-blur">
-              正方形の枠にQRコードを合わせてください
+              <div className="pointer-events-none absolute inset-[12%] rounded-2xl border-4 border-white/90">
+                <div className="absolute -left-1 -top-1 h-10 w-10 rounded-tl-xl border-l-8 border-t-8 border-violet-400" />
+                <div className="absolute -right-1 -top-1 h-10 w-10 rounded-tr-xl border-r-8 border-t-8 border-violet-400" />
+                <div className="absolute -bottom-1 -left-1 h-10 w-10 rounded-bl-xl border-b-8 border-l-8 border-violet-400" />
+                <div className="absolute -bottom-1 -right-1 h-10 w-10 rounded-br-xl border-b-8 border-r-8 border-violet-400" />
+              </div>
             </div>
           </section>
 
-          <section className="rounded-3xl border border-white/10 bg-white p-5 text-slate-950 shadow-xl">
-            <p className="text-xs font-black tracking-wider text-indigo-600">
-              読み取り状況
-            </p>
-
-            <p className="mt-2 text-lg font-black">{message}</p>
-
-            <div className="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-2">
-              <div className="rounded-2xl bg-slate-100 p-4">
-                <p className="text-xs font-bold text-slate-500">
-                  現在の大分類
+          <section className="rounded-3xl bg-white p-5 text-center text-slate-950 shadow-xl">
+            {error ? (
+              <>
+                <p className="font-black text-red-600">
+                  読み取りを開始できませんでした
                 </p>
+                <p className="mt-3 text-sm leading-6 text-slate-600">{error}</p>
 
-                <p className="mt-1 break-words text-lg font-black">
-                  {currentCategory ?? "未選択"}
+                <button
+                  type="button"
+                  onClick={() => onCloseRef.current()}
+                  className="mt-5 rounded-xl bg-slate-800 px-5 py-3 font-bold text-white"
+                >
+                  閉じる
+                </button>
+              </>
+            ) : (
+              <>
+                <p className="text-sm font-bold text-violet-600">QRスキャン</p>
+                <p className="mt-2 text-lg font-black">{status}</p>
+                <p className="mt-3 text-sm text-slate-500">
+                  読み取り後は自動で棚卸画面へ戻ります。
                 </p>
-              </div>
+              </>
+            )}
+          </section>
 
-              <div className="rounded-2xl bg-emerald-50 p-4">
-                <p className="text-xs font-bold text-emerald-700">
-                  最後に読んだ分類
-                </p>
-
-                <p className="mt-1 break-words text-lg font-black text-emerald-950">
-                  {lastCategory ?? "まだ読んでいません"}
-                </p>
-              </div>
-            </div>
+          <section className="rounded-2xl border border-slate-700 bg-slate-900 p-4 text-sm leading-6 text-slate-300">
+            <p className="font-bold text-white">対応するQRコード形式</p>
+            <p className="mt-2">大分類名</p>
+            <p>CATEGORY:大分類名</p>
+            <p>{`{"majorCategory":"大分類名"}`}</p>
           </section>
         </main>
       </div>
