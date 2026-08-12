@@ -1,5 +1,4 @@
-import { NextResponse } from "next/server";
-import { prisma } from "@/lib/prisma";
+import { NextRequest, NextResponse } from "next/server";
 
 type Params = {
   params: Promise<{
@@ -7,113 +6,23 @@ type Params = {
   }>;
 };
 
+/**
+ * 旧API互換用。
+ * 正式反映は /api/stocktake/session/[id] の COMPLETE 操作へ一本化した。
+ */
 export async function POST(
-  request: Request,
+  _request: NextRequest,
   { params }: Params
 ) {
-  try {
-    const { id } = await params;
+  const { id } = await params;
 
-    const session =
-      await prisma.stocktakeSession.findUnique({
-        where: {
-          id,
-        },
-        include: {
-          records: {
-            include: {
-              inventoryInstance: true,
-            },
-          },
-        },
-      });
-
-    if (!session) {
-      return NextResponse.json(
-        {
-          message: "棚卸セッションが見つかりません。",
-        },
-        {
-          status: 404,
-        }
-      );
-    }
-
-    if (session.status === "COMPLETED") {
-      return NextResponse.json(
-        {
-          message: "すでに反映済みです。",
-        },
-        {
-          status: 400,
-        }
-      );
-    }
-
-    await prisma.$transaction(
-      async (tx) => {
-
-        for (const record of session.records) {
-
-          const before =
-            record.inventoryInstance.quantity;
-
-          await tx.inventoryInstance.update({
-            where: {
-              id: record.inventoryInstanceId,
-            },
-            data: {
-              quantity: record.countedQuantity,
-              actualQuantity: record.countedQuantity,
-              stocktakeStatus: "反映済",
-              stocktakeAt: new Date(),
-            },
-          });
-
-          await tx.inventoryHistory.create({
-            data: {
-              inventoryInstanceId:
-                record.inventoryInstanceId,
-
-              changeQuantity:
-                record.countedQuantity -
-                before,
-
-              action: "棚卸反映",
-            },
-          });
-
-        }
-
-        await tx.stocktakeSession.update({
-          where: {
-            id,
-          },
-          data: {
-            status: "COMPLETED",
-            completedAt: new Date(),
-          },
-        });
-
-      }
-    );
-
-    return NextResponse.json({
-      success: true,
-    });
-
-  } catch (error) {
-
-    console.error(error);
-
-    return NextResponse.json(
-      {
-        message: "棚卸反映に失敗しました。",
-      },
-      {
-        status: 500,
-      }
-    );
-
-  }
+  return NextResponse.json(
+    {
+      code: "STOCKTAKE_APPLY_DEPRECATED",
+      message:
+        "棚卸の正式反映は、棚卸画面の「終了」操作で自動的に行われます。二重反映防止のため、この操作は利用できません。",
+      sessionId: id,
+    },
+    { status: 410 }
+  );
 }

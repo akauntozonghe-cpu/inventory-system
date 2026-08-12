@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getLoggedInUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import {
+  getLoggedInUser,
+  hasAdminAccess,
+} from "@/lib/auth";
 
 export async function GET(
   request: NextRequest,
@@ -27,6 +30,10 @@ export async function GET(
         id: true,
         title: true,
         status: true,
+        operator: true,
+        operatorUserId: true,
+        startedAt: true,
+        completedAt: true,
       },
     });
 
@@ -40,27 +47,51 @@ export async function GET(
       );
     }
 
+    const canView =
+      session.operatorUserId === null ||
+      session.operatorUserId === user.id ||
+      hasAdminAccess(request);
+
+    if (!canView) {
+      return NextResponse.json(
+        {
+          code: "RESULT_FORBIDDEN",
+          message: "この棚卸結果を閲覧する権限がありません。",
+        },
+        { status: 403 }
+      );
+    }
+
     const [targets, records] = await Promise.all([
       prisma.stocktakeTarget.findMany({
-        where: {
-          sessionId: id,
-        },
-        orderBy: {
-          createdAt: "asc",
-        },
-        include: {
+        where: { sessionId: id },
+        orderBy: { createdAt: "asc" },
+        select: {
+          inventoryInstanceId: true,
+          expectedQuantity: true,
           inventoryInstance: {
-            include: {
-              item: {
-                select: {
-                  name: true,
-                  janCode: true,
-                  systemBarcode: true,
-                },
-              },
+            select: {
+              id: true,
+              quantity: true,
+              unit: true,
+              lotNo: true,
+              expirationDate: true,
               storageLocation: {
                 select: {
                   name: true,
+                },
+              },
+              item: {
+                select: {
+                  id: true,
+                  name: true,
+                  janCode: true,
+                  systemBarcode: true,
+                  managementCode: true,
+                  managementGroupCode: true,
+                  manufacturer: true,
+                  majorCategory: true,
+                  minorCategory: true,
                 },
               },
             },
@@ -69,43 +100,67 @@ export async function GET(
       }),
 
       prisma.stocktakeRecord.findMany({
-        where: {
-          sessionId: id,
-        },
+        where: { sessionId: id },
         select: {
           inventoryInstanceId: true,
           countedQuantity: true,
+          memo: true,
+          updatedAt: true,
         },
       }),
     ]);
 
-    const countedByInventoryId = new Map<string, number>();
-
-    for (const record of records) {
-      countedByInventoryId.set(
+    const recordByInventoryId = new Map(
+      records.map((record) => [
         record.inventoryInstanceId,
-        record.countedQuantity
-      );
-    }
+        record,
+      ])
+    );
 
     const items = targets.map((target) => {
+      const record = recordByInventoryId.get(
+        target.inventoryInstanceId
+      );
+
       const countedQuantity =
-        countedByInventoryId.get(target.inventoryInstanceId) ?? null;
+        record?.countedQuantity ?? null;
 
       return {
         id: target.inventoryInstanceId,
-        name: target.inventoryInstance.item.name,
-        janCode:
-          target.inventoryInstance.item.janCode ??
-          target.inventoryInstance.item.systemBarcode,
-        location:
-          target.inventoryInstance.storageLocation?.name ?? "未設定",
         expectedQuantity: target.expectedQuantity,
         countedQuantity,
         difference:
           countedQuantity === null
             ? null
             : countedQuantity - target.expectedQuantity,
+        memo: record?.memo ?? null,
+        recordedAt: record?.updatedAt.toISOString() ?? null,
+
+        location:
+          target.inventoryInstance.storageLocation?.name ??
+          "未設定",
+        unit: target.inventoryInstance.unit,
+        lotNo: target.inventoryInstance.lotNo,
+        expirationDate:
+          target.inventoryInstance.expirationDate,
+
+        item: {
+          id: target.inventoryInstance.item.id,
+          name: target.inventoryInstance.item.name,
+          janCode: target.inventoryInstance.item.janCode,
+          systemBarcode:
+            target.inventoryInstance.item.systemBarcode,
+          managementCode:
+            target.inventoryInstance.item.managementCode,
+          managementGroupCode:
+            target.inventoryInstance.item.managementGroupCode,
+          manufacturer:
+            target.inventoryInstance.item.manufacturer,
+          majorCategory:
+            target.inventoryInstance.item.majorCategory,
+          minorCategory:
+            target.inventoryInstance.item.minorCategory,
+        },
       };
     });
 
@@ -124,32 +179,37 @@ export async function GET(
     ).length;
 
     return NextResponse.json({
-      session,
+      session: {
+        id: session.id,
+        title: session.title,
+        status: session.status,
+        operator: session.operator,
+        startedAt: session.startedAt.toISOString(),
+        completedAt:
+          session.completedAt?.toISOString() ?? null,
+        isOperator:
+          session.operatorUserId === null ||
+          session.operatorUserId === user.id,
+      },
       summary: {
         targetCount: items.length,
         recordedCount: recordedItems.length,
         matchedCount,
         differenceCount,
-        unrecordedCount: items.length - recordedItems.length,
+        unrecordedCount:
+          items.length - recordedItems.length,
       },
       items,
     });
   } catch (error) {
-    console.error("GET /api/stocktake/session/[id]/result", error);
-
-    const prismaErrorCode =
-      typeof error === "object" &&
-      error !== null &&
-      "code" in error &&
-      typeof error.code === "string"
-        ? error.code
-        : null;
+    console.error(
+      "GET /api/stocktake/session/[id]/result",
+      error
+    );
 
     return NextResponse.json(
       {
-        code: prismaErrorCode
-          ? `RESULT_DATABASE_${prismaErrorCode}`
-          : "RESULT_FETCH_500",
+        code: "RESULT_FETCH_500",
         message: "棚卸結果の取得に失敗しました。",
       },
       { status: 500 }

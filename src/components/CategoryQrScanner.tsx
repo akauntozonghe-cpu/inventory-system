@@ -31,6 +31,24 @@ function parseCategoryQr(value: string) {
   }
 }
 
+function getCameraErrorMessage(error: unknown) {
+  if (error instanceof DOMException) {
+    if (error.name === "NotAllowedError") {
+      return "カメラの使用が許可されていません。ブラウザのカメラ許可を確認してください。";
+    }
+
+    if (error.name === "NotFoundError") {
+      return "利用できるカメラが見つかりませんでした。";
+    }
+
+    if (error.name === "NotReadableError") {
+      return "カメラがほかのアプリで使用されています。ほかのカメラ利用を終了してから再試行してください。";
+    }
+  }
+
+  return "カメラを開始できませんでした。カメラの使用許可を確認してください。";
+}
+
 export default function CategoryQrScanner({
   currentCategory,
   onDetected,
@@ -46,7 +64,9 @@ export default function CategoryQrScanner({
   const [message, setMessage] = useState(
     "大分類QRを正方形の枠に合わせてください。"
   );
-  const [lastCategory, setLastCategory] = useState<string | null>(null);
+  const [lastCategory, setLastCategory] =
+    useState<string | null>(null);
+  const [cameraReady, setCameraReady] = useState(false);
 
   useEffect(() => {
     onDetectedRef.current = onDetected;
@@ -57,80 +77,96 @@ export default function CategoryQrScanner({
     let disposed = false;
 
     const hints = new Map();
-    hints.set(DecodeHintType.POSSIBLE_FORMATS, [BarcodeFormat.QR_CODE]);
+    hints.set(DecodeHintType.POSSIBLE_FORMATS, [
+      BarcodeFormat.QR_CODE,
+    ]);
     hints.set(DecodeHintType.TRY_HARDER, true);
 
     const reader = new BrowserMultiFormatReader(hints, {
-      delayBetweenScanAttempts: 180,
-      delayBetweenScanSuccess: 800,
+      delayBetweenScanAttempts: 150,
+      delayBetweenScanSuccess: 700,
     });
 
     const stopCamera = () => {
       controlsRef.current?.stop();
       controlsRef.current = null;
+      setCameraReady(false);
     };
 
     const startCamera = async () => {
       try {
-        if (!videoRef.current) {
+        if (!videoRef.current || disposed) {
           return;
         }
 
-        controlsRef.current = await reader.decodeFromConstraints(
-          {
-            audio: false,
-            video: {
-              facingMode: {
-                ideal: "environment",
-              },
-              width: {
-                ideal: 1920,
-              },
-              height: {
-                ideal: 1080,
+        setMessage("背面カメラを起動しています…");
+
+        controlsRef.current =
+          await reader.decodeFromConstraints(
+            {
+              audio: false,
+              video: {
+                facingMode: {
+                  ideal: "environment",
+                },
+                width: {
+                  ideal: 1920,
+                },
+                height: {
+                  ideal: 1080,
+                },
               },
             },
-          },
-          videoRef.current,
-          (result) => {
-            if (disposed || !result) {
-              return;
+            videoRef.current,
+            (result) => {
+              if (disposed || !result) {
+                return;
+              }
+
+              const rawValue = result.getText().trim();
+              const category = parseCategoryQr(rawValue);
+
+              if (!category) {
+                return;
+              }
+
+              const now = Date.now();
+              const duplicate =
+                rawValue === lastValueRef.current &&
+                now - lastDetectedAtRef.current < 1800;
+
+              if (duplicate) {
+                return;
+              }
+
+              lastValueRef.current = rawValue;
+              lastDetectedAtRef.current = now;
+
+              navigator.vibrate?.(100);
+              setLastCategory(category);
+              setMessage(`「${category}」を読み取りました。`);
+
+              onDetectedRef.current(category);
             }
-
-            const rawValue = result.getText().trim();
-            const category = parseCategoryQr(rawValue);
-
-            if (!category) {
-              return;
-            }
-
-            const now = Date.now();
-            const duplicate =
-              rawValue === lastValueRef.current &&
-              now - lastDetectedAtRef.current < 1800;
-
-            if (duplicate) {
-              return;
-            }
-
-            lastValueRef.current = rawValue;
-            lastDetectedAtRef.current = now;
-
-            navigator.vibrate?.(100);
-            setLastCategory(category);
-            setMessage(`「${category}」を読み取りました。`);
-
-            onDetectedRef.current(category);
-          }
-        );
-      } catch (error) {
-        console.error("CATEGORY_QR_CAMERA_ERROR", error);
+          );
 
         if (!disposed) {
+          setCameraReady(true);
           setMessage(
-            "カメラを開始できませんでした。カメラの使用許可を確認してください。"
+            "大分類QRを正方形の枠に合わせてください。"
           );
         }
+      } catch (error) {
+        // ZXingはカメラ停止・画面遷移時にfalseを返すことがある。
+        // これは異常ではないため、利用者にエラー表示しない。
+        if (disposed || error === false) {
+          return;
+        }
+
+        console.error("CATEGORY_QR_CAMERA_ERROR", error);
+
+        setCameraReady(false);
+        setMessage(getCameraErrorMessage(error));
       }
     };
 
@@ -149,24 +185,33 @@ export default function CategoryQrScanner({
           <div className="flex items-start justify-between gap-4">
             <div>
               <div className="flex items-center gap-2">
-                <span className="h-2.5 w-2.5 animate-pulse rounded-full bg-emerald-400" />
+                <span
+                  className={`h-2.5 w-2.5 rounded-full ${
+                    cameraReady
+                      ? "animate-pulse bg-emerald-400"
+                      : "bg-amber-400"
+                  }`}
+                />
+
                 <p className="text-xs font-black tracking-[0.18em] text-cyan-200">
                   CATEGORY QR SCANNER
                 </p>
               </div>
 
-              <h2 className="mt-2 text-2xl font-black">大分類を読み取る</h2>
+              <h2 className="mt-2 text-2xl font-black">
+                大分類を読み取る
+              </h2>
 
               <p className="mt-2 text-sm leading-6 text-slate-300">
-                QRコードを読み取ると、大分類で棚卸対象を絞り込みます。
-                終わるまでカメラは開いたままです。
+                QRコードを読み取ると大分類で棚卸対象を絞り込みます。
+                作業が終わったら「閉じる」で棚卸画面へ戻ります。
               </p>
             </div>
 
             <button
               type="button"
               onClick={() => onCloseRef.current()}
-              className="shrink-0 rounded-2xl border border-white/15 bg-white/10 px-4 py-3 text-sm font-bold"
+              className="shrink-0 rounded-2xl border border-white/15 bg-white/10 px-4 py-3 text-sm font-bold transition hover:bg-white/20"
             >
               閉じる
             </button>
@@ -206,11 +251,12 @@ export default function CategoryQrScanner({
 
             <p className="mt-2 text-lg font-black">{message}</p>
 
-            <div className="mt-5 grid grid-cols-2 gap-3">
+            <div className="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-2">
               <div className="rounded-2xl bg-slate-100 p-4">
                 <p className="text-xs font-bold text-slate-500">
                   現在の大分類
                 </p>
+
                 <p className="mt-1 break-words text-lg font-black">
                   {currentCategory ?? "未選択"}
                 </p>
@@ -220,6 +266,7 @@ export default function CategoryQrScanner({
                 <p className="text-xs font-bold text-emerald-700">
                   最後に読んだ分類
                 </p>
+
                 <p className="mt-1 break-words text-lg font-black text-emerald-950">
                   {lastCategory ?? "まだ読んでいません"}
                 </p>

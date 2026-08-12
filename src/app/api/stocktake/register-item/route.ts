@@ -1,6 +1,8 @@
 import { randomUUID } from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { requireAdmin } from "@/lib/auth";
+import { createAdminActionLog } from "@/lib/error-report";
 
 type RegisterItemBody = {
   sessionId?: unknown;
@@ -20,7 +22,9 @@ type RegisterItemBody = {
 };
 
 function getText(value: unknown, maxLength = 500) {
-  return typeof value === "string" ? value.trim().slice(0, maxLength) : "";
+  return typeof value === "string"
+    ? value.trim().slice(0, maxLength)
+    : "";
 }
 
 function getOptionalText(value: unknown, maxLength = 500) {
@@ -30,27 +34,61 @@ function getOptionalText(value: unknown, maxLength = 500) {
 function getQuantity(value: unknown) {
   const quantity = Number(value);
 
-  if (!Number.isInteger(quantity) || quantity < 0) {
-    return null;
-  }
-
-  return quantity;
+  return Number.isInteger(quantity) && quantity >= 0
+    ? quantity
+    : null;
 }
 
 function createSystemBarcode() {
-  return `SYS-${randomUUID().replace(/-/g, "").slice(0, 18).toUpperCase()}`;
+  return `SYS-${randomUUID()
+    .replace(/-/g, "")
+    .slice(0, 18)
+    .toUpperCase()}`;
+}
+
+function getErrorCode(error: unknown) {
+  return error instanceof Error
+    ? error.message
+    : "REGISTER_ITEM_500";
 }
 
 export async function POST(request: NextRequest) {
+  const auth = requireAdmin(request);
+
+  if (auth.response) {
+    return auth.response;
+  }
+
+  const adminUser = auth.user;
+
+  if (!adminUser) {
+    return NextResponse.json(
+      {
+        code: "ADMIN_REQUIRED",
+        message: "未登録商品の登録には管理者権限が必要です。",
+      },
+      { status: 403 }
+    );
+  }
+
   try {
     const body = (await request.json()) as RegisterItemBody;
 
     const sessionId = getText(body.sessionId, 100);
     const name = getText(body.name, 200);
     const janCode = getOptionalText(body.janCode, 30);
-    const systemBarcode = getOptionalText(body.systemBarcode, 100);
-    const managementCode = getOptionalText(body.managementCode, 100);
-    const storageLocationId = getText(body.storageLocationId, 100);
+    const systemBarcode = getOptionalText(
+      body.systemBarcode,
+      100
+    );
+    const managementCode = getOptionalText(
+      body.managementCode,
+      100
+    );
+    const storageLocationId = getText(
+      body.storageLocationId,
+      100
+    );
     const quantity = getQuantity(body.quantity);
 
     if (!sessionId) {
@@ -95,41 +133,43 @@ export async function POST(request: NextRequest) {
 
     const result = await prisma.$transaction(
       async (transaction) => {
-        const session = await transaction.stocktakeSession.findUnique({
-          where: {
-            id: sessionId,
-          },
-          select: {
-            id: true,
-            status: true,
-          },
-        });
+        const session =
+          await transaction.stocktakeSession.findUnique({
+            where: {
+              id: sessionId,
+            },
+            select: {
+              id: true,
+              title: true,
+              status: true,
+            },
+          });
 
         if (!session) {
-          throw new Error("棚卸セッションが見つかりません。");
+          throw new Error("REGISTER_ITEM_SESSION_NOT_FOUND");
         }
 
         if (session.status !== "IN_PROGRESS") {
-          throw new Error(
-            "棚卸中ではないため、新しい商品を棚卸対象へ追加できません。"
-          );
+          throw new Error("REGISTER_ITEM_SESSION_NOT_ACTIVE");
         }
 
-        const location = await transaction.storageLocation.findUnique({
-          where: {
-            id: storageLocationId,
-          },
-          select: {
-            id: true,
-            name: true,
-          },
-        });
+        const location =
+          await transaction.storageLocation.findUnique({
+            where: {
+              id: storageLocationId,
+            },
+            select: {
+              id: true,
+              name: true,
+            },
+          });
 
         if (!location) {
-          throw new Error("選択した保管場所が見つかりません。");
+          throw new Error("REGISTER_ITEM_LOCATION_NOT_FOUND");
         }
 
         let item = null;
+        let itemCreated = false;
 
         if (managementCode) {
           item = await transaction.item.findUnique({
@@ -171,62 +211,87 @@ export async function POST(request: NextRequest) {
                 body.managementGroupCode,
                 100
               ),
-              manufacturer: getOptionalText(body.manufacturer, 200),
-              majorCategory: getOptionalText(body.majorCategory, 100),
-              minorCategory: getOptionalText(body.minorCategory, 100),
+              manufacturer: getOptionalText(
+                body.manufacturer,
+                200
+              ),
+              majorCategory: getOptionalText(
+                body.majorCategory,
+                100
+              ),
+              minorCategory: getOptionalText(
+                body.minorCategory,
+                100
+              ),
               defaultUnit: getOptionalText(body.unit, 30),
             },
           });
+
+          itemCreated = true;
         }
 
         const lotNo = getOptionalText(body.lotNo, 100);
-        const expirationDate = getOptionalText(body.expirationDate, 30);
-        const unit = getOptionalText(body.unit, 30) ?? item.defaultUnit;
+        const expirationDate = getOptionalText(
+          body.expirationDate,
+          30
+        );
+        const unit =
+          getOptionalText(body.unit, 30) ?? item.defaultUnit;
 
-        let inventory = await transaction.inventoryInstance.findFirst({
-          where: {
-            itemId: item.id,
-            storageLocationId,
-            lotNo,
-            expirationDate,
-          },
-        });
-
-        if (inventory) {
-          inventory = await transaction.inventoryInstance.update({
+        let inventory =
+          await transaction.inventoryInstance.findFirst({
             where: {
-              id: inventory.id,
-            },
-            data: {
-              quantity: inventory.quantity + quantity,
-              actualQuantity:
-                inventory.actualQuantity === null
-                  ? inventory.quantity + quantity
-                  : inventory.actualQuantity + quantity,
-              unit,
-              status: "保管中",
-            },
-          });
-        } else {
-          inventory = await transaction.inventoryInstance.create({
-            data: {
               itemId: item.id,
               storageLocationId,
-              managementCode: item.managementCode,
-              managementGroupCode: item.managementGroupCode,
-              manufacturer: item.manufacturer,
-              majorCategory: item.majorCategory,
-              minorCategory: item.minorCategory,
               lotNo,
               expirationDate,
-              unit,
-              quantity,
-              actualQuantity: quantity,
-              allocationType: "home",
-              status: "保管中",
-              stocktakeStatus: "未棚卸",
             },
           });
+
+        let inventoryCreated = false;
+
+        if (inventory) {
+          inventory =
+            await transaction.inventoryInstance.update({
+              where: {
+                id: inventory.id,
+              },
+              data: {
+                quantity: inventory.quantity + quantity,
+                actualQuantity:
+                  inventory.actualQuantity === null
+                    ? inventory.quantity + quantity
+                    : inventory.actualQuantity + quantity,
+                unit,
+                status: "保管中",
+                stocktakeStatus: "未棚卸",
+                stocktakeAt: null,
+              },
+            });
+        } else {
+          inventory =
+            await transaction.inventoryInstance.create({
+              data: {
+                itemId: item.id,
+                storageLocationId,
+                managementCode: item.managementCode,
+                managementGroupCode:
+                  item.managementGroupCode,
+                manufacturer: item.manufacturer,
+                majorCategory: item.majorCategory,
+                minorCategory: item.minorCategory,
+                lotNo,
+                expirationDate,
+                unit,
+                quantity,
+                actualQuantity: quantity,
+                allocationType: "home",
+                status: "保管中",
+                stocktakeStatus: "未棚卸",
+              },
+            });
+
+          inventoryCreated = true;
         }
 
         await transaction.inventoryHistory.create({
@@ -263,6 +328,9 @@ export async function POST(request: NextRequest) {
         });
 
         return {
+          session,
+          itemCreated,
+          inventoryCreated,
           target: {
             id: target.inventoryInstance.id,
             expectedQuantity: target.expectedQuantity,
@@ -272,15 +340,18 @@ export async function POST(request: NextRequest) {
               id: target.inventoryInstance.item.id,
               name: target.inventoryInstance.item.name,
               janCode: target.inventoryInstance.item.janCode,
-              systemBarcode: target.inventoryInstance.item.systemBarcode,
-              managementCode: target.inventoryInstance.item.managementCode,
+              systemBarcode:
+                target.inventoryInstance.item.systemBarcode,
+              managementCode:
+                target.inventoryInstance.item.managementCode,
             },
-            storageLocation: target.inventoryInstance.storageLocation
-              ? {
-                  id: target.inventoryInstance.storageLocation.id,
-                  name: target.inventoryInstance.storageLocation.name,
-                }
-              : null,
+            storageLocation:
+              target.inventoryInstance.storageLocation
+                ? {
+                    id: target.inventoryInstance.storageLocation.id,
+                    name: target.inventoryInstance.storageLocation.name,
+                  }
+                : null,
           },
           created: {
             itemId: item.id,
@@ -291,9 +362,30 @@ export async function POST(request: NextRequest) {
       },
       {
         maxWait: 10_000,
-        timeout: 20_000,
+        timeout: 30_000,
       }
     );
+
+    await createAdminActionLog({
+      adminUserId: adminUser.id,
+      action: "STOCKTAKE_REGISTER_UNLISTED_ITEM",
+      route: "/api/stocktake/register-item",
+      targetSessionId: sessionId,
+      detail: {
+        sessionTitle: result.session.title,
+        itemId: result.created.itemId,
+        inventoryInstanceId:
+          result.created.inventoryInstanceId,
+        itemName: result.target.item.name,
+        janCode: result.target.item.janCode ?? "",
+        systemBarcode:
+          result.target.item.systemBarcode ?? "",
+        quantity: result.target.expectedQuantity,
+        locationName: result.created.locationName,
+        itemCreated: result.itemCreated,
+        inventoryCreated: result.inventoryCreated,
+      },
+    });
 
     return NextResponse.json(
       {
@@ -305,15 +397,25 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     console.error("POST /api/stocktake/register-item", error);
 
+    const code = getErrorCode(error);
+
+    const messages: Record<string, string> = {
+      REGISTER_ITEM_SESSION_NOT_FOUND:
+        "棚卸セッションが見つかりません。",
+      REGISTER_ITEM_SESSION_NOT_ACTIVE:
+        "棚卸中ではないため、新しい商品を追加できません。",
+      REGISTER_ITEM_LOCATION_NOT_FOUND:
+        "選択した保管場所が見つかりません。",
+    };
+
     return NextResponse.json(
       {
-        code: "REGISTER_ITEM_500",
+        code,
         message:
-          error instanceof Error
-            ? error.message
-            : "未登録商品の登録に失敗しました。",
+          messages[code] ??
+          "未登録商品の登録に失敗しました。",
       },
-      { status: 500 }
+      { status: 400 }
     );
   }
 }

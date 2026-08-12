@@ -50,7 +50,12 @@ type Progress = {
     id: string;
     title: string;
     scopeLabel: string | null;
-    status: "IN_PROGRESS" | "PAUSED" | "COMPLETED";
+    status:
+      | "IN_PROGRESS"
+      | "PAUSED"
+      | "REVIEW"
+      | "CONFLICT"
+      | "COMPLETED";
   };
   summary: {
     targetCount: number;
@@ -79,13 +84,17 @@ async function readJson(response: Response): Promise<unknown> {
   const text = await response.text();
 
   if (!text.trim()) {
-    throw new Error(`サーバーから応答がありませんでした。HTTP ${response.status}`);
+    throw new Error(
+      `サーバーから応答がありませんでした。HTTP ${response.status}`
+    );
   }
 
   try {
     return JSON.parse(text) as unknown;
   } catch {
-    throw new Error(`正しい応答を取得できませんでした。HTTP ${response.status}`);
+    throw new Error(
+      `正しい応答を取得できませんでした。HTTP ${response.status}`
+    );
   }
 }
 
@@ -146,7 +155,9 @@ export default function StocktakePage() {
     const data = await readJson(response);
 
     if (!response.ok) {
-      throw new Error(getMessage(data, "棚卸進捗を取得できませんでした。"));
+      throw new Error(
+        getMessage(data, "棚卸進捗を取得できませんでした。")
+      );
     }
 
     setProgress(data as Progress);
@@ -176,7 +187,9 @@ export default function StocktakePage() {
       const data = await readJson(response);
 
       if (!response.ok || !Array.isArray(data)) {
-        throw new Error(getMessage(data, "棚卸対象を取得できませんでした。"));
+        throw new Error(
+          getMessage(data, "棚卸対象を取得できませんでした。")
+        );
       }
 
       setItems(data as Inventory[]);
@@ -271,7 +284,9 @@ export default function StocktakePage() {
       }, 50);
     } catch (error) {
       setErrorMessage(
-        error instanceof Error ? error.message : "棚卸の保存に失敗しました。"
+        error instanceof Error
+          ? error.message
+          : "棚卸の保存に失敗しました。"
       );
     } finally {
       setSaving(false);
@@ -305,7 +320,9 @@ export default function StocktakePage() {
       const data = await readJson(response);
 
       if (!response.ok || !Array.isArray(data)) {
-        throw new Error(getMessage(data, "バーコード検索に失敗しました。"));
+        throw new Error(
+          getMessage(data, "バーコード検索に失敗しました。")
+        );
       }
 
       const results = data as Inventory[];
@@ -337,7 +354,9 @@ export default function StocktakePage() {
     }
   };
 
-  const updateSession = async (action: "PAUSE" | "RESUME" | "COMPLETE") => {
+  const updateSession = async (
+    action: "PAUSE" | "RESUME" | "COMPLETE"
+  ) => {
     setErrorMessage("");
 
     try {
@@ -345,7 +364,9 @@ export default function StocktakePage() {
         `/api/stocktake/session/${encodeURIComponent(sessionId)}`,
         {
           method: "PATCH",
-          headers: { "Content-Type": "application/json" },
+          headers: {
+            "Content-Type": "application/json",
+          },
           body: JSON.stringify({ action }),
         }
       );
@@ -353,17 +374,33 @@ export default function StocktakePage() {
       const data = await readJson(response);
 
       if (!response.ok) {
-        throw new Error(getMessage(data, "棚卸状態を更新できませんでした。"));
+        throw new Error(
+          getMessage(data, "棚卸状態を更新できませんでした。")
+        );
       }
 
       if (action === "PAUSE") {
         setMessage("棚卸を中断しました。開始画面へ戻ります。");
-        window.setTimeout(() => router.push("/stocktake/start"), 1800);
+
+        window.setTimeout(() => {
+          router.push("/stocktake/start");
+        }, 1800);
+
         return;
       }
 
       if (action === "COMPLETE") {
-        router.push(`/stocktake/${sessionId}/result`);
+        setMessage(
+          getMessage(
+            data,
+            "棚卸を終了し、入力済み内容を在庫へ反映しました。"
+          )
+        );
+
+        window.setTimeout(() => {
+          router.push(`/stocktake/${sessionId}/result`);
+        }, 700);
+
         return;
       }
 
@@ -413,7 +450,9 @@ export default function StocktakePage() {
       <div className="mx-auto w-full max-w-7xl">
         <header className="mb-5 flex flex-col gap-4 text-white md:flex-row md:items-start md:justify-between">
           <div className="min-w-0">
-            <p className="text-sm font-bold text-blue-300">棚卸作業</p>
+            <p className="text-sm font-bold text-blue-300">
+              棚卸作業
+            </p>
 
             <button
               type="button"
@@ -510,12 +549,17 @@ export default function StocktakePage() {
           <section className="mb-5 rounded-3xl bg-white p-5 shadow-sm sm:p-7">
             <div className="flex items-end justify-between gap-4">
               <div>
-                <p className="text-sm font-medium text-slate-500">棚卸進捗</p>
+                <p className="text-sm font-medium text-slate-500">
+                  棚卸進捗
+                </p>
+
                 <p className="mt-1 text-3xl font-black sm:text-4xl">
                   {progress.summary.recordedCount}
+
                   <span className="mx-1 text-base font-medium text-slate-500 sm:text-lg">
                     /
                   </span>
+
                   <span className="text-lg font-semibold text-slate-600 sm:text-2xl">
                     {progress.summary.targetCount}件
                   </span>
@@ -530,7 +574,9 @@ export default function StocktakePage() {
             <div className="mt-4 h-3 overflow-hidden rounded-full bg-slate-200">
               <div
                 className="h-full rounded-full bg-blue-600 transition-all"
-                style={{ width: `${progress.summary.progressPercent}%` }}
+                style={{
+                  width: `${progress.summary.progressPercent}%`,
+                }}
               />
             </div>
 
@@ -577,10 +623,27 @@ export default function StocktakePage() {
           </section>
         )}
 
+        {progress?.session.status === "CONFLICT" && (
+          <section className="mb-5 rounded-3xl border border-red-300 bg-red-50 p-5">
+            <h2 className="font-black text-red-950">
+              在庫競合のため安全停止中です
+            </h2>
+
+            <p className="mt-2 text-sm leading-6 text-red-800">
+              棚卸開始後に在庫数が変更された商品を検知しました。
+              上書きを防ぐため、この棚卸の操作を停止しています。
+              管理者メニューからエラー内容を確認してください。
+            </p>
+          </section>
+        )}
+
         {majorCategory && (
           <section className="mb-5 flex flex-col gap-3 rounded-3xl border border-indigo-200 bg-indigo-50 p-4 sm:flex-row sm:items-center sm:justify-between sm:p-5">
             <div>
-              <p className="text-sm font-bold text-indigo-700">大分類ごとに棚卸中</p>
+              <p className="text-sm font-bold text-indigo-700">
+                大分類ごとに棚卸中
+              </p>
+
               <h2 className="mt-1 break-words text-xl font-black text-indigo-950">
                 {majorCategory}
               </h2>
@@ -617,7 +680,10 @@ export default function StocktakePage() {
 
         {progress?.session.status === "PAUSED" && (
           <section className="mb-5 rounded-3xl border border-amber-200 bg-amber-50 p-5">
-            <h2 className="font-black text-amber-900">棚卸は中断中です</h2>
+            <h2 className="font-black text-amber-900">
+              棚卸は中断中です
+            </h2>
+
             <p className="mt-1 text-sm leading-6 text-amber-800">
               再開するまで、検索・カメラ・棚卸入力は利用できません。
             </p>
@@ -819,7 +885,7 @@ export default function StocktakePage() {
             <p className="mt-3 text-sm leading-6 text-slate-600">
               {confirmAction === "PAUSE"
                 ? "保存済みの棚卸データは残ります。あとで開始画面から再開できます。"
-                : "結果を確認する画面へ進みます。結果画面で確定するまで、在庫へは正式反映されません。"}
+                : "入力済みの棚卸数を在庫へ反映して終了します。未棚卸の商品は在庫数を変更せず、そのまま残ります。"}
             </p>
 
             <div className="mt-6 grid grid-cols-2 gap-3">
@@ -836,7 +902,10 @@ export default function StocktakePage() {
                 onClick={() => {
                   const action = confirmAction;
                   setConfirmAction(null);
-                  void updateSession(action === "PAUSE" ? "PAUSE" : "COMPLETE");
+
+                  void updateSession(
+                    action === "PAUSE" ? "PAUSE" : "COMPLETE"
+                  );
                 }}
                 className={`min-h-12 rounded-xl px-4 py-3 font-black text-white ${
                   confirmAction === "PAUSE"
@@ -844,7 +913,7 @@ export default function StocktakePage() {
                     : "bg-blue-600"
                 }`}
               >
-                はい
+                はい、実行する
               </button>
             </div>
           </section>

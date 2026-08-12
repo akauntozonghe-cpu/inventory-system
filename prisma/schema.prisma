@@ -19,9 +19,12 @@ model AppUser {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  stocktakeSessions StocktakeSession[]
-  adminActionLogs   AdminActionLog[] @relation("AdminActionExecutor")
-  errorReports      ErrorReport[]    @relation("ErrorReporter")
+  stocktakeSessions        StocktakeSession[]
+  adminActionLogs          AdminActionLog[]          @relation("AdminActionExecutor")
+  errorReports             ErrorReport[]             @relation("ErrorReporter")
+  itemRegistrationRequests ItemRegistrationRequest[] @relation("RegistrationRequester")
+  inventoryEvents          InventoryEvent[]          @relation("InventoryEventActor")
+  notifications            Notification[]            @relation("NotificationRecipient")
 }
 
 model Item {
@@ -48,14 +51,15 @@ model StorageLocation {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  inventories InventoryInstance[]
+  inventories              InventoryInstance[]
+  itemRegistrationRequests ItemRegistrationRequest[]
 }
 
 model InventoryInstance {
   id String @id @default(cuid())
 
   itemId String
-  item   Item @relation(fields: [itemId], references: [id])
+  item   Item   @relation(fields: [itemId], references: [id])
 
   storageLocationId String?
   storageLocation   StorageLocation? @relation(fields: [storageLocationId], references: [id])
@@ -75,7 +79,7 @@ model InventoryInstance {
   allocationType AllocationType
   status         String
 
-  stocktakeStatus String   @default("未棚卸")
+    stocktakeStatus String @default("未棚卸")
   stocktakeAt     DateTime?
 
   createdAt DateTime @default(now())
@@ -84,6 +88,7 @@ model InventoryInstance {
   histories        InventoryHistory[]
   stocktakeRecords StocktakeRecord[]
   stocktakeTargets StocktakeTarget[]
+  inventoryEvents  InventoryEvent[]
 
   @@unique([itemId, storageLocationId, lotNo, expirationDate])
 }
@@ -104,7 +109,7 @@ model StocktakeSession {
   id String @id @default(cuid())
 
   title    String
-  operator String? @default("管理者")
+    operator String? @default("管理者")
 
   operatorUserId String?
   operatorUser   AppUser? @relation(fields: [operatorUserId], references: [id])
@@ -118,17 +123,25 @@ model StocktakeSession {
 
   status StocktakeStatus @default(IN_PROGRESS)
 
-  startedAt   DateTime @default(now())
+  startedAt   DateTime  @default(now())
   pausedAt    DateTime?
   completedAt DateTime?
+
+  cancelledAt       DateTime?
+  cancelledByUserId String?
+  cancellationNote  String?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  records StocktakeRecord[]
-  targets StocktakeTarget[]
+  records                  StocktakeRecord[]
+  targets                  StocktakeTarget[]
+  itemRegistrationRequests ItemRegistrationRequest[]
+  inventoryEvents          InventoryEvent[]
+  notifications            Notification[]
 
   @@index([operatorUserId, status])
+  @@index([cancelledByUserId])
 }
 
 model StocktakeTarget {
@@ -165,6 +178,105 @@ model StocktakeRecord {
   @@unique([sessionId, inventoryInstanceId])
 }
 
+model ItemRegistrationRequest {
+  id String @id @default(cuid())
+
+  requestedByUserId String
+  requestedBy       AppUser @relation("RegistrationRequester", fields: [requestedByUserId], references: [id])
+
+  stocktakeSessionId String?
+  stocktakeSession   StocktakeSession? @relation(fields: [stocktakeSessionId], references: [id], onDelete: SetNull)
+
+  scannedCode String?
+
+  name                String
+  manufacturer        String?
+  managementCode      String?
+  managementGroupCode String?
+  majorCategory       String?
+  minorCategory       String?
+
+  storageLocationId String?
+  storageLocation   StorageLocation? @relation(fields: [storageLocationId], references: [id], onDelete: SetNull)
+
+  quantity       Int     @default(0)
+  unit           String?
+  lotNo          String?
+  expirationDate String?
+  memo           String?
+
+  status RegistrationRequestStatus @default(PENDING)
+
+  reviewedByUserId String?
+  reviewedAt       DateTime?
+  reviewMemo       String?
+
+  createdItemId              String?
+  createdInventoryInstanceId String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([status, createdAt])
+  @@index([requestedByUserId, createdAt])
+  @@index([stocktakeSessionId])
+  @@index([storageLocationId])
+}
+
+model InventoryEvent {
+  id String @id @default(cuid())
+
+  inventoryInstanceId String
+  inventoryInstance   InventoryInstance @relation(fields: [inventoryInstanceId], references: [id], onDelete: Restrict)
+
+  eventType InventoryEventType
+
+  quantityBefore Int
+  quantityChange Int
+  quantityAfter  Int
+
+  reason String?
+  memo   String?
+  detail Json?
+
+  performedByUserId String?
+  performedBy       AppUser? @relation("InventoryEventActor", fields: [performedByUserId], references: [id], onDelete: SetNull)
+
+  stocktakeSessionId String?
+  stocktakeSession   StocktakeSession? @relation(fields: [stocktakeSessionId], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+
+  @@index([inventoryInstanceId, createdAt])
+  @@index([eventType, createdAt])
+  @@index([stocktakeSessionId])
+  @@index([performedByUserId, createdAt])
+}
+
+model Notification {
+  id String @id @default(cuid())
+
+  type     NotificationType
+  audience NotificationAudience @default(ADMIN)
+
+  title   String
+  message String
+  detail  Json?
+
+  recipientUserId String?
+  recipientUser   AppUser? @relation("NotificationRecipient", fields: [recipientUserId], references: [id], onDelete: SetNull)
+
+  stocktakeSessionId String?
+  stocktakeSession   StocktakeSession? @relation(fields: [stocktakeSessionId], references: [id], onDelete: SetNull)
+
+  readAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([audience, readAt, createdAt])
+  @@index([recipientUserId, readAt, createdAt])
+  @@index([stocktakeSessionId])
+}
+
 model ErrorReport {
   id String @id @default(cuid())
 
@@ -178,7 +290,7 @@ model ErrorReport {
   sessionId String?
   detail    Json?
 
-  occurredAt DateTime @default(now())
+  occurredAt DateTime  @default(now())
   resolvedAt DateTime?
 
   recoveryStatus   RecoveryStatus @default(NOT_ATTEMPTED)
@@ -235,12 +347,49 @@ enum StocktakeScope {
 enum StocktakeStatus {
   IN_PROGRESS
   PAUSED
+  REVIEW
+  CONFLICT
   COMPLETED
+  CANCELLED
+}
+
+enum RegistrationRequestStatus {
+  PENDING
+  APPROVED
+  REJECTED
 }
 
 enum UserRole {
   ADMIN
   WORKER
+}
+
+enum InventoryEventType {
+  OPENING_BALANCE
+  RECEIPT
+  ISSUE
+  TRANSFER_IN
+  TRANSFER_OUT
+  STOCKTAKE
+  ADJUSTMENT
+  DISPOSAL
+  RETURN
+  IMPORT
+}
+
+enum NotificationType {
+  STOCKTAKE_COMPLETED
+  STOCKTAKE_CONFLICT
+  STOCKTAKE_DIFFERENCE
+  LOW_STOCK
+  EXPIRY_ALERT
+  REGISTRATION_REQUEST
+  SYSTEM_ERROR
+}
+
+enum NotificationAudience {
+  ADMIN
+  USER
 }
 
 enum ErrorSeverity {

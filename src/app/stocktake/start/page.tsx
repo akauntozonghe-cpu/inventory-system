@@ -3,19 +3,34 @@
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 
-type Scope = "ALL" | "LOCATION" | "MAJOR_CATEGORY" | "MINOR_CATEGORY";
+type Scope =
+  | "ALL"
+  | "LOCATION"
+  | "MAJOR_CATEGORY"
+  | "MINOR_CATEGORY";
 
 type Options = {
-  locations: Array<{ id: string; name: string }>;
+  locations: Array<{
+    id: string;
+    name: string;
+  }>;
   majorCategories: string[];
   minorCategories: string[];
 };
+
+type SessionStatus =
+  | "IN_PROGRESS"
+  | "PAUSED"
+  | "REVIEW"
+  | "CONFLICT"
+  | "COMPLETED"
+  | "CANCELLED";
 
 type Session = {
   id: string;
   title: string;
   scopeLabel: string | null;
-  status: "IN_PROGRESS" | "PAUSED";
+  status: SessionStatus;
   targetCount: number;
   recordedCount: number;
 };
@@ -30,6 +45,80 @@ const scopeLabels: Record<Scope, string> = {
   MAJOR_CATEGORY: "大分類ごと",
   MINOR_CATEGORY: "小分類ごと",
 };
+
+function getMessage(value: unknown, fallback: string) {
+  if (
+    typeof value === "object" &&
+    value !== null &&
+    "message" in value &&
+    typeof value.message === "string"
+  ) {
+    return value.message;
+  }
+
+  return fallback;
+}
+
+async function readJson(response: Response): Promise<unknown> {
+  const text = await response.text();
+
+  if (!text.trim()) {
+    throw new Error(
+      `サーバーから応答がありません。HTTP ${response.status}`
+    );
+  }
+
+  try {
+    return JSON.parse(text) as unknown;
+  } catch {
+    throw new Error(
+      `正しい応答を取得できませんでした。HTTP ${response.status}`
+    );
+  }
+}
+
+function isOptions(value: unknown): value is Options {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    "locations" in value &&
+    "majorCategories" in value &&
+    "minorCategories" in value &&
+    Array.isArray(value.locations) &&
+    Array.isArray(value.majorCategories) &&
+    Array.isArray(value.minorCategories)
+  );
+}
+
+function isSessions(value: unknown): value is Session[] {
+  return Array.isArray(value);
+}
+
+function isCurrentUser(value: unknown): value is CurrentUser {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    "displayName" in value &&
+    typeof value.displayName === "string"
+  );
+}
+
+function getSessionLabel(status: SessionStatus) {
+  switch (status) {
+    case "PAUSED":
+      return "中断中の棚卸";
+    case "IN_PROGRESS":
+      return "作業中の棚卸";
+    case "REVIEW":
+      return "確認待ちの棚卸";
+    case "CONFLICT":
+      return "競合停止中の棚卸";
+    case "CANCELLED":
+      return "安全終了した棚卸";
+    case "COMPLETED":
+      return "終了済みの棚卸";
+  }
+}
 
 export default function StocktakeStartPage() {
   const router = useRouter();
@@ -46,17 +135,35 @@ export default function StocktakeStartPage() {
   const [memo, setMemo] = useState("");
   const [scopeType, setScopeType] = useState<Scope>("ALL");
   const [scopeValue, setScopeValue] = useState("");
+
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState("");
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    let cancelled = false;
+
     const load = async () => {
       try {
-        const [meResponse, optionsResponse, sessionsResponse] =
+        const [
+          meResponse,
+          optionsResponse,
+          sessionsResponse,
+        ] = await Promise.all([
+          fetch("/api/auth/me", { cache: "no-store" }),
+          fetch("/api/stocktake/options", {
+            cache: "no-store",
+          }),
+          fetch("/api/stocktake/session?active=true", {
+            cache: "no-store",
+          }),
+        ]);
+
+        const [me, optionsData, sessionsData] =
           await Promise.all([
-            fetch("/api/auth/me"),
-            fetch("/api/stocktake/options"),
-            fetch("/api/stocktake/session?active=true"),
+            readJson(meResponse),
+            readJson(optionsResponse),
+            readJson(sessionsResponse),
           ]);
 
         if (meResponse.status === 401) {
@@ -64,39 +171,58 @@ export default function StocktakeStartPage() {
           return;
         }
 
-        if (!meResponse.ok) {
+        if (!meResponse.ok || !isCurrentUser(me)) {
           throw new Error(
-            `AUTH_ME_${meResponse.status}: ログイン情報を取得できませんでした。`
+            getMessage(
+              me,
+              `AUTH_ME_${meResponse.status}: ログイン情報を確認できませんでした。`
+            )
           );
         }
 
-        if (!optionsResponse.ok) {
+        if (!optionsResponse.ok || !isOptions(optionsData)) {
           throw new Error(
-            `STOCKTAKE_OPTIONS_${optionsResponse.status}: 棚卸範囲を取得できませんでした。`
+            getMessage(
+              optionsData,
+              `STOCKTAKE_OPTIONS_${optionsResponse.status}: 棚卸候補を取得できませんでした。`
+            )
           );
         }
 
-        if (!sessionsResponse.ok) {
+        if (!sessionsResponse.ok || !isSessions(sessionsData)) {
           throw new Error(
-            `STOCKTAKE_SESSIONS_${sessionsResponse.status}: 中断中の棚卸を取得できませんでした。`
+            getMessage(
+              sessionsData,
+              `STOCKTAKE_SESSIONS_${sessionsResponse.status}: 棚卸一覧を取得できませんでした。`
+            )
           );
         }
 
-        const me = (await meResponse.json()) as CurrentUser;
-
-        setOperator(me.displayName);
-        setOptions(await optionsResponse.json());
-        setSessions(await sessionsResponse.json());
+        if (!cancelled) {
+          setOperator(me.displayName);
+          setOptions(optionsData);
+          setSessions(sessionsData);
+        }
       } catch (error) {
-        setMessage(
-          error instanceof Error
-            ? error.message
-            : "STOCKTAKE_START_UNKNOWN: 必要な情報を取得できませんでした。"
-        );
+        if (!cancelled) {
+          setMessage(
+            error instanceof Error
+              ? error.message
+              : "STOCKTAKE_START_UNKNOWN: 初期情報を取得できませんでした。"
+          );
+        }
+      } finally {
+        if (!cancelled) {
+          setLoading(false);
+        }
       }
     };
 
     void load();
+
+    return () => {
+      cancelled = true;
+    };
   }, [router]);
 
   const values = useMemo(() => {
@@ -124,11 +250,20 @@ export default function StocktakeStartPage() {
     return [];
   }, [options, scopeType]);
 
-  const ownActiveSession = sessions[0];
+  const activeSession = sessions[0];
 
   const start = async () => {
     if (!title.trim()) {
-      setMessage("STOCKTAKE_TITLE_REQUIRED: 棚卸名を入力してください。");
+      setMessage(
+        "STOCKTAKE_TITLE_REQUIRED: 棚卸名を入力してください。"
+      );
+      return;
+    }
+
+    if (!operator.trim()) {
+      setMessage(
+        "STOCKTAKE_OPERATOR_REQUIRED: 担当者名を入力してください。"
+      );
       return;
     }
 
@@ -145,7 +280,8 @@ export default function StocktakeStartPage() {
     const scopeLabel =
       scopeType === "ALL"
         ? "全在庫"
-        : values.find((item) => item.value === scopeValue)?.label ?? "";
+        : values.find((item) => item.value === scopeValue)
+            ?.label ?? "";
 
     try {
       const response = await fetch("/api/stocktake/start", {
@@ -154,26 +290,29 @@ export default function StocktakeStartPage() {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          title,
-          operator,
-          memo,
+          title: title.trim(),
+          operator: operator.trim(),
+          memo: memo.trim(),
           scopeType,
           scopeValue,
           scopeLabel,
         }),
       });
 
-      const data = (await response.json()) as {
-        id?: string;
-        code?: string;
-        message?: string;
-      };
+      const data = await readJson(response);
 
-      if (!response.ok || !data.id) {
+      if (
+        !response.ok ||
+        typeof data !== "object" ||
+        data === null ||
+        !("id" in data) ||
+        typeof data.id !== "string"
+      ) {
         throw new Error(
-          `${data.code ?? "STOCKTAKE_START_FAILED"}: ${
-            data.message ?? "棚卸を開始できませんでした。"
-          }`
+          getMessage(
+            data,
+            "STOCKTAKE_START_FAILED: 棚卸を開始できませんでした。"
+          )
         );
       }
 
@@ -189,8 +328,16 @@ export default function StocktakeStartPage() {
     }
   };
 
-  const resume = async () => {
-    if (!ownActiveSession) {
+  const openActiveSession = async () => {
+    if (!activeSession || saving) {
+      return;
+    }
+
+    if (
+      activeSession.status === "REVIEW" ||
+      activeSession.status === "CONFLICT"
+    ) {
+      router.push(`/stocktake/${activeSession.id}/result`);
       return;
     }
 
@@ -198,9 +345,9 @@ export default function StocktakeStartPage() {
     setMessage("");
 
     try {
-      if (ownActiveSession.status === "PAUSED") {
+      if (activeSession.status === "PAUSED") {
         const response = await fetch(
-          `/api/stocktake/session/${ownActiveSession.id}`,
+          `/api/stocktake/session/${activeSession.id}`,
           {
             method: "PATCH",
             headers: {
@@ -212,21 +359,19 @@ export default function StocktakeStartPage() {
           }
         );
 
-        const data = (await response.json()) as {
-          code?: string;
-          message?: string;
-        };
+        const data = await readJson(response);
 
         if (!response.ok) {
           throw new Error(
-            `${data.code ?? "STOCKTAKE_RESUME_FAILED"}: ${
-              data.message ?? "棚卸を再開できませんでした。"
-            }`
+            getMessage(
+              data,
+              "STOCKTAKE_RESUME_FAILED: 棚卸を再開できませんでした。"
+            )
           );
         }
       }
 
-      router.push(`/stocktake/${ownActiveSession.id}`);
+      router.push(`/stocktake/${activeSession.id}`);
     } catch (error) {
       setMessage(
         error instanceof Error
@@ -238,16 +383,38 @@ export default function StocktakeStartPage() {
     }
   };
 
+  const activeActionLabel =
+    activeSession?.status === "PAUSED"
+      ? "再開して作業へ"
+      : activeSession?.status === "IN_PROGRESS"
+        ? "棚卸作業を開く"
+        : activeSession?.status === "CONFLICT"
+          ? "競合内容を確認する"
+          : "結果を確認する";
+
+  if (loading) {
+    return (
+      <main className="grid min-h-screen place-items-center bg-slate-50 p-6">
+        <p className="font-bold text-slate-600">
+          棚卸情報を読み込んでいます…
+        </p>
+      </main>
+    );
+  }
+
   return (
     <main className="min-h-screen bg-slate-50 p-4 text-slate-900 sm:p-8">
       <div className="mx-auto max-w-3xl">
         <header className="mb-6 flex items-start justify-between gap-3">
           <div>
-            <h1 className="text-3xl font-black">棚卸開始</h1>
+            <h1 className="text-3xl font-black">
+              棚卸開始
+            </h1>
+
             <p className="mt-2 text-sm text-slate-600">
-              ログイン実施者：
+              ログイン中：
               <span className="ml-1 font-bold text-slate-900">
-                {operator || "読み込み中..."}
+                {operator || "読み込み中…"}
               </span>
             </p>
           </div>
@@ -270,41 +437,70 @@ export default function StocktakeStartPage() {
           </p>
         )}
 
-        {ownActiveSession ? (
-          <section className="rounded-2xl border border-orange-200 bg-white p-6 shadow-sm">
-            <p className="text-sm font-bold text-orange-700">
-              {ownActiveSession.status === "PAUSED"
-                ? "中断中の棚卸"
-                : "作業中の棚卸"}
+        {activeSession ? (
+          <section
+            className={`rounded-2xl bg-white p-6 shadow-sm ${
+              activeSession.status === "CONFLICT"
+                ? "border-2 border-red-300"
+                : "border border-orange-200"
+            }`}
+          >
+            <p
+              className={`text-sm font-bold ${
+                activeSession.status === "CONFLICT"
+                  ? "text-red-700"
+                  : "text-orange-700"
+              }`}
+            >
+              {getSessionLabel(activeSession.status)}
             </p>
 
             <h2 className="mt-1 text-2xl font-black">
-              {ownActiveSession.title}
+              {activeSession.title}
             </h2>
 
             <p className="mt-3 text-slate-600">
-              対象：{ownActiveSession.scopeLabel ?? "全在庫"}
+              対象：
+              {activeSession.scopeLabel ?? "全在庫"}
               <br />
-              進捗：{ownActiveSession.recordedCount} /{" "}
-              {ownActiveSession.targetCount} 件
+              進捗：
+              {activeSession.recordedCount} /{" "}
+              {activeSession.targetCount}件
             </p>
+
+            {activeSession.status === "CONFLICT" && (
+              <p className="mt-4 rounded-xl bg-red-50 p-4 text-sm leading-6 text-red-800">
+                棚卸開始後に在庫数の変更を検知しました。
+                誤反映を防ぐため作業を停止しています。
+                結果画面から管理者が安全終了または内容確認を行えます。
+              </p>
+            )}
+
+            {activeSession.status === "REVIEW" && (
+              <p className="mt-4 rounded-xl bg-amber-50 p-4 text-sm leading-6 text-amber-800">
+                旧バージョンで確認待ちになっている棚卸です。
+                結果画面から内容を確認してください。
+              </p>
+            )}
 
             <button
               type="button"
-              onClick={() => void resume()}
+              onClick={() => void openActiveSession()}
               disabled={saving}
-              className="mt-5 w-full rounded-xl bg-blue-600 py-3.5 text-lg font-bold text-white disabled:bg-slate-400"
+              className={`mt-5 w-full rounded-xl py-3.5 text-lg font-bold text-white disabled:bg-slate-400 ${
+                activeSession.status === "CONFLICT"
+                  ? "bg-red-600"
+                  : "bg-blue-600"
+              }`}
             >
-              {saving
-                ? "処理中..."
-                : ownActiveSession.status === "PAUSED"
-                  ? "再開して作業へ"
-                  : "棚卸画面を開く"}
+              {saving ? "処理中…" : activeActionLabel}
             </button>
           </section>
         ) : (
           <section className="rounded-2xl bg-white p-6 shadow-sm sm:p-8">
-            <h2 className="text-2xl font-black">新しい棚卸を開始</h2>
+            <h2 className="text-2xl font-black">
+              新しい棚卸を開始
+            </h2>
 
             <div className="mt-6 space-y-5">
               <label className="block font-bold">
@@ -312,20 +508,24 @@ export default function StocktakeStartPage() {
                 <input
                   value={title}
                   onChange={(event) => setTitle(event.target.value)}
-                  className="mt-2 w-full rounded-xl border border-slate-300 p-3 font-normal"
+                  className="mt-2 w-full rounded-xl border border-slate-300 p-3 font-normal outline-none focus:border-blue-500"
                   placeholder="例：2026年8月 倉庫棚卸"
                 />
               </label>
 
               <label className="block font-bold">
-                担当者名
+                担当者
                 <input
                   value={operator}
-                  onChange={(event) => setOperator(event.target.value)}
-                  className="mt-2 w-full rounded-xl border border-slate-300 p-3 font-normal"
+                  onChange={(event) =>
+                    setOperator(event.target.value)
+                  }
+                  className="mt-2 w-full rounded-xl border border-slate-300 p-3 font-normal outline-none focus:border-blue-500"
                 />
+
                 <span className="mt-1 block text-xs font-normal text-slate-500">
-                  ログインした実施者名を自動入力しています。必要なら担当者名だけ変更できます。
+                  ログイン中の表示名を自動入力しています。
+                  必要な場合のみ変更できます。
                 </span>
               </label>
 
@@ -333,23 +533,25 @@ export default function StocktakeStartPage() {
                 <p className="font-bold">棚卸範囲</p>
 
                 <div className="mt-2 grid grid-cols-2 gap-2">
-                  {(Object.keys(scopeLabels) as Scope[]).map((scope) => (
-                    <button
-                      key={scope}
-                      type="button"
-                      onClick={() => {
-                        setScopeType(scope);
-                        setScopeValue("");
-                      }}
-                      className={`rounded-xl border p-3 text-left font-bold ${
-                        scopeType === scope
-                          ? "border-blue-600 bg-blue-50 text-blue-700"
-                          : "border-slate-200 bg-white"
-                      }`}
-                    >
-                      {scopeLabels[scope]}
-                    </button>
-                  ))}
+                  {(Object.keys(scopeLabels) as Scope[]).map(
+                    (scope) => (
+                      <button
+                        key={scope}
+                        type="button"
+                        onClick={() => {
+                          setScopeType(scope);
+                          setScopeValue("");
+                        }}
+                        className={`rounded-xl border p-3 text-left font-bold ${
+                          scopeType === scope
+                            ? "border-blue-600 bg-blue-50 text-blue-700"
+                            : "border-slate-200 bg-white"
+                        }`}
+                      >
+                        {scopeLabels[scope]}
+                      </button>
+                    )
+                  )}
                 </div>
               </div>
 
@@ -358,10 +560,14 @@ export default function StocktakeStartPage() {
                   {scopeLabels[scopeType]}を選択
                   <select
                     value={scopeValue}
-                    onChange={(event) => setScopeValue(event.target.value)}
-                    className="mt-2 w-full rounded-xl border border-slate-300 p-3 font-normal"
+                    onChange={(event) =>
+                      setScopeValue(event.target.value)
+                    }
+                    className="mt-2 w-full rounded-xl border border-slate-300 p-3 font-normal outline-none focus:border-blue-500"
                   >
-                    <option value="">選択してください</option>
+                    <option value="">
+                      選択してください
+                    </option>
 
                     {values.map((value) => (
                       <option key={value.value} value={value.value}>
@@ -377,7 +583,7 @@ export default function StocktakeStartPage() {
                 <textarea
                   value={memo}
                   onChange={(event) => setMemo(event.target.value)}
-                  className="mt-2 w-full rounded-xl border border-slate-300 p-3 font-normal"
+                  className="mt-2 w-full rounded-xl border border-slate-300 p-3 font-normal outline-none focus:border-blue-500"
                   rows={3}
                   placeholder="必要な場合のみ入力"
                 />
@@ -386,10 +592,10 @@ export default function StocktakeStartPage() {
               <button
                 type="button"
                 onClick={() => void start()}
-                disabled={saving || !operator}
+                disabled={saving || !operator.trim()}
                 className="w-full rounded-2xl bg-blue-600 py-4 text-lg font-black text-white transition hover:bg-blue-700 disabled:bg-slate-400"
               >
-                {saving ? "開始中..." : "棚卸を開始する"}
+                {saving ? "開始中…" : "棚卸を開始する"}
               </button>
             </div>
           </section>

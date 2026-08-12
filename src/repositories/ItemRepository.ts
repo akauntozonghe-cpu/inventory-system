@@ -24,6 +24,14 @@ type ItemUpdateInput = Partial<{
   defaultUnit: string;
 }>;
 
+function normalizeText(value: string | null | undefined) {
+  return (value ?? "").normalize("NFKC").trim().toLocaleLowerCase("ja-JP");
+}
+
+function normalizeCode(value: string | null | undefined) {
+  return normalizeText(value).replace(/[\s-]/g, "");
+}
+
 export class ItemRepository {
   static async findAll() {
     return prisma.item.findMany({
@@ -59,93 +67,197 @@ export class ItemRepository {
   static async search(keyword: string) {
     const query = keyword.trim();
 
-    if (!query) {
-      return [];
-    }
-
     const items = await prisma.item.findMany({
-      where: {
-        OR: [
-          {
-            janCode: {
-              equals: query,
-              mode: "insensitive",
-            },
+      where: query
+        ? {
+            OR: [
+              {
+                janCode: {
+                  contains: query,
+                  mode: "insensitive",
+                },
+              },
+              {
+                systemBarcode: {
+                  contains: query,
+                  mode: "insensitive",
+                },
+              },
+              {
+                managementCode: {
+                  contains: query,
+                  mode: "insensitive",
+                },
+              },
+              {
+                managementGroupCode: {
+                  contains: query,
+                  mode: "insensitive",
+                },
+              },
+              {
+                name: {
+                  contains: query,
+                  mode: "insensitive",
+                },
+              },
+              {
+                manufacturer: {
+                  contains: query,
+                  mode: "insensitive",
+                },
+              },
+              {
+                majorCategory: {
+                  contains: query,
+                  mode: "insensitive",
+                },
+              },
+              {
+                minorCategory: {
+                  contains: query,
+                  mode: "insensitive",
+                },
+              },
+              {
+                inventoryInstances: {
+                  some: {
+                    lotNo: {
+                      contains: query,
+                      mode: "insensitive",
+                    },
+                  },
+                },
+              },
+              {
+                inventoryInstances: {
+                  some: {
+                    storageLocation: {
+                      is: {
+                        name: {
+                          contains: query,
+                          mode: "insensitive",
+                        },
+                      },
+                    },
+                  },
+                },
+              },
+            ],
+          }
+        : undefined,
+      include: {
+        inventoryInstances: {
+          include: {
+            storageLocation: true,
           },
-          {
-            systemBarcode: {
-              equals: query,
-              mode: "insensitive",
-            },
+          orderBy: {
+            createdAt: "desc",
           },
-          {
-            managementCode: {
-              equals: query,
-              mode: "insensitive",
-            },
-          },
-          {
-            name: {
-              contains: query,
-              mode: "insensitive",
-            },
-          },
-          {
-            janCode: {
-              contains: query,
-              mode: "insensitive",
-            },
-          },
-          {
-            systemBarcode: {
-              contains: query,
-              mode: "insensitive",
-            },
-          },
-          {
-            managementCode: {
-              contains: query,
-              mode: "insensitive",
-            },
-          },
-          {
-            manufacturer: {
-              contains: query,
-              mode: "insensitive",
-            },
-          },
-        ],
+        },
       },
       orderBy: {
         name: "asc",
       },
-      take: 50,
+      take: 100,
     });
 
-    const normalizedQuery = query.toLowerCase();
+    const normalizedQuery = normalizeText(query);
+    const normalizedCode = normalizeCode(query);
 
-    return items.sort((a, b) => {
-      const score = (item: (typeof items)[number]) => {
-        if (item.janCode?.toLowerCase() === normalizedQuery) {
-          return 0;
+    const results = items.map((item) => {
+      const locations = new Map<
+        string,
+        {
+          name: string;
+          quantity: number;
         }
+      >();
 
-        if (item.systemBarcode?.toLowerCase() === normalizedQuery) {
-          return 1;
+      for (const inventory of item.inventoryInstances) {
+        const name = inventory.storageLocation?.name ?? "未設定";
+        const currentQuantity =
+          inventory.actualQuantity ?? inventory.quantity;
+
+        const previous = locations.get(name);
+
+        locations.set(name, {
+          name,
+          quantity: (previous?.quantity ?? 0) + currentQuantity,
+        });
+      }
+
+      const totalQuantity = [...locations.values()].reduce(
+        (total, location) => total + location.quantity,
+        0
+      );
+
+      const codes = [
+        item.janCode,
+        item.systemBarcode,
+        item.managementCode,
+      ].map(normalizeCode);
+
+      let score = 0;
+
+      if (query) {
+        if (codes.some((code) => code === normalizedCode)) {
+          score = 1000;
+        } else if (
+          normalizedCode.length >= 3 &&
+          codes.some((code) => code.startsWith(normalizedCode))
+        ) {
+          score = 700;
+        } else if (normalizeText(item.name) === normalizedQuery) {
+          score = 500;
+        } else if (
+          [
+            item.name,
+            item.manufacturer,
+            item.majorCategory,
+            item.minorCategory,
+            item.managementGroupCode,
+            ...[...locations.values()].map((location) => location.name),
+          ]
+            .map(normalizeText)
+            .some((value) => value.includes(normalizedQuery))
+        ) {
+          score = 100;
         }
+      }
 
-        if (item.managementCode?.toLowerCase() === normalizedQuery) {
-          return 2;
-        }
-
-        if (item.name.toLowerCase() === normalizedQuery) {
-          return 3;
-        }
-
-        return 10;
+      return {
+        id: item.id,
+        name: item.name,
+        janCode: item.janCode,
+        systemBarcode: item.systemBarcode,
+        managementCode: item.managementCode,
+        managementGroupCode: item.managementGroupCode,
+        manufacturer: item.manufacturer,
+        majorCategory: item.majorCategory,
+        minorCategory: item.minorCategory,
+        defaultUnit: item.defaultUnit,
+        totalQuantity,
+        inventoryCount: item.inventoryInstances.length,
+        locations: [...locations.values()].sort((left, right) =>
+          left.name.localeCompare(right.name, "ja")
+        ),
+        score,
       };
-
-      return score(a) - score(b);
     });
+
+    return results
+      .sort((left, right) => {
+        if (right.score !== left.score) {
+          return right.score - left.score;
+        }
+
+        if (right.totalQuantity !== left.totalQuantity) {
+          return right.totalQuantity - left.totalQuantity;
+        }
+
+        return left.name.localeCompare(right.name, "ja");
+      })
+      .map(({ score: _score, ...item }) => item);
   }
 }

@@ -6,7 +6,7 @@ import {
   timingSafeEqual,
 } from "node:crypto";
 import { promisify } from "node:util";
-import type { NextRequest } from "next/server";
+import { NextResponse, type NextRequest } from "next/server";
 
 const scrypt = promisify(scryptCallback);
 
@@ -16,11 +16,13 @@ export const ADMIN_ELEVATION_COOKIE = "inventory_admin_elevation";
 const SESSION_SECONDS = 60 * 60 * 12;
 const ADMIN_ELEVATION_SECONDS = 60 * 10;
 
+export type UserRole = "ADMIN" | "WORKER";
+
 export type LoggedInUser = {
   id: string;
   username: string;
   displayName: string;
-  role: "ADMIN" | "WORKER";
+  role: UserRole;
   mustChangePassword: boolean;
   expiresAt: number;
 };
@@ -32,15 +34,15 @@ export type AdminElevation = {
 };
 
 function getAuthSecret() {
-  const value = process.env.AUTH_SECRET;
+  const secret = process.env.AUTH_SECRET;
 
-  if (!value || value.length < 32) {
+  if (!secret || secret.length < 32) {
     throw new Error(
       "AUTH_SECRET が未設定、または短すぎます。32文字以上のランダムな文字列を設定してください。"
     );
   }
 
-  return value;
+  return secret;
 }
 
 function sign(value: string) {
@@ -67,13 +69,13 @@ function readSignedToken<T>(token?: string): T | null {
     return null;
   }
 
-  const [encoded, receivedSignature, ...rest] = token.split(".");
+  const [encoded, signature, ...rest] = token.split(".");
 
-  if (!encoded || !receivedSignature || rest.length > 0) {
+  if (!encoded || !signature || rest.length > 0) {
     return null;
   }
 
-  if (!safelyCompare(receivedSignature, sign(encoded))) {
+  if (!safelyCompare(signature, sign(encoded))) {
     return null;
   }
 
@@ -117,9 +119,7 @@ export function createSessionToken(
   });
 }
 
-export function verifySessionToken(
-  token?: string
-): LoggedInUser | null {
+export function verifySessionToken(token?: string): LoggedInUser | null {
   const user = readSignedToken<LoggedInUser>(token);
 
   if (
@@ -127,7 +127,7 @@ export function verifySessionToken(
     !user.id ||
     !user.username ||
     !user.displayName ||
-    !user.role ||
+    (user.role !== "ADMIN" && user.role !== "WORKER") ||
     typeof user.mustChangePassword !== "boolean" ||
     typeof user.expiresAt !== "number" ||
     user.expiresAt <= Date.now()
@@ -140,6 +140,11 @@ export function verifySessionToken(
 
 export function getLoggedInUser(request: NextRequest) {
   return verifySessionToken(request.cookies.get(AUTH_COOKIE)?.value);
+}
+
+/** 旧コードとの互換用 */
+export function getCurrentUser(request: NextRequest) {
+  return getLoggedInUser(request);
 }
 
 export function isAdmin(user: LoggedInUser | null) {
@@ -181,12 +186,68 @@ export function getAdminElevation(request: NextRequest) {
 }
 
 /**
- * 通常ログインが管理者、または棚卸画面で管理者が一時認証した場合に true。
+ * 管理者本人、または「このログイン中ユーザー」に対して発行された
+ * 一時管理者認証だけを許可する。
  */
 export function hasAdminAccess(request: NextRequest) {
   const currentUser = getLoggedInUser(request);
 
-  return isAdmin(currentUser) || Boolean(getAdminElevation(request));
+  if (!currentUser) {
+    return false;
+  }
+
+  if (isAdmin(currentUser)) {
+    return true;
+  }
+
+  const elevation = getAdminElevation(request);
+
+  return elevation?.authenticatedByUserId === currentUser.id;
+}
+
+export function requireLogin(request: NextRequest) {
+  const user = getLoggedInUser(request);
+
+  if (!user) {
+    return {
+      user: null,
+      response: NextResponse.json(
+        {
+          code: "AUTH_REQUIRED",
+          message: "ログインが必要です。",
+        },
+        { status: 401 }
+      ),
+    };
+  }
+
+  return {
+    user,
+    response: null,
+  };
+}
+
+export function requireAdmin(request: NextRequest) {
+  const login = requireLogin(request);
+
+  if (login.response) {
+    return login;
+  }
+
+  if (!hasAdminAccess(request)) {
+    return {
+      user: null,
+      response: NextResponse.json(
+        {
+          code: "ADMIN_REQUIRED",
+          message: "この操作には管理者権限が必要です。",
+        },
+        { status: 403 }
+      ),
+    };
+  }
+
+  return login;
 }
 
 export const sessionCookieOptions = {

@@ -1,15 +1,17 @@
 import { randomInt } from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
-import { getLoggedInUser, isAdmin } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { requireAdmin } from "@/lib/auth";
+import { createAdminActionLog } from "@/lib/error-report";
 
-function getText(value: unknown) {
-  return typeof value === "string" ? value.trim() : "";
+function getText(value: unknown, maxLength = 300) {
+  return typeof value === "string"
+    ? value.trim().slice(0, maxLength)
+    : "";
 }
 
-function getOptionalText(value: unknown) {
-  const text = getText(value);
-  return text === "" ? null : text;
+function getOptionalText(value: unknown, maxLength = 300) {
+  return getText(value, maxLength) || null;
 }
 
 function createCheckDigit(body: string) {
@@ -22,9 +24,12 @@ function createCheckDigit(body: string) {
   return String((10 - (total % 10)) % 10);
 }
 
-async function createSystemJan() {
+async function createSystemBarcode() {
   for (let attempt = 0; attempt < 20; attempt += 1) {
-    const serial = String(randomInt(0, 10_000_000_000)).padStart(10, "0");
+    const serial = String(
+      randomInt(0, 10_000_000_000)
+    ).padStart(10, "0");
+
     const body = `20${serial}`;
     const systemBarcode = `${body}${createCheckDigit(body)}`;
 
@@ -42,23 +47,29 @@ async function createSystemJan() {
     }
   }
 
-  throw new Error("SYSTEM_JAN_GENERATE_FAILED");
+  throw new Error("SYSTEM_BARCODE_GENERATE_FAILED");
 }
 
 export async function POST(request: NextRequest) {
+  const auth = requireAdmin(request);
+
+  if (auth.response) {
+    return auth.response;
+  }
+
+  const adminUser = auth.user;
+
+  if (!adminUser) {
+    return NextResponse.json(
+      {
+        code: "ADMIN_REQUIRED",
+        message: "商品登録には管理者権限が必要です。",
+      },
+      { status: 403 }
+    );
+  }
+
   try {
-    const currentUser = getLoggedInUser(request);
-
-    if (!currentUser) {
-      return NextResponse.json(
-        {
-          code: "ITEM_REGISTER_AUTH_401",
-          message: "ログイン情報を確認できませんでした。",
-        },
-        { status: 401 }
-      );
-    }
-
     const rawBody: unknown = await request.json();
 
     if (typeof rawBody !== "object" || rawBody === null) {
@@ -73,11 +84,16 @@ export async function POST(request: NextRequest) {
 
     const body = rawBody as Record<string, unknown>;
 
-    const name = getText(body.name);
-    const janCode = getOptionalText(body.janCode);
+    const name = getText(body.name, 200);
+    const janCode = getOptionalText(body.janCode, 30);
     const quantity = Number(body.quantity ?? 0);
-    const storageLocationId = getOptionalText(body.storageLocationId);
-    const generateSystemJan = body.generateSystemJan === true;
+    const storageLocationId = getOptionalText(
+      body.storageLocationId,
+      100
+    );
+    const generateSystemBarcode =
+      body.generateSystemJan === true ||
+      body.generateSystemBarcode === true;
 
     if (!name) {
       return NextResponse.json(
@@ -99,24 +115,14 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    if (!janCode && !generateSystemJan) {
+    if (!janCode && !generateSystemBarcode) {
       return NextResponse.json(
         {
-          code: "ITEM_REGISTER_JAN_REQUIRED_400",
+          code: "ITEM_REGISTER_BARCODE_REQUIRED_400",
           message:
-            "JANコードがない商品は、管理者がシステムJANを発行して登録してください。",
+            "既存JANコードを入力するか、システムバーコードを発行してください。",
         },
         { status: 400 }
-      );
-    }
-
-    if (generateSystemJan && !isAdmin(currentUser)) {
-      return NextResponse.json(
-        {
-          code: "ITEM_REGISTER_SYSTEM_JAN_ADMIN_403",
-          message: "システムJANの発行は管理者のみ実行できます。",
-        },
-        { status: 403 }
       );
     }
 
@@ -141,7 +147,10 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    const managementCode = getOptionalText(body.managementCode);
+    const managementCode = getOptionalText(
+      body.managementCode,
+      100
+    );
 
     if (janCode) {
       const duplicateJan = await prisma.item.findFirst({
@@ -166,14 +175,15 @@ export async function POST(request: NextRequest) {
     }
 
     if (managementCode) {
-      const duplicateManagementCode = await prisma.item.findUnique({
-        where: {
-          managementCode,
-        },
-        select: {
-          id: true,
-        },
-      });
+      const duplicateManagementCode =
+        await prisma.item.findUnique({
+          where: {
+            managementCode,
+          },
+          select: {
+            id: true,
+          },
+        });
 
       if (duplicateManagementCode) {
         return NextResponse.json(
@@ -186,84 +196,126 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    const systemBarcode = generateSystemJan ? await createSystemJan() : null;
+    const systemBarcode = generateSystemBarcode
+      ? await createSystemBarcode()
+      : null;
 
-    const result = await prisma.$transaction(async (tx) => {
-      const item = await tx.item.create({
-        data: {
-          name,
-          janCode,
-          systemBarcode,
-          managementCode,
-          managementGroupCode: getOptionalText(body.managementGroupCode),
-          manufacturer: getOptionalText(body.manufacturer),
-          majorCategory: getOptionalText(body.majorCategory),
-          minorCategory: getOptionalText(body.minorCategory),
-          defaultUnit: getOptionalText(body.unit),
-        },
-      });
+    const result = await prisma.$transaction(
+      async (transaction) => {
+        const item = await transaction.item.create({
+          data: {
+            name,
+            janCode,
+            systemBarcode,
+            managementCode,
+            managementGroupCode: getOptionalText(
+              body.managementGroupCode,
+              100
+            ),
+            manufacturer: getOptionalText(
+              body.manufacturer,
+              200
+            ),
+            majorCategory: getOptionalText(
+              body.majorCategory,
+              100
+            ),
+            minorCategory: getOptionalText(
+              body.minorCategory,
+              100
+            ),
+            defaultUnit: getOptionalText(body.unit, 30),
+          },
+        });
 
-      const inventory = await tx.inventoryInstance.create({
-        data: {
-          itemId: item.id,
-          storageLocationId,
-          managementCode,
-          managementGroupCode: getOptionalText(body.managementGroupCode),
-          manufacturer: getOptionalText(body.manufacturer),
-          majorCategory: getOptionalText(body.majorCategory),
-          minorCategory: getOptionalText(body.minorCategory),
-          lotNo: getOptionalText(body.lotNo),
-          expirationDate: getOptionalText(body.expirationDate),
-          unit: getOptionalText(body.unit),
-          quantity,
-          actualQuantity: quantity,
-          allocationType: "home",
-          status: "IN_STOCK",
-        },
-        include: {
-          item: true,
-          storageLocation: true,
-        },
-      });
+        const inventory =
+          await transaction.inventoryInstance.create({
+            data: {
+              itemId: item.id,
+              storageLocationId,
+              managementCode: item.managementCode,
+              managementGroupCode:
+                item.managementGroupCode,
+              manufacturer: item.manufacturer,
+              majorCategory: item.majorCategory,
+              minorCategory: item.minorCategory,
+              lotNo: getOptionalText(body.lotNo, 100),
+              expirationDate: getOptionalText(
+                body.expirationDate,
+                30
+              ),
+              unit: getOptionalText(body.unit, 30),
+              quantity,
+              actualQuantity: quantity,
+              allocationType: "home",
+              status: "在庫中",
+              stocktakeStatus: "未棚卸",
+            },
+            include: {
+              item: true,
+              storageLocation: true,
+            },
+          });
 
-      await tx.inventoryHistory.create({
-        data: {
-          inventoryInstanceId: inventory.id,
-          changeQuantity: quantity,
-          action: "ITEM_REGISTER",
-        },
-      });
+        await transaction.inventoryHistory.create({
+          data: {
+            inventoryInstanceId: inventory.id,
+            changeQuantity: quantity,
+            action: "管理者による商品・在庫登録",
+          },
+        });
 
-      return {
-        item,
-        inventory,
-      };
+        return {
+          item,
+          inventory,
+        };
+      },
+      {
+        maxWait: 10_000,
+        timeout: 30_000,
+      }
+    );
+
+    await createAdminActionLog({
+      adminUserId: adminUser.id,
+      action: "ITEM_REGISTER",
+      route: "/api/items/register",
+      detail: {
+        itemId: result.item.id,
+        inventoryInstanceId: result.inventory.id,
+        itemName: result.item.name,
+        janCode: result.item.janCode ?? "",
+        systemBarcode: result.item.systemBarcode ?? "",
+        quantity: result.inventory.quantity,
+        generatedSystemBarcode: generateSystemBarcode,
+      },
     });
 
     return NextResponse.json(
       {
         success: true,
-        message: generateSystemJan
-          ? "商品を登録し、システムJANを発行しました。"
+        message: generateSystemBarcode
+          ? "商品を登録し、システムバーコードを発行しました。"
           : "商品を登録しました。",
         ...result,
       },
       { status: 201 }
     );
   } catch (error) {
-    console.error("ITEM_REGISTER_ERROR", error);
+    console.error("POST /api/items/register", error);
 
     const code =
-      error instanceof Error && error.message === "SYSTEM_JAN_GENERATE_FAILED"
-        ? "ITEM_REGISTER_SYSTEM_JAN_500"
+      error instanceof Error &&
+      error.message === "SYSTEM_BARCODE_GENERATE_FAILED"
+        ? "ITEM_REGISTER_SYSTEM_BARCODE_500"
         : "ITEM_REGISTER_500";
 
     return NextResponse.json(
       {
         code,
         message:
-          code === "ITEM_REGISTER_SYSTEM_JAN_500"
-            ? "システムJANを発行できませんでした。もう一度お試しください。"
+          code === "ITEM_REGISTER_SYSTEM_BARCODE_500"
+            ? "システムバーコードを発行できませんでした。もう一度お試しください。"
             : "商品登録に失敗しました。",
       },
       { status: 500 }
