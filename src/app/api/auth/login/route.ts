@@ -8,8 +8,12 @@ import {
 } from "@/lib/auth";
 
 export async function POST(request: NextRequest) {
+  console.log("=== LOGIN API START ===");
+
   try {
     const body = (await request.json()) as Record<string, unknown>;
+
+    console.log("LOGIN BODY RECEIVED");
 
     const username =
       typeof body.username === "string" ? body.username.trim() : "";
@@ -27,9 +31,15 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    console.log("LOGIN USERNAME:", username);
+
     const user = await prisma.appUser.findUnique({
-      where: { username },
+      where: {
+        username,
+      },
     });
+
+    console.log("USER SEARCH FINISHED:", Boolean(user));
 
     if (!user || !user.isActive) {
       return NextResponse.json(
@@ -46,6 +56,8 @@ export async function POST(request: NextRequest) {
       password,
       user.passwordHash
     );
+
+    console.log("PASSWORD CHECK:", passwordMatches);
 
     if (!passwordMatches) {
       return NextResponse.json(
@@ -65,30 +77,48 @@ export async function POST(request: NextRequest) {
       mustChangePassword: user.mustChangePassword,
     };
 
+    console.log("CREATING SESSION");
+
+    const token = createSessionToken(sessionUser);
+
     const response = NextResponse.json(
       {
         success: true,
         user: sessionUser,
       },
-      { status: 200 }
+      {
+        status: 200,
+      }
     );
 
     response.cookies.set(
       AUTH_COOKIE,
-      createSessionToken(sessionUser),
+      token,
       sessionCookieOptions
     );
 
+    console.log("=== LOGIN SUCCESS ===");
+
     return response;
   } catch (error) {
-    console.error("POST /api/auth/login", error);
+    console.error("=== LOGIN ERROR ===");
+    console.error(error);
 
     return NextResponse.json(
       {
         code: "AUTH_LOGIN_500",
-        message: "ログイン処理中にシステムエラーが発生しました。",
+        message:
+          error instanceof Error
+            ? error.message
+            : "ログイン処理中に不明なエラーが発生しました。",
+        errorType:
+          error instanceof Error
+            ? error.name
+            : typeof error,
       },
-      { status: 500 }
+      {
+        status: 500,
+      }
     );
   }
 }

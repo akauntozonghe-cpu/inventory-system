@@ -168,13 +168,14 @@ export default function StocktakeStartPage() {
     }
 
     const user =
-      userData &&
-      typeof userData === "object" &&
-      "user" in userData &&
-      userData.user &&
-      typeof userData.user === "object"
-        ? (userData.user as CurrentUser)
-        : null;
+  userData &&
+  typeof userData === "object" &&
+  "id" in userData &&
+  "username" in userData &&
+  "displayName" in userData &&
+  "role" in userData
+    ? (userData as CurrentUser)
+    : null;
 
     if (!user) {
       throw new Error(
