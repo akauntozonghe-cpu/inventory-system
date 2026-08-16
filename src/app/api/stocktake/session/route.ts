@@ -36,7 +36,9 @@ export async function GET(request: NextRequest) {
         code: "STOCKTAKE_SESSION_LIST_AUTH_401",
         message: "ログイン情報を確認できませんでした。",
       },
-      { status: 401 }
+      {
+        status: 401,
+      }
     );
   }
 
@@ -46,16 +48,19 @@ export async function GET(request: NextRequest) {
     const sessions = await prisma.stocktakeSession.findMany({
       where: isAdmin
         ? {
+            // 管理者は取消以外すべて表示
             status: {
-              in: ["IN_PROGRESS", "PAUSED", "REVIEW", "CONFLICT"],
+              not: "CANCELLED",
             },
           }
         : {
+            // 一般ユーザーは自分の棚卸のみ表示
             operatorUserId: user.id,
             status: {
-              in: ["IN_PROGRESS", "PAUSED", "REVIEW", "CONFLICT"],
+              not: "CANCELLED",
             },
           },
+
       select: {
         id: true,
         title: true,
@@ -71,12 +76,14 @@ export async function GET(request: NextRequest) {
         pausedAt: true,
         completedAt: true,
         updatedAt: true,
+
         operatorUser: {
           select: {
             displayName: true,
             username: true,
           },
         },
+
         _count: {
           select: {
             targets: true,
@@ -84,6 +91,7 @@ export async function GET(request: NextRequest) {
           },
         },
       },
+
       orderBy: [
         {
           updatedAt: "desc",
@@ -97,59 +105,115 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({
       success: true,
       code: "STOCKTAKE_SESSION_LIST_OK",
+
       sessions: sessions.map((session) => {
         const targetCount = session._count.targets;
+
         const recordedCount = session._count.records;
 
         return {
           id: session.id,
+
           title: session.title,
+
           operator: session.operator,
+
           operatorUserId: session.operatorUserId,
+
           operatorUserName:
             session.operatorUser?.displayName ??
             session.operatorUser?.username ??
             null,
+
           location: session.location,
+
           memo: session.memo,
+
           scopeType: session.scopeType,
+
           scopeValue: session.scopeValue,
+
           scopeLabel: session.scopeLabel || "全在庫",
+
           status: session.status,
-          statusLabel: statusLabel(session.status as SessionStatus),
-          startedAt: session.startedAt.toISOString(),
-          pausedAt: session.pausedAt?.toISOString() ?? null,
-          completedAt: session.completedAt?.toISOString() ?? null,
-          updatedAt: session.updatedAt.toISOString(),
+
+          statusLabel: statusLabel(
+            session.status as SessionStatus
+          ),
+
+          startedAt:
+            session.startedAt.toISOString(),
+
+          pausedAt:
+            session.pausedAt?.toISOString() ??
+            null,
+
+          completedAt:
+            session.completedAt?.toISOString() ??
+            null,
+
+          updatedAt:
+            session.updatedAt.toISOString(),
+
           targetCount,
+
           recordedCount,
-          unrecordedCount: Math.max(targetCount - recordedCount, 0),
+
+                    unrecordedCount: Math.max(
+            targetCount - recordedCount,
+            0
+          ),
+
           progressPercent:
             targetCount === 0
               ? 0
-              : Math.round((recordedCount / targetCount) * 100),
+              : Math.round(
+                  (recordedCount / targetCount) * 100
+                ),
+
           canOpen:
             isAdmin ||
             session.operatorUserId === null ||
             session.operatorUserId === user.id,
+
           canResume:
             session.status === "PAUSED" &&
-            (isAdmin ||
+            (
+              isAdmin ||
               session.operatorUserId === null ||
-              session.operatorUserId === user.id),
+              session.operatorUserId === user.id
+            ),
+
           isAdminView: isAdmin,
+
+          // 追加
+          isCompleted:
+            session.status === "COMPLETED",
+
+          isWorking:
+            session.status === "IN_PROGRESS" ||
+            session.status === "PAUSED" ||
+            session.status === "REVIEW" ||
+            session.status === "CONFLICT",
         };
       }),
     });
   } catch (error) {
-    console.error("GET /api/stocktake/session", error);
+    console.error(
+      "GET /api/stocktake/session",
+      error
+    );
 
     return NextResponse.json(
       {
-        code: "STOCKTAKE_SESSION_LIST_FAILED",
-        message: "棚卸セッション一覧を取得できませんでした。",
+        code:
+          "STOCKTAKE_SESSION_LIST_FAILED",
+        message:
+          "棚卸セッション一覧を取得できませんでした。",
       },
-      { status: 500 }
+      {
+        status: 500,
+      }
     );
   }
 }

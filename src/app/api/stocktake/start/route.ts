@@ -3,7 +3,11 @@ import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { getLoggedInUser } from "@/lib/auth";
 
-type ScopeType = "ALL" | "LOCATION" | "MAJOR_CATEGORY" | "MINOR_CATEGORY";
+type ScopeType =
+  | "ALL"
+  | "LOCATION"
+  | "MAJOR_CATEGORY"
+  | "MINOR_CATEGORY";
 
 function isScopeType(value: unknown): value is ScopeType {
   return (
@@ -14,7 +18,10 @@ function isScopeType(value: unknown): value is ScopeType {
   );
 }
 
-function scopeLabel(scopeType: ScopeType, scopeValue: string | null) {
+function scopeLabel(
+  scopeType: ScopeType,
+  scopeValue: string | null
+) {
   if (scopeType === "ALL") {
     return "全在庫";
   }
@@ -36,48 +43,15 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    const body: unknown = await request.json();
-
-    if (!body || typeof body !== "object") {
-      return NextResponse.json(
-        {
-          code: "STOCKTAKE_START_BODY_INVALID",
-          message: "棚卸開始情報が正しくありません。",
-        },
-        { status: 400 }
-      );
-    }
-
-    const input = body as {
-      title?: unknown;
-      operator?: unknown;
-      memo?: unknown;
-      scopeType?: unknown;
-      scopeValue?: unknown;
+    const body = (await request.json()) as {
+      title?: string;
+      operator?: string;
+      memo?: string;
+      scopeType?: ScopeType;
+      scopeValue?: string;
     };
 
-    const title =
-      typeof input.title === "string" ? input.title.trim() : "";
-
-    const operator =
-      typeof input.operator === "string" && input.operator.trim()
-        ? input.operator.trim()
-        : user.displayName;
-
-    const memo =
-      typeof input.memo === "string" && input.memo.trim()
-        ? input.memo.trim()
-        : null;
-
-    const selectedScopeType: ScopeType = isScopeType(input.scopeType)
-      ? input.scopeType
-      : "ALL";
-
-    const rawScopeValue =
-      typeof input.scopeValue === "string" ? input.scopeValue.trim() : "";
-
-    const selectedScopeValue =
-      selectedScopeType === "ALL" ? null : rawScopeValue || null;
+    const title = body.title?.trim() ?? "";
 
     if (!title) {
       return NextResponse.json(
@@ -89,7 +63,26 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    if (selectedScopeType !== "ALL" && !selectedScopeValue) {
+    const operator =
+      body.operator?.trim() || user.displayName;
+
+    const memo =
+      body.memo?.trim() || null;
+
+    const selectedScopeType: ScopeType =
+      isScopeType(body.scopeType)
+        ? body.scopeType
+        : "ALL";
+
+    const selectedScopeValue =
+      selectedScopeType === "ALL"
+        ? null
+        : body.scopeValue?.trim() || null;
+
+    if (
+      selectedScopeType !== "ALL" &&
+      !selectedScopeValue
+    ) {
       return NextResponse.json(
         {
           code: "STOCKTAKE_START_SCOPE_VALUE_REQUIRED",
@@ -99,46 +92,21 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const activeSession = await prisma.stocktakeSession.findFirst({
-      where: {
-        status: {
-          in: ["IN_PROGRESS", "PAUSED", "REVIEW", "CONFLICT"],
-        },
-      },
-      select: {
-        id: true,
-        title: true,
-        status: true,
-        operator: true,
-      },
-      orderBy: {
-        updatedAt: "desc",
-      },
-    });
-
-    if (activeSession) {
-      const statusText =
-        activeSession.status === "IN_PROGRESS"
-          ? "作業中"
-          : activeSession.status === "PAUSED"
-            ? "中断中"
-            : activeSession.status === "REVIEW"
-              ? "確認待ち"
-              : "要確認";
-
-      return NextResponse.json(
-        {
-          code: "STOCKTAKE_ACTIVE_SESSION_EXISTS",
-          message: `「${activeSession.title}」が${statusText}です。先に再開・終了・正式確定を行ってください。`,
-          activeSession,
-        },
-        { status: 409 }
-      );
-    }
+    /**
+     * ここが変更点
+     *
+     * 以前は
+     * IN_PROGRESS があると409を返していた。
+     *
+     * 今後は何件あっても新規作成可能。
+     */
 
     const inventoryWhere: Prisma.InventoryInstanceWhereInput = {};
 
-    if (selectedScopeType === "LOCATION" && selectedScopeValue) {
+    if (
+      selectedScopeType === "LOCATION" &&
+      selectedScopeValue
+    ) {
       inventoryWhere.storageLocation = {
         is: {
           name: selectedScopeValue,
@@ -146,7 +114,10 @@ export async function POST(request: NextRequest) {
       };
     }
 
-    if (selectedScopeType === "MAJOR_CATEGORY" && selectedScopeValue) {
+    if (
+      selectedScopeType === "MAJOR_CATEGORY" &&
+      selectedScopeValue
+    ) {
       inventoryWhere.OR = [
         {
           majorCategory: selectedScopeValue,
@@ -161,7 +132,10 @@ export async function POST(request: NextRequest) {
       ];
     }
 
-    if (selectedScopeType === "MINOR_CATEGORY" && selectedScopeValue) {
+    if (
+      selectedScopeType === "MINOR_CATEGORY" &&
+      selectedScopeValue
+    ) {
       inventoryWhere.OR = [
         {
           minorCategory: selectedScopeValue,
@@ -176,90 +150,84 @@ export async function POST(request: NextRequest) {
       ];
     }
 
-    const inventories = await prisma.inventoryInstance.findMany({
-      where: inventoryWhere,
-      select: {
-        id: true,
-        quantity: true,
-      },
-      orderBy: {
-        createdAt: "asc",
-      },
-    });
+    const inventories =
+      await prisma.inventoryInstance.findMany({
+        where: inventoryWhere,
+        select: {
+          id: true,
+          quantity: true,
+        },
+        orderBy: {
+          createdAt: "asc",
+        },
+      });
 
     if (inventories.length === 0) {
       return NextResponse.json(
         {
           code: "STOCKTAKE_START_TARGET_EMPTY",
           message:
-            "選択した範囲に棚卸対象がありません。対象範囲または登録済み在庫を確認してください。",
+            "選択した範囲に棚卸対象がありません。",
         },
         { status: 400 }
       );
     }
 
-    const session = await prisma.stocktakeSession.create({
-      data: {
-        title,
-        operator,
-        operatorUserId: user.id,
-        memo,
-        scopeType: selectedScopeType,
-        scopeValue: selectedScopeValue,
-        scopeLabel: scopeLabel(selectedScopeType, selectedScopeValue),
-        status: "IN_PROGRESS",
-        targets: {
-          create: inventories.map((inventory) => ({
-            inventoryInstanceId: inventory.id,
-            expectedQuantity: inventory.quantity,
-          })),
-        },
-      },
-      select: {
-        id: true,
-        title: true,
-        operator: true,
-        scopeType: true,
-        scopeValue: true,
-        scopeLabel: true,
-        status: true,
-        startedAt: true,
-        _count: {
-          select: {
-            targets: true,
+    const session =
+      await prisma.stocktakeSession.create({
+        data: {
+          title,
+          operator,
+          operatorUserId: user.id,
+          memo,
+          scopeType: selectedScopeType,
+          scopeValue: selectedScopeValue,
+          scopeLabel: scopeLabel(
+            selectedScopeType,
+            selectedScopeValue
+          ),
+          status: "IN_PROGRESS",
+
+          targets: {
+            create: inventories.map((inventory) => ({
+              inventoryInstanceId:
+                inventory.id,
+              expectedQuantity:
+                inventory.quantity,
+            })),
           },
         },
-      },
-    });
+
+        include: {
+          _count: {
+            select: {
+              targets: true,
+            },
+          },
+        },
+      });
 
     return NextResponse.json(
       {
         success: true,
-        code: "STOCKTAKE_STARTED",
-        message: `「${session.title}」を開始しました。`,
-        session: {
-          id: session.id,
-          title: session.title,
-          operator: session.operator,
-          scopeType: session.scopeType,
-          scopeValue: session.scopeValue,
-          scopeLabel: session.scopeLabel,
-          status: session.status,
-          startedAt: session.startedAt.toISOString(),
-          targetCount: session._count.targets,
-        },
+        session,
       },
-      { status: 201 }
+      {
+        status: 201,
+      }
     );
   } catch (error) {
-    console.error("POST /api/stocktake/start", error);
+    console.error(error);
 
     return NextResponse.json(
       {
         code: "STOCKTAKE_START_FAILED",
-        message: "棚卸を開始できませんでした。時間をおいて再試行してください。",
+        message:
+          "棚卸を開始できませんでした。",
       },
-      { status: 500 }
+      {
+        status: 500,
+      }
     );
   }
 }
