@@ -11,6 +11,7 @@ import {
 import { useParams, useRouter } from "next/navigation";
 import BarcodeCamera from "@/components/stocktake/BarcodeCamera";
 import CategoryQrScanner from "@/components/CategoryQrScanner";
+import StocktakeInputPanel from "@/components/stocktake/StocktakeInputPanel";
 
 type FilterType = "UNRECORDED" | "RECORDED" | "DIFFERENCE" | "ALL";
 type SessionAction = "PAUSE" | "RESUME" | "COMPLETE";
@@ -143,6 +144,7 @@ export default function StocktakePage() {
   const initializedRef = useRef(false);
   const searchRequestRef = useRef(0);
   const barcodeBusyRef = useRef(false);
+  const continuousQuantityRef = useRef<HTMLInputElement | null>(null);
 
   const canOperate =
     progress?.permissions.canOperate === true &&
@@ -1033,43 +1035,31 @@ export default function StocktakePage() {
           closeOnDetect={false}
           onClose={() => setContinuousCameraOpen(false)}
           onDetected={(barcode) => {
+            if (selected || saving) {
+              setError(
+                "表示中の商品を保存するか「戻る」で解除してから、次の商品を読み取ってください。"
+              );
+              return;
+            }
             void findBarcode(barcode);
           }}
         >
-          <div className="rounded-3xl bg-white p-5 text-slate-950 shadow-xl">
-            <p className="text-sm font-bold text-indigo-600">連続スキャン中</p>
-            {selected ? (
-              <>
-                <h2 className="mt-2 text-2xl font-black">
-                  {selected.item.name}
-                </h2>
-                <p className="mt-2 text-slate-600">
-                  現在庫：{selected.expectedQuantity}
-                  {selected.unit ? ` ${selected.unit}` : " 個"}
-                </p>
-                <input
-                  type="number"
-                  min="0"
-                  inputMode="numeric"
-                  value={countedQuantity}
-                  onChange={(event) => setCountedQuantity(event.target.value)}
-                  className="mt-4 w-full rounded-2xl border-2 border-indigo-500 px-4 py-3 text-2xl font-black"
-                />
-                <button
-                  type="button"
-                  onClick={() => void saveRecord()}
-                  disabled={saving}
-                  className="mt-3 w-full rounded-2xl bg-indigo-600 px-4 py-4 font-black text-white disabled:opacity-50"
-                >
-                  {saving ? "保存中…" : "保存して次を読む"}
-                </button>
-              </>
-            ) : (
-              <p className="mt-3 text-slate-600">
-                バーコードをカメラへ向けてください。
-              </p>
-            )}
-          </div>
+          <StocktakeInputPanel
+            selected={selected}
+            quantity={countedQuantity}
+            saving={saving}
+            disabled={!canOperate}
+            inputRef={continuousQuantityRef}
+            onQuantityChange={setCountedQuantity}
+            onSave={() => void saveRecord()}
+            onCancel={() => {
+              setSelected(null);
+              setCountedQuantity("");
+              setMemo("");
+              setError("");
+            }}
+            continuous
+          />
         </BarcodeCamera>
       )}
 

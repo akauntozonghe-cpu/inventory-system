@@ -14,7 +14,7 @@ export type StocktakeSelectedItem = {
     janCode: string | null;
     systemBarcode: string | null;
     managementCode: string | null;
-    managementGroupCode: string | null;
+    managementGroupCode?: string | null;
     manufacturer: string | null;
     majorCategory: string | null;
     minorCategory: string | null;

@@ -13,6 +13,14 @@ type CategoryQrScannerProps = {
   onClose: () => void;
 };
 
+function decodeCategory(value: string) {
+  try {
+    return decodeURIComponent(value).trim();
+  } catch {
+    return value.trim();
+  }
+}
+
 function normalizeCategory(value: string) {
   const text = value.trim();
 
@@ -20,12 +28,20 @@ function normalizeCategory(value: string) {
     return "";
   }
 
+  const inventoryOsMatch = text.match(
+    /^INVENTORY_OS:CATEGORY:MAJOR:(.+)$/i
+  );
+
+  if (inventoryOsMatch) {
+    return decodeCategory(inventoryOsMatch[1]);
+  }
+
   if (text.startsWith("CATEGORY:")) {
-    return text.replace(/^CATEGORY:/i, "").trim();
+    return decodeCategory(text.replace(/^CATEGORY:/i, ""));
   }
 
   if (text.startsWith("大分類:")) {
-    return text.replace(/^大分類:/, "").trim();
+    return decodeCategory(text.replace(/^大分類:/, ""));
   }
 
   try {
@@ -37,7 +53,7 @@ function normalizeCategory(value: string) {
       "majorCategory" in json &&
       typeof json.majorCategory === "string"
     ) {
-      return json.majorCategory.trim();
+      return decodeCategory(json.majorCategory);
     }
 
     if (
@@ -46,7 +62,7 @@ function normalizeCategory(value: string) {
       "category" in json &&
       typeof json.category === "string"
     ) {
-      return json.category.trim();
+      return decodeCategory(json.category);
     }
   } catch {
     // 通常の文字列QRとして扱う
@@ -255,6 +271,7 @@ export default function CategoryQrScanner({
             <p className="font-bold text-white">対応するQRコード形式</p>
             <p className="mt-2">大分類名</p>
             <p>CATEGORY:大分類名</p>
+            <p>INVENTORY_OS:CATEGORY:MAJOR:大分類名</p>
             <p>{`{"majorCategory":"大分類名"}`}</p>
           </section>
         </main>
