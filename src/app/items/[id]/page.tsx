@@ -4,6 +4,7 @@ import Link from "next/link";
 import { FormEvent, useCallback, useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import SystemBarcodeLabel from "@/components/SystemBarcodeLabel";
+import FeedbackToast from "@/components/common/FeedbackToast";
 
 type CurrentUser = {
   id: string;
@@ -608,17 +609,17 @@ export default function ItemDetailPage() {
           </div>
         </header>
 
-        {notice && (
-          <div className="mb-5 rounded-2xl border border-emerald-200 bg-emerald-50 px-5 py-4 font-bold text-emerald-800">
-            {notice}
-          </div>
-        )}
-
-        {error && (
-          <div className="mb-5 rounded-2xl border border-red-200 bg-red-50 px-5 py-4 font-bold text-red-700">
-            {error}
-          </div>
-        )}
+        <FeedbackToast
+          message={notice}
+          tone="success"
+          onClose={() => setNotice("")}
+          autoCloseMs={5000}
+        />
+        <FeedbackToast
+          message={error}
+          tone="error"
+          onClose={() => setError("")}
+        />
 
         {isAdmin && (
           <div className="mb-5 rounded-2xl border border-blue-200 bg-blue-50 px-5 py-4 text-sm text-blue-900">

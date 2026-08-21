@@ -8,6 +8,7 @@ import {
   useState,
 } from "react";
 import { useRouter } from "next/navigation";
+import FeedbackToast from "@/components/common/FeedbackToast";
 
 type CurrentUser = {
   id: string;
@@ -322,6 +323,8 @@ export default function RegistrationRequestsPage() {
 
   return (
     <main className="min-h-screen bg-slate-100 p-4 text-slate-900 sm:p-8">
+      <FeedbackToast message={error} tone="error" title="申請操作エラー" onClose={() => setError("")} />
+      <FeedbackToast message={notice} tone="success" onClose={() => setNotice("")} autoCloseMs={5000} />
       <div className="mx-auto max-w-7xl">
         <header className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
           <div>
@@ -356,19 +359,6 @@ export default function RegistrationRequestsPage() {
             </Link>
           </div>
         </header>
-
-        {notice && (
-          <section className="mt-6 rounded-2xl border border-emerald-200 bg-emerald-50 px-5 py-4 text-emerald-800">
-            <p className="font-bold">{notice}</p>
-          </section>
-        )}
-
-        {error && (
-          <section className="mt-6 rounded-2xl border border-red-200 bg-red-50 px-5 py-4 text-red-800">
-            <p className="font-black">処理できませんでした</p>
-            <p className="mt-1">{error}</p>
-          </section>
-        )}
 
         <nav className="mt-7 flex gap-2 overflow-x-auto pb-1">
           {(

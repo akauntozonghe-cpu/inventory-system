@@ -1,8 +1,9 @@
 "use client";
 
 import Link from "next/link";
-import { FormEvent, useCallback, useEffect, useState } from "react";
+import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import FeedbackToast from "@/components/common/FeedbackToast";
 
 type ScopeType = "ALL" | "LOCATION" | "MAJOR_CATEGORY" | "MINOR_CATEGORY";
 
@@ -117,6 +118,8 @@ function getStatusClass(status: SessionStatus) {
 
 export default function StocktakeStartPage() {
   const router = useRouter();
+  const titleRef = useRef<HTMLInputElement | null>(null);
+  const scopeRef = useRef<HTMLSelectElement | null>(null);
 
   const [currentUser, setCurrentUser] = useState<CurrentUser | null>(null);
   const [sessions, setSessions] = useState<StocktakeSession[]>([]);
@@ -243,11 +246,13 @@ export default function StocktakeStartPage() {
 
     if (!title.trim()) {
       setError("棚卸名を入力してください。");
+      window.requestAnimationFrame(() => titleRef.current?.focus());
       return;
     }
 
     if (scopeType !== "ALL" && !scopeValue.trim()) {
       setError(`${getScopeLabel(scopeType)}を選択してください。`);
+      window.requestAnimationFrame(() => scopeRef.current?.focus());
       return;
     }
 
@@ -367,6 +372,12 @@ export default function StocktakeStartPage() {
 
   return (
     <main className="min-h-screen bg-slate-950 pb-12 text-slate-950">
+      <FeedbackToast
+        message={error}
+        tone="error"
+        title="棚卸操作エラー"
+        onClose={() => setError("")}
+      />
       <header className="border-b border-slate-800 bg-slate-950 px-5 py-6 text-white sm:px-8">
         <div className="mx-auto flex max-w-6xl flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
           <div>
@@ -387,12 +398,6 @@ export default function StocktakeStartPage() {
       </header>
 
       <div className="mx-auto max-w-6xl space-y-7 p-5 sm:p-8">
-        {error && (
-          <div className="rounded-2xl border border-red-200 bg-red-50 px-5 py-4 font-bold text-red-800">
-            {error}
-          </div>
-        )}
-
         {sessions.length > 0 && (
           <section className="rounded-3xl bg-white p-5 shadow-sm sm:p-7">
             <p className="text-sm font-bold text-indigo-600">
@@ -476,7 +481,8 @@ export default function StocktakeStartPage() {
               <label className="block font-bold" htmlFor="stocktake-title">
                 棚卸名
               </label>
-              <input
+                <input
+                  ref={titleRef}
                 id="stocktake-title"
                 value={title}
                 onChange={(event) => setTitle(event.target.value)}
@@ -536,7 +542,8 @@ export default function StocktakeStartPage() {
                     {getScopeLabel(scopeType)}
                   </label>
 
-                  <select
+                <select
+                  ref={scopeRef}
                     id="scope-value"
                     value={scopeValue}
                     onChange={(event) => setScopeValue(event.target.value)}

@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import FeedbackToast from "@/components/common/FeedbackToast";
 import { useCallback, useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 
@@ -238,6 +239,18 @@ export default function StocktakeResultPage() {
 
   return (
     <main className="min-h-screen bg-slate-950 pb-12 text-slate-950">
+      <FeedbackToast
+        message={error}
+        tone="error"
+        title="棚卸結果エラー"
+        onClose={() => setError("")}
+      />
+      <FeedbackToast
+        message={message}
+        tone="success"
+        onClose={() => setMessage("")}
+        autoCloseMs={5000}
+      />
       <header className="border-b border-slate-800 bg-slate-950 px-5 py-6 text-white sm:px-8">
         <div className="mx-auto flex max-w-7xl flex-col gap-5 sm:flex-row sm:items-start sm:justify-between">
           <div>
@@ -263,18 +276,6 @@ export default function StocktakeResultPage() {
       </header>
 
       <div className="mx-auto max-w-7xl space-y-6 p-5 sm:p-8">
-        {message && (
-          <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-5 py-4 font-bold text-emerald-800">
-            {message}
-          </div>
-        )}
-
-        {error && (
-          <div className="rounded-2xl border border-red-200 bg-red-50 px-5 py-4 font-bold text-red-800">
-            {error}
-          </div>
-        )}
-
         {isWorking && (
           <section className="rounded-3xl border border-amber-200 bg-amber-50 p-6">
             <h2 className="text-2xl font-black text-amber-900">

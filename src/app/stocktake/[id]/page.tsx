@@ -12,6 +12,7 @@ import { useParams, useRouter } from "next/navigation";
 import BarcodeCamera from "@/components/stocktake/BarcodeCamera";
 import CategoryQrScanner from "@/components/CategoryQrScanner";
 import StocktakeInputPanel from "@/components/stocktake/StocktakeInputPanel";
+import FeedbackToast from "@/components/common/FeedbackToast";
 
 type FilterType = "UNRECORDED" | "RECORDED" | "DIFFERENCE" | "ALL";
 type SessionAction = "PAUSE" | "RESUME" | "COMPLETE";
@@ -563,6 +564,18 @@ export default function StocktakePage() {
 
   return (
     <main className="min-h-screen bg-slate-950 pb-12 text-slate-950">
+      <FeedbackToast
+        message={error}
+        tone="error"
+        title="棚卸操作エラー"
+        onClose={() => setError("")}
+      />
+      <FeedbackToast
+        message={message}
+        tone="success"
+        onClose={() => setMessage("")}
+        autoCloseMs={5000}
+      />
       <header className="border-b border-slate-800 bg-slate-950 px-5 py-5 text-white sm:px-8">
         <div className="mx-auto flex max-w-7xl flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
           <div>
@@ -672,18 +685,6 @@ export default function StocktakePage() {
       </header>
 
       <div className="mx-auto max-w-7xl space-y-6 p-5 sm:p-8">
-        {(message || error) && (
-          <div
-            className={`rounded-2xl border px-5 py-4 font-medium ${
-              error
-                ? "border-red-200 bg-red-50 text-red-800"
-                : "border-emerald-200 bg-emerald-50 text-emerald-800"
-            }`}
-          >
-            {error || message}
-          </div>
-        )}
-
         {!canOperate && progress.session.status !== "COMPLETED" && (
           <div className="rounded-2xl border border-amber-200 bg-amber-50 px-5 py-4 text-amber-900">
             <p className="font-bold">

@@ -2,6 +2,7 @@
 
 import { FormEvent, useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import FeedbackToast from "@/components/common/FeedbackToast";
 
 type UserRole = "ADMIN" | "WORKER";
 
@@ -352,6 +353,7 @@ export default function UserManagementPage() {
 
   return (
     <main className="min-h-screen bg-slate-100 px-4 py-8 text-slate-900 sm:px-6 lg:px-8">
+      <FeedbackToast message={error} tone="error" title="ユーザー操作エラー" onClose={() => setError("")} />
       <div className="mx-auto max-w-6xl">
         <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
@@ -374,13 +376,6 @@ export default function UserManagementPage() {
             ホームへ戻る
           </button>
         </div>
-
-        {error && (
-          <div className="mb-5 rounded-xl border border-red-200 bg-red-50 px-5 py-4 text-red-800">
-            <p className="font-bold">エラー</p>
-            <p className="mt-1">{error}</p>
-          </div>
-        )}
 
         {success && (
           <div className="mb-5 rounded-xl border border-green-200 bg-green-50 px-5 py-4 text-green-800">

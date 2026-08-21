@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import FeedbackToast from "@/components/common/FeedbackToast";
 
 type Location = {
   id: string;
@@ -61,6 +62,9 @@ export default function UnregisteredItemDialog({
   const [loadingLocations, setLoadingLocations] = useState(false);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState("");
+  const nameRef = useRef<HTMLInputElement | null>(null);
+  const locationRef = useRef<HTMLSelectElement | null>(null);
+  const quantityRef = useRef<HTMLInputElement | null>(null);
 
   const [form, setForm] = useState({
     name: "",
@@ -149,11 +153,13 @@ export default function UnregisteredItemDialog({
   const submit = async () => {
     if (!form.name.trim()) {
       setMessage("商品名を入力してください。");
+      window.requestAnimationFrame(() => nameRef.current?.focus());
       return;
     }
 
     if (!form.storageLocationId) {
       setMessage("保管場所を選択してください。");
+      window.requestAnimationFrame(() => locationRef.current?.focus());
       return;
     }
 
@@ -161,6 +167,7 @@ export default function UnregisteredItemDialog({
 
     if (!Number.isInteger(quantity) || quantity < 0) {
       setMessage("在庫数は0以上の整数で入力してください。");
+      window.requestAnimationFrame(() => quantityRef.current?.focus());
       return;
     }
 
@@ -194,6 +201,7 @@ export default function UnregisteredItemDialog({
       }
 
       onRegistered(data.target as RegisteredTarget);
+      onClose();
 
       setForm({
         name: "",
@@ -222,6 +230,12 @@ export default function UnregisteredItemDialog({
 
   return (
     <div className="fixed inset-0 z-[70] overflow-y-auto bg-slate-950/70 p-4 sm:p-8">
+      <FeedbackToast
+        message={message}
+        tone="error"
+        title="商品登録エラー"
+        onClose={() => setMessage("")}
+      />
       <section className="mx-auto my-4 w-full max-w-2xl rounded-3xl bg-white p-5 text-slate-900 shadow-2xl sm:p-7">
         <div className="flex items-start justify-between gap-4">
           <div>
@@ -246,12 +260,6 @@ export default function UnregisteredItemDialog({
           </button>
         </div>
 
-        {message && (
-          <p className="mt-5 rounded-2xl bg-red-50 px-4 py-3 text-sm font-semibold text-red-700">
-            {message}
-          </p>
-        )}
-
         <div className="mt-6 grid gap-4 sm:grid-cols-2">
           <label className="sm:col-span-2">
             <span className="text-sm font-bold">
@@ -259,6 +267,7 @@ export default function UnregisteredItemDialog({
             </span>
 
             <input
+              ref={nameRef}
               value={form.name}
               onChange={(event) => update("name", event.target.value)}
               placeholder="例：アレグラFX 56錠"
@@ -362,6 +371,7 @@ export default function UnregisteredItemDialog({
             </span>
 
             <select
+              ref={locationRef}
               value={form.storageLocationId}
               onChange={(event) =>
                 update("storageLocationId", event.target.value)
@@ -389,6 +399,7 @@ export default function UnregisteredItemDialog({
             </span>
 
             <input
+              ref={quantityRef}
               type="number"
               min="0"
               inputMode="numeric"

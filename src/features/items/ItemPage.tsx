@@ -6,9 +6,11 @@ import {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from "react";
 import CategoryQrScanner from "@/components/CategoryQrScanner";
+import FeedbackToast from "@/components/common/FeedbackToast";
 import ItemTable from "./ItemTable";
 import type { Item } from "./types";
 
@@ -52,6 +54,7 @@ async function readJson(response: Response): Promise<unknown> {
 }
 
 export default function ItemPage() {
+  const editNameRef = useRef<HTMLInputElement | null>(null);
   const [items, setItems] = useState<Item[]>([]);
   const [currentUser, setCurrentUser] = useState<CurrentUser | null>(null);
   const [search, setSearch] = useState("");
@@ -250,6 +253,7 @@ export default function ItemPage() {
 
     if (!editingItem || !editName.trim()) {
       setError("商品名を入力してください。");
+      window.requestAnimationFrame(() => editNameRef.current?.focus());
       return;
     }
 
@@ -294,6 +298,18 @@ export default function ItemPage() {
 
   return (
     <main className="min-h-screen bg-slate-100 p-4 sm:p-8">
+      <FeedbackToast
+        message={error}
+        tone="error"
+        title="操作エラー"
+        onClose={() => setError("")}
+      />
+      <FeedbackToast
+        message={message}
+        tone="success"
+        onClose={() => setMessage("")}
+        autoCloseMs={5000}
+      />
       <div className="mx-auto max-w-7xl">
         <header className="mb-6 flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
           <div>
@@ -372,19 +388,6 @@ export default function ItemPage() {
           </section>
         )}
 
-        {error && (
-          <section className="mb-5 rounded-2xl border border-red-200 bg-red-50 p-5">
-            <p className="text-sm font-bold text-red-600">システムエラー</p>
-            <p className="mt-2 text-slate-700">{error}</p>
-          </section>
-        )}
-
-        {message && (
-          <section className="mb-5 rounded-2xl border border-blue-200 bg-blue-50 p-4 font-bold text-blue-800">
-            {message}
-          </section>
-        )}
-
         {editingItem && (
           <section className="mb-6 rounded-2xl bg-white p-5 shadow-sm sm:p-7">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
@@ -414,6 +417,7 @@ export default function ItemPage() {
                 </span>
 
                 <input
+                  ref={editNameRef}
                   value={editName}
                   onChange={(event) => setEditName(event.target.value)}
                   className="mt-2 w-full rounded-xl border border-slate-300 px-4 py-3 outline-none focus:border-blue-600"

@@ -1,8 +1,9 @@
 "use client";
 
 import Link from "next/link";
-import { type FormEvent, useEffect, useState } from "react";
+import { type FormEvent, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import FeedbackToast from "@/components/common/FeedbackToast";
 
 type Location = {
   id: string;
@@ -96,6 +97,8 @@ function isCurrentUser(value: unknown): value is CurrentUser {
 
 export default function AddPage() {
   const router = useRouter();
+  const nameRef = useRef<HTMLInputElement | null>(null);
+  const quantityRef = useRef<HTMLInputElement | null>(null);
 
   const [form, setForm] = useState<FormState>(initialForm);
   const [locations, setLocations] = useState<Location[]>([]);
@@ -110,6 +113,17 @@ export default function AddPage() {
 
   const isAdmin = currentUser?.role === "ADMIN";
   const hasJanCode = form.janCode.trim().length > 0;
+
+  const showValidationError = (
+    text: string,
+    target?: HTMLInputElement | null
+  ) => {
+    setError(text);
+    window.requestAnimationFrame(() => {
+      target?.scrollIntoView({ behavior: "smooth", block: "center" });
+      target?.focus();
+    });
+  };
 
   useEffect(() => {
     const loadInitialData = async () => {
@@ -179,12 +193,15 @@ export default function AddPage() {
     const quantity = Number(form.quantity);
 
     if (!name) {
-      setError("商品名を入力してください。");
+      showValidationError("商品名を入力してください。", nameRef.current);
       return;
     }
 
     if (!Number.isInteger(quantity) || quantity < 0) {
-      setError("数量は0以上の整数で入力してください。");
+      showValidationError(
+        "数量は0以上の整数で入力してください。",
+        quantityRef.current
+      );
       return;
     }
 
@@ -242,6 +259,18 @@ export default function AddPage() {
 
   return (
     <main className="min-h-screen bg-slate-100 p-4 sm:p-8">
+      <FeedbackToast
+        message={error}
+        tone="error"
+        title="商品登録エラー"
+        onClose={() => setError("")}
+      />
+      <FeedbackToast
+        message={message}
+        tone="success"
+        title="登録しました"
+        onClose={() => setMessage("")}
+      />
       <div className="mx-auto max-w-4xl">
         <header className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
           <div>
@@ -267,24 +296,6 @@ export default function AddPage() {
             ホームへ戻る
           </Link>
         </header>
-
-        {error && (
-          <section className="mb-5 rounded-2xl border border-red-200 bg-red-50 p-5">
-            <p className="font-black text-red-700">
-              商品登録エラー
-            </p>
-            <p className="mt-2 text-red-800">{error}</p>
-          </section>
-        )}
-
-        {message && (
-          <section className="mb-5 rounded-2xl border border-emerald-200 bg-emerald-50 p-5">
-            <p className="font-black text-emerald-700">{message}</p>
-            <p className="mt-1 text-sm text-emerald-700">
-              画面を移動します。
-            </p>
-          </section>
-        )}
 
         {!loading && currentUser && (
           <section
@@ -319,6 +330,7 @@ export default function AddPage() {
                 </span>
 
                 <input
+                  ref={nameRef}
                   value={form.name}
                   onChange={(event) => change("name", event.target.value)}
                   placeholder="例：救急絆創膏 Mサイズ 100枚入"
@@ -509,6 +521,7 @@ export default function AddPage() {
                 </span>
 
                 <input
+                  ref={quantityRef}
                   type="number"
                   min="0"
                   inputMode="numeric"
