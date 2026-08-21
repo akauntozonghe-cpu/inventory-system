@@ -1,114 +1,384 @@
 "use client";
 
 import Link from "next/link";
+import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 
-const menus = [
+type CurrentUser = {
+  id: string;
+  username: string;
+  displayName: string;
+  role: "ADMIN" | "WORKER";
+};
+
+type ApiError = {
+  code?: string;
+  message?: string;
+};
+
+type NotificationResponse = {
+  unreadCount: number;
+};
+
+type Menu = {
+  href: string;
+  icon: string;
+  title: string;
+  description: string;
+  color: string;
+};
+
+const workerMenus: Menu[] = [
   {
-    title: "棚卸開始",
-    description: "新しい棚卸を開始します",
     href: "/stocktake/start",
     icon: "📦",
+    title: "棚卸開始",
+    description: "新しい棚卸の開始、中断している棚卸の再開を行います。",
     color: "bg-blue-500",
   },
   {
-    title: "在庫検索",
-    description: "JAN・商品名などで検索",
     href: "/inventory-search",
-    icon: "🔍",
-    color: "bg-green-500",
+    icon: "🔎",
+    title: "在庫検索",
+    description: "JAN、商品名、分類、メーカー、保管場所から在庫を検索します。",
+    color: "bg-emerald-500",
   },
   {
-    title: "商品一覧",
-    description: "登録商品を見る",
     href: "/items",
     icon: "📋",
-    color: "bg-orange-500",
+    title: "商品一覧",
+    description: "登録済みの商品情報、在庫、バーコードを確認します。",
+    color: "bg-violet-500",
   },
   {
+    href: "/stocktake/history",
+    icon: "🕘",
     title: "棚卸履歴",
-    description: "過去の棚卸を見る",
-    href: "/history",
-    icon: "🕒",
-    color: "bg-purple-500",
+    description: "自分が実施した棚卸と、その結果を確認します。",
+    color: "bg-cyan-500",
   },
 ];
 
-export default function Home() {
+const adminMenus: Menu[] = [
+  {
+    href: "/admin",
+    icon: "⚙️",
+    title: "管理者設定",
+    description: "ユーザー、商品・在庫、エラー、棚卸全体を管理します。",
+    color: "bg-slate-800",
+  },
+  {
+    href: "/admin/stocktake",
+    icon: "📊",
+    title: "全棚卸管理",
+    description: "全担当者の棚卸進捗、中断、差異、競合を横断して確認します。",
+    color: "bg-indigo-600",
+  },
+];
+
+function isCurrentUser(value: unknown): value is CurrentUser {
   return (
-    <main className="min-h-screen bg-slate-100 p-8">
-      <div className="max-w-7xl mx-auto">
+    value !== null &&
+    typeof value === "object" &&
+    "id" in value &&
+    "username" in value &&
+    "displayName" in value &&
+    "role" in value &&
+    typeof (value as CurrentUser).id === "string" &&
+    typeof (value as CurrentUser).username === "string" &&
+    typeof (value as CurrentUser).displayName === "string" &&
+    ((value as CurrentUser).role === "ADMIN" ||
+      (value as CurrentUser).role === "WORKER")
+  );
+}
 
-        <h1 className="text-4xl font-bold">
-          在庫管理システム
-        </h1>
+function isNotificationResponse(
+  value: unknown
+): value is NotificationResponse {
+  return (
+    value !== null &&
+    typeof value === "object" &&
+    "unreadCount" in value &&
+    typeof (value as NotificationResponse).unreadCount === "number"
+  );
+}
 
-        <p className="text-gray-500 mt-2">
-          棚卸・検索・在庫管理
-        </p>
+function getMessage(value: unknown, fallback: string) {
+  if (
+    value !== null &&
+    typeof value === "object" &&
+    "message" in value &&
+    typeof (value as ApiError).message === "string"
+  ) {
+    return (value as ApiError).message ?? fallback;
+  }
 
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6 mt-10">
+  return fallback;
+}
 
-          {menus.map((menu) => (
-            <Link
-              key={menu.href}
-              href={menu.href}
+async function readJson(response: Response): Promise<unknown> {
+  const text = await response.text();
+
+  if (!text.trim()) {
+    throw new Error(`サーバー応答が空です。HTTP ${response.status}`);
+  }
+
+  try {
+    return JSON.parse(text) as unknown;
+  } catch {
+    throw new Error(
+      `サーバー応答を読み取れませんでした。HTTP ${response.status}`
+    );
+  }
+}
+
+export default function HomePage() {
+  const router = useRouter();
+
+  const [user, setUser] = useState<CurrentUser | null>(null);
+  const [unreadCount, setUnreadCount] = useState(0);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const load = async () => {
+      try {
+        setLoading(true);
+        setError("");
+
+        const authResponse = await fetch("/api/auth/me", {
+          cache: "no-store",
+        });
+
+        const authData = await readJson(authResponse);
+
+        if (authResponse.status === 401) {
+          router.replace("/login");
+          return;
+        }
+
+        if (!authResponse.ok || !isCurrentUser(authData)) {
+          throw new Error(
+            getMessage(authData, "ログイン情報を確認できませんでした。")
+          );
+        }
+
+        if (cancelled) return;
+
+        setUser(authData);
+
+        try {
+          const notificationResponse = await fetch("/api/notifications", {
+            cache: "no-store",
+          });
+
+          if (!notificationResponse.ok) return;
+
+          const notificationData = await readJson(notificationResponse);
+
+          if (!cancelled && isNotificationResponse(notificationData)) {
+            setUnreadCount(notificationData.unreadCount);
+          }
+        } catch {
+          // 通知の取得失敗はホーム画面自体を止めない
+        }
+      } catch (caughtError) {
+        if (!cancelled) {
+          setError(
+            caughtError instanceof Error
+              ? caughtError.message
+              : "ホーム画面の準備に失敗しました。"
+          );
+        }
+      } finally {
+        if (!cancelled) {
+          setLoading(false);
+        }
+      }
+    };
+
+    void load();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [router]);
+
+  const logout = async () => {
+    try {
+      await fetch("/api/auth/logout", {
+        method: "POST",
+      });
+    } finally {
+      router.replace("/login");
+      router.refresh();
+    }
+  };
+
+  if (loading) {
+    return (
+      <main className="grid min-h-screen place-items-center bg-slate-100 p-6">
+        <p className="font-bold text-slate-600">システムを準備しています…</p>
+      </main>
+    );
+  }
+
+  if (error || !user) {
+    return (
+      <main className="grid min-h-screen place-items-center bg-slate-100 p-5">
+        <section className="w-full max-w-md rounded-3xl bg-white p-6 shadow-sm">
+          <p className="text-sm font-black text-red-600">
+            HOME_AUTH_ERROR
+          </p>
+
+          <h1 className="mt-1 text-2xl font-black">
+            ホーム画面を開けませんでした
+          </h1>
+
+          <p className="mt-4 rounded-2xl bg-red-50 p-4 text-sm leading-6 text-red-800">
+            {error || "ログイン情報を確認できませんでした。"}
+          </p>
+
+          <div className="mt-5 flex gap-3">
+            <button
+              type="button"
+              onClick={() => window.location.reload()}
+              className="rounded-xl bg-blue-600 px-4 py-3 font-bold text-white"
             >
-              <div className="bg-white rounded-xl shadow hover:shadow-xl transition p-6 h-full cursor-pointer">
+              再試行
+            </button>
 
+            <Link
+              href="/login"
+              className="rounded-xl bg-slate-700 px-4 py-3 font-bold text-white"
+            >
+              ログインへ
+            </Link>
+          </div>
+        </section>
+      </main>
+    );
+  }
+
+  const menus =
+    user.role === "ADMIN"
+      ? [...adminMenus, ...workerMenus]
+      : workerMenus;
+
+  return (
+    <main className="min-h-screen bg-slate-100 p-4 text-slate-900 sm:p-8">
+      <div className="mx-auto max-w-7xl">
+        <header className="flex flex-col gap-5 sm:flex-row sm:items-start sm:justify-between">
+          <div>
+            <p className="text-sm font-black tracking-[0.2em] text-blue-600">
+              INVENTORY OS
+            </p>
+
+            <h1 className="mt-1 text-3xl font-black sm:text-4xl">
+              在庫管理システム
+            </h1>
+
+            <p className="mt-2 text-slate-600">
+              棚卸・検索・商品・在庫管理
+            </p>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-3">
+            <Link
+              href="/notifications"
+              className="relative rounded-xl bg-white px-4 py-3 font-bold text-slate-700 shadow-sm transition hover:bg-slate-50"
+            >
+              🔔 通知
+              {unreadCount > 0 && (
+                <span className="ml-2 rounded-full bg-red-600 px-2 py-1 text-xs text-white">
+                  {unreadCount}
+                </span>
+              )}
+            </Link>
+
+            <div className="rounded-xl bg-white px-4 py-3 shadow-sm">
+              <p className="text-xs font-bold text-slate-500">
+                ログイン中
+              </p>
+
+              <p className="font-black">
+                {user.displayName}
+
+                {user.role === "ADMIN" && (
+                  <span className="ml-2 rounded-full bg-blue-100 px-2 py-1 text-xs text-blue-700">
+                    管理者
+                  </span>
+                )}
+              </p>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => void logout()}
+              className="rounded-xl bg-slate-800 px-4 py-3 font-bold text-white transition hover:bg-slate-700"
+            >
+              ログアウト
+            </button>
+          </div>
+        </header>
+
+        {user.role === "ADMIN" && (
+          <section className="mt-7 rounded-3xl border border-indigo-200 bg-indigo-50 p-5">
+            <p className="text-sm font-black text-indigo-700">
+              管理者モード
+            </p>
+
+            <h2 className="mt-1 text-xl font-black text-indigo-950">
+              全体の棚卸・商品・ユーザーを管理できます
+            </h2>
+
+            <p className="mt-2 max-w-3xl text-sm leading-6 text-indigo-900">
+              日常の棚卸は通常メニューから行います。全担当者の棚卸確認、商品マスタ変更、ユーザー管理、エラー対応は管理者メニューから行ってください。
+            </p>
+
+            <div className="mt-4 flex flex-wrap gap-3">
+              <Link
+                href="/admin/stocktake"
+                className="rounded-xl bg-indigo-600 px-4 py-3 font-bold text-white"
+              >
+                全棚卸管理を開く
+              </Link>
+
+              <Link
+                href="/admin"
+                className="rounded-xl bg-white px-4 py-3 font-bold text-indigo-800 shadow-sm"
+              >
+                管理者設定を開く
+              </Link>
+            </div>
+          </section>
+        )}
+
+        <section className="mt-8 grid grid-cols-1 gap-5 sm:grid-cols-2 xl:grid-cols-3">
+          {menus.map((menu) => (
+            <Link key={menu.href} href={menu.href} className="group">
+              <article className="h-full rounded-3xl bg-white p-6 shadow-sm transition duration-200 group-hover:-translate-y-1 group-hover:shadow-lg">
                 <div
-                  className={`${menu.color} w-14 h-14 rounded-xl flex items-center justify-center text-3xl text-white`}
+                  className={`flex h-14 w-14 items-center justify-center rounded-2xl text-3xl text-white ${menu.color}`}
                 >
                   {menu.icon}
                 </div>
 
-                <h2 className="mt-5 text-xl font-semibold">
-                  {menu.title}
-                </h2>
+                <h2 className="mt-5 text-xl font-black">{menu.title}</h2>
 
-                <p className="text-gray-500 mt-2">
+                <p className="mt-2 leading-6 text-slate-600">
                   {menu.description}
                 </p>
 
-              </div>
+                <p className="mt-5 text-sm font-bold text-blue-600">
+                  開く →
+                </p>
+              </article>
             </Link>
           ))}
-
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mt-10">
-
-          <div className="bg-white rounded-xl shadow p-6">
-            <div className="text-gray-500">
-              登録商品数
-            </div>
-
-            <div className="text-4xl font-bold mt-3">
-              --
-            </div>
-          </div>
-
-          <div className="bg-white rounded-xl shadow p-6">
-            <div className="text-gray-500">
-              進行中棚卸
-            </div>
-
-            <div className="text-4xl font-bold mt-3">
-              --
-            </div>
-          </div>
-
-          <div className="bg-white rounded-xl shadow p-6">
-            <div className="text-gray-500">
-              今日の棚卸
-            </div>
-
-            <div className="text-4xl font-bold mt-3">
-              --
-            </div>
-          </div>
-
-        </div>
-
+        </section>
       </div>
     </main>
   );
