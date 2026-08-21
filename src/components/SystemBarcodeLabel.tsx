@@ -23,6 +23,8 @@ type IssueResponse = {
   message?: string;
 };
 
+type PrintLayout = "A4" | "LABEL";
+
 function barcodeFormat(value: string): "EAN13" | "EAN8" | "CODE128" {
   if (/^\d{13}$/.test(value)) {
     return "EAN13";
@@ -69,6 +71,8 @@ export default function SystemBarcodeLabel({
   const [checkingRole, setCheckingRole] = useState(true);
   const [issuing, setIssuing] = useState(false);
   const [message, setMessage] = useState("");
+  const [printLayout, setPrintLayout] = useState<PrintLayout>("A4");
+  const [printCopies, setPrintCopies] = useState(10);
 
   const barcode = janCode || systemJan;
   const barcodeTitle = janCode ? "既存JANコード" : "システムJAN";
@@ -195,7 +199,17 @@ export default function SystemBarcodeLabel({
       return;
     }
 
-    const printWindow = window.open("", "_blank", "width=520,height=420");
+    const copies = Math.min(Math.max(Math.trunc(printCopies), 1), 100);
+    const labelHtml = `
+      <section class="label">
+        <p class="system">INVENTORY OS / ${barcodeTitle}</p>
+        <p class="name">${escapeHtml(itemName)}</p>
+        <p class="code">${escapeHtml(barcode)}</p>
+        ${svgRef.current.outerHTML}
+      </section>
+    `;
+    const labels = Array.from({ length: copies }, () => labelHtml).join("");
+    const printWindow = window.open("", "_blank", "width=900,height=700");
 
     if (!printWindow) {
       setMessage(
@@ -212,22 +226,30 @@ export default function SystemBarcodeLabel({
           <title>${escapeHtml(itemName)} ラベル</title>
           <style>
             @page {
-              margin: 8mm;
+              size: ${printLayout === "A4" ? "A4 portrait" : "82mm 50mm"};
+              margin: ${printLayout === "A4" ? "8mm" : "0"};
             }
+
+            * { box-sizing: border-box; }
 
             body {
               margin: 0;
               color: #111827;
               font-family: Arial, "Noto Sans JP", sans-serif;
+              ${printLayout === "A4" ? "display:grid;grid-template-columns:repeat(2,92mm);grid-auto-rows:50mm;gap:4mm 3mm;" : ""}
             }
 
             .label {
-              width: 82mm;
-              box-sizing: border-box;
-              border: 1px solid #cbd5e1;
-              border-radius: 4mm;
-              padding: 5mm;
+              width: ${printLayout === "A4" ? "92mm" : "82mm"};
+              height: 50mm;
+              overflow: hidden;
+              border: 0.25mm dashed #94a3b8;
+              padding: ${printLayout === "A4" ? "3mm" : "2.5mm"};
+              break-inside: avoid;
+              page-break-inside: avoid;
             }
+
+            ${printLayout === "A4" ? ".label:nth-child(10n){break-after:page;page-break-after:always;}" : ".label{break-after:page;page-break-after:always;}.label:last-child{break-after:auto;page-break-after:auto;}"}
 
             .system {
               margin: 0;
@@ -237,8 +259,10 @@ export default function SystemBarcodeLabel({
             }
 
             .name {
-              margin: 2mm 0 3mm;
-              font-size: 13pt;
+              margin: 1mm 0;
+              max-height: 9mm;
+              overflow: hidden;
+              font-size: 11pt;
               font-weight: 800;
               word-break: break-word;
             }
@@ -253,17 +277,16 @@ export default function SystemBarcodeLabel({
             svg {
               display: block;
               width: 100%;
-              height: auto;
+              height: 27mm;
+            }
+
+            @media print {
+              body { print-color-adjust: exact; -webkit-print-color-adjust: exact; }
             }
           </style>
         </head>
         <body>
-          <section class="label">
-            <p class="system">INVENTORY OS / ${barcodeTitle}</p>
-            <p class="name">${escapeHtml(itemName)}</p>
-            <p class="code">${escapeHtml(barcode)}</p>
-            ${svgRef.current.outerHTML}
-          </section>
+          ${labels}
 
           <script>
             window.onload = () => {
@@ -331,6 +354,30 @@ export default function SystemBarcodeLabel({
 
       {barcode && (
         <div className="mt-5 rounded-xl border border-slate-200 bg-slate-50 p-4">
+          <div className="mb-4 grid gap-3 sm:grid-cols-2">
+            <label className="text-sm font-bold text-slate-700">
+              印刷用紙
+              <select
+                value={printLayout}
+                onChange={(event) => setPrintLayout(event.target.value as PrintLayout)}
+                className="mt-1 w-full rounded-lg border bg-white p-2"
+              >
+                <option value="A4">A4・10枚配置</option>
+                <option value="LABEL">ラベルプリンター・82×50mm</option>
+              </select>
+            </label>
+            <label className="text-sm font-bold text-slate-700">
+              印刷枚数
+              <input
+                type="number"
+                min="1"
+                max="100"
+                value={printCopies}
+                onChange={(event) => setPrintCopies(Number(event.target.value))}
+                className="mt-1 w-full rounded-lg border bg-white p-2"
+              />
+            </label>
+          </div>
           <p className="mb-2 text-center text-sm font-bold text-slate-600">
             {barcodeTitle}
           </p>

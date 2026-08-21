@@ -226,16 +226,24 @@ export default function CategoryQrPage() {
             .grid {
               display: grid;
               grid-template-columns: repeat(2, 1fr);
-              gap: 5mm;
+              grid-auto-rows: 86mm;
+              gap: 4mm;
             }
 
             .label {
-              min-height: 75mm;
-              padding: 5mm;
+              height: 86mm;
+              overflow: hidden;
+              padding: 4mm;
               border: 1px solid #cbd5e1;
               border-radius: 3mm;
               text-align: center;
               break-inside: avoid;
+              page-break-inside: avoid;
+            }
+
+            .label:nth-child(6n) {
+              break-after: page;
+              page-break-after: always;
             }
 
             .caption {
@@ -252,8 +260,8 @@ export default function CategoryQrPage() {
             }
 
             img {
-              width: 48mm;
-              height: 48mm;
+              width: 50mm;
+              height: 50mm;
               image-rendering: pixelated;
             }
 
@@ -261,6 +269,13 @@ export default function CategoryQrPage() {
               margin: 2mm 0 0;
               color: #475569;
               font-size: 8pt;
+            }
+
+            @media print {
+              body {
+                print-color-adjust: exact;
+                -webkit-print-color-adjust: exact;
+              }
             }
           </style>
         </head>
