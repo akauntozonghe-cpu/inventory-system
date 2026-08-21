@@ -1,6 +1,6 @@
 "use client";
 
-import type { RefObject } from "react";
+import { useEffect, useState, type RefObject } from "react";
 
 export type StocktakeSelectedItem = {
   id: string;
@@ -65,6 +65,12 @@ export default function StocktakeInputPanel({
   onCancel,
   continuous = false,
 }: Props) {
+  const [detailsOpen, setDetailsOpen] = useState(false);
+
+  useEffect(() => {
+    setDetailsOpen(false);
+  }, [selected?.id]);
+
   if (!selected) {
     return (
       <section className="rounded-3xl bg-white p-5 shadow-sm">
@@ -135,24 +141,35 @@ export default function StocktakeInputPanel({
         </button>
       </div>
 
-      <dl className="mt-5 grid grid-cols-1 gap-x-5 gap-y-4 border-y border-slate-200 py-5 sm:grid-cols-2">
-        <Detail label="JANコード" value={selected.item.janCode} />
-        <Detail
-          label="システムバーコード"
-          value={selected.item.systemBarcode}
-        />
-        <Detail label="管理コード" value={selected.item.managementCode} />
-        <Detail
-          label="管理グループコード"
-          value={selected.item.managementGroupCode}
-        />
-        <Detail label="メーカー" value={selected.item.manufacturer} />
-        <Detail label="分類" value={category} />
-        <Detail label="保管場所" value={selected.storageLocation?.name} />
-        <Detail label="ロット番号" value={selected.lotNo} />
-        <Detail label="使用期限" value={selected.expirationDate} />
-        <Detail label="単位" value={unit} />
-      </dl>
+      <button
+        type="button"
+        aria-expanded={detailsOpen}
+        onClick={() => setDetailsOpen((current) => !current)}
+        className="mt-5 w-full rounded-2xl bg-slate-100 px-4 py-3 font-black text-blue-700 transition hover:bg-blue-50"
+      >
+        {detailsOpen ? "商品詳細を閉じる" : "商品詳細を見る"}
+      </button>
+
+      {detailsOpen && (
+        <dl className="mt-4 grid grid-cols-1 gap-x-5 gap-y-4 rounded-2xl border border-slate-200 bg-slate-50 p-4 sm:grid-cols-2">
+          <Detail label="JANコード" value={selected.item.janCode} />
+          <Detail
+            label="システムバーコード"
+            value={selected.item.systemBarcode}
+          />
+          <Detail label="管理コード" value={selected.item.managementCode} />
+          <Detail
+            label="管理グループコード"
+            value={selected.item.managementGroupCode}
+          />
+          <Detail label="メーカー" value={selected.item.manufacturer} />
+          <Detail label="分類" value={category} />
+          <Detail label="保管場所" value={selected.storageLocation?.name} />
+          <Detail label="ロット番号" value={selected.lotNo} />
+          <Detail label="使用期限" value={selected.expirationDate} />
+          <Detail label="単位" value={unit} />
+        </dl>
+      )}
 
       <div className="mt-5 rounded-2xl border-2 border-slate-200 px-4 py-4">
         <div className="flex items-baseline justify-between gap-4">

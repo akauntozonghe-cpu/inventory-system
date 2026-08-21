@@ -127,6 +127,7 @@ export default function StocktakePage() {
 
   const [countedQuantity, setCountedQuantity] = useState("");
   const [memo, setMemo] = useState("");
+  const [selectedDetailsOpen, setSelectedDetailsOpen] = useState(false);
 
   const [loading, setLoading] = useState(true);
   const [searching, setSearching] = useState(false);
@@ -310,6 +311,7 @@ export default function StocktakePage() {
       String(item.countedQuantity ?? item.expectedQuantity)
     );
     setMemo("");
+    setSelectedDetailsOpen(false);
     setMessage("");
     setError("");
 
@@ -929,6 +931,33 @@ export default function StocktakePage() {
                     </p>
                   </div>
 
+                  <button
+                    type="button"
+                    aria-expanded={selectedDetailsOpen}
+                    onClick={() =>
+                      setSelectedDetailsOpen((current) => !current)
+                    }
+                    className="w-full rounded-2xl bg-slate-100 px-4 py-3 font-black text-indigo-700 transition hover:bg-indigo-50"
+                  >
+                    {selectedDetailsOpen
+                      ? "商品詳細を閉じる"
+                      : "商品詳細を見る"}
+                  </button>
+
+                  {selectedDetailsOpen && (
+                    <dl className="grid grid-cols-1 gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm sm:grid-cols-2">
+                      <div><dt className="font-bold text-slate-500">JANコード</dt><dd className="mt-1 break-words font-semibold">{selected.item.janCode || "-"}</dd></div>
+                      <div><dt className="font-bold text-slate-500">システムバーコード</dt><dd className="mt-1 break-words font-semibold">{selected.item.systemBarcode || "-"}</dd></div>
+                      <div><dt className="font-bold text-slate-500">管理コード</dt><dd className="mt-1 break-words font-semibold">{selected.item.managementCode || "-"}</dd></div>
+                      <div><dt className="font-bold text-slate-500">管理グループコード</dt><dd className="mt-1 break-words font-semibold">{selected.item.managementGroupCode || "-"}</dd></div>
+                      <div><dt className="font-bold text-slate-500">メーカー</dt><dd className="mt-1 break-words font-semibold">{selected.item.manufacturer || "-"}</dd></div>
+                      <div><dt className="font-bold text-slate-500">分類</dt><dd className="mt-1 break-words font-semibold">{[selected.item.majorCategory, selected.item.minorCategory].filter(Boolean).join(" / ") || "-"}</dd></div>
+                      <div><dt className="font-bold text-slate-500">保管場所</dt><dd className="mt-1 break-words font-semibold">{selected.storageLocation?.name || "-"}</dd></div>
+                      <div><dt className="font-bold text-slate-500">ロット番号</dt><dd className="mt-1 break-words font-semibold">{selected.lotNo || "-"}</dd></div>
+                      <div><dt className="font-bold text-slate-500">使用期限</dt><dd className="mt-1 break-words font-semibold">{selected.expirationDate || "-"}</dd></div>
+                    </dl>
+                  )}
+
                   <div>
                     <label
                       htmlFor="stocktake-quantity"
@@ -992,6 +1021,7 @@ export default function StocktakePage() {
                         setSelected(null);
                         setCountedQuantity("");
                         setMemo("");
+                        setSelectedDetailsOpen(false);
                       }}
                       disabled={saving}
                       className="rounded-2xl bg-slate-100 px-4 py-4 font-black text-slate-700"
