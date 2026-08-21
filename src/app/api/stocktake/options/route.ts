@@ -1,79 +1,65 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { getLoggedInUser } from "@/lib/auth";
 
-function uniqueSorted(values: Array<string | null | undefined>) {
-  return [...new Set(values.filter((value): value is string => Boolean(value?.trim())))]
-    .map((value) => value.trim())
-    .sort((a, b) => a.localeCompare(b, "ja"));
-}
-
-export async function GET(request: NextRequest) {
-  const user = getLoggedInUser(request);
-
-  if (!user) {
-    return NextResponse.json(
-      {
-        code: "STOCKTAKE_OPTIONS_AUTH_401",
-        message: "ログイン情報を確認できませんでした。",
-      },
-      { status: 401 }
-    );
-  }
-
+export async function GET() {
   try {
-    const [locations, inventories] = await Promise.all([
-      prisma.storageLocation.findMany({
-        select: {
-          name: true,
-        },
-        orderBy: {
-          name: "asc",
-        },
-      }),
+    const [locations, majorCategories, minorCategories] =
+      await Promise.all([
+        prisma.storageLocation.findMany({
+          select: {
+            id: true,
+            name: true,
+          },
+          orderBy: {
+            name: "asc",
+          },
+        }),
 
-      prisma.inventoryInstance.findMany({
-        select: {
-          majorCategory: true,
-          minorCategory: true,
-          item: {
-            select: {
-              majorCategory: true,
-              minorCategory: true,
+        prisma.item.findMany({
+          where: {
+            majorCategory: {
+              not: null,
             },
           },
-        },
-      }),
-    ]);
+          distinct: ["majorCategory"],
+          select: {
+            majorCategory: true,
+          },
+          orderBy: {
+            majorCategory: "asc",
+          },
+        }),
+
+        prisma.item.findMany({
+          where: {
+            minorCategory: {
+              not: null,
+            },
+          },
+          distinct: ["minorCategory"],
+          select: {
+            minorCategory: true,
+          },
+          orderBy: {
+            minorCategory: "asc",
+          },
+        }),
+      ]);
 
     return NextResponse.json({
-      success: true,
-      code: "STOCKTAKE_OPTIONS_OK",
-
-      storageLocations: uniqueSorted(locations.map((location) => location.name)),
-
-      majorCategories: uniqueSorted(
-        inventories.flatMap((inventory) => [
-          inventory.majorCategory,
-          inventory.item.majorCategory,
-        ])
-      ),
-
-      minorCategories: uniqueSorted(
-        inventories.flatMap((inventory) => [
-          inventory.minorCategory,
-          inventory.item.minorCategory,
-        ])
-      ),
+      locations,
+      majorCategories: majorCategories
+        .map((item) => item.majorCategory)
+        .filter((category): category is string => Boolean(category)),
+      minorCategories: minorCategories
+        .map((item) => item.minorCategory)
+        .filter((category): category is string => Boolean(category)),
     });
   } catch (error) {
-    console.error("GET /api/stocktake/options", error);
+    console.error(error);
 
     return NextResponse.json(
-      {
-        code: "STOCKTAKE_OPTIONS_FAILED",
-        message: "棚卸範囲の選択肢を取得できませんでした。",
-      },
+      { message: "棚卸対象の選択肢を取得できませんでした" },
       { status: 500 }
     );
   }

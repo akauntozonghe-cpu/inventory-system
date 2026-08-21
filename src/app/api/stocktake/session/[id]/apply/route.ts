@@ -1,221 +1,119 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { getLoggedInUser, hasAdminAccess } from "@/lib/auth";
 
-function getErrorMessage(value: unknown, fallback: string) {
-  if (
-    value &&
-    typeof value === "object" &&
-    "message" in value &&
-    typeof value.message === "string"
-  ) {
-    return value.message;
-  }
-
-  return fallback;
-}
+type Params = {
+  params: Promise<{
+    id: string;
+  }>;
+};
 
 export async function POST(
-  request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
+  request: Request,
+  { params }: Params
 ) {
-  const user = getLoggedInUser(request);
-
-  if (!user) {
-    return NextResponse.json(
-      {
-        code: "STOCKTAKE_APPLY_AUTH_401",
-        message: "ログイン情報を確認できませんでした。",
-      },
-      { status: 401 }
-    );
-  }
-
   try {
-    const { id: sessionId } = await params;
+    const { id } = await params;
 
-    const session = await prisma.stocktakeSession.findUnique({
-      where: { id: sessionId },
-      select: {
-        id: true,
-        title: true,
-        status: true,
-        operatorUserId: true,
-      },
-    });
+    const session =
+      await prisma.stocktakeSession.findUnique({
+        where: {
+          id,
+        },
+        include: {
+          records: {
+            include: {
+              inventoryInstance: true,
+            },
+          },
+        },
+      });
 
     if (!session) {
       return NextResponse.json(
         {
-          code: "STOCKTAKE_APPLY_SESSION_404",
           message: "棚卸セッションが見つかりません。",
         },
-        { status: 404 }
-      );
-    }
-
-    const isAdmin = hasAdminAccess(request);
-    const isOperator =
-      session.operatorUserId === null ||
-      session.operatorUserId === user.id;
-
-    if (!isOperator && !isAdmin) {
-      return NextResponse.json(
         {
-          code: "STOCKTAKE_APPLY_FORBIDDEN",
-          message: "この棚卸を確定する権限がありません。",
-        },
-        { status: 403 }
+          status: 404,
+        }
       );
     }
 
     if (session.status === "COMPLETED") {
-      return NextResponse.json({
-        success: true,
-        code: "STOCKTAKE_APPLY_ALREADY_COMPLETED",
-        message: "この棚卸はすでに正式確定済みです。",
-      });
-    }
-
-    if (session.status !== "REVIEW") {
       return NextResponse.json(
         {
-          code: "STOCKTAKE_APPLY_NOT_REVIEW",
-          message:
-            "棚卸作業を終了して結果を確認してから、正式確定してください。",
+          message: "すでに反映済みです。",
         },
-        { status: 409 }
+        {
+          status: 400,
+        }
       );
     }
 
-    const records = await prisma.stocktakeRecord.findMany({
-      where: { sessionId },
-      select: {
-        inventoryInstanceId: true,
-        countedQuantity: true,
-      },
-    });
+    await prisma.$transaction(
+      async (tx) => {
 
-    if (records.length === 0) {
-      return NextResponse.json(
-        {
-          code: "STOCKTAKE_APPLY_RECORD_EMPTY",
-          message: "保存済みの棚卸入力がありません。",
-        },
-        { status: 409 }
-      );
-    }
+        for (const record of session.records) {
 
-    const inventoryIds = records.map((record) => record.inventoryInstanceId);
+          const before =
+            record.inventoryInstance.quantity;
 
-    const inventories = await prisma.inventoryInstance.findMany({
-      where: {
-        id: {
-          in: inventoryIds,
-        },
-      },
-      select: {
-        id: true,
-        quantity: true,
-      },
-    });
+          await tx.inventoryInstance.update({
+            where: {
+              id: record.inventoryInstanceId,
+            },
+            data: {
+              quantity: record.countedQuantity,
+              actualQuantity: record.countedQuantity,
+              stocktakeStatus: "反映済",
+              stocktakeAt: new Date(),
+            },
+          });
 
-    const inventoryMap = new Map(
-      inventories.map((inventory) => [inventory.id, inventory])
-    );
+          await tx.inventoryHistory.create({
+            data: {
+              inventoryInstanceId:
+                record.inventoryInstanceId,
 
-    const targetsToApply = records
-      .map((record) => {
-        const inventory = inventoryMap.get(record.inventoryInstanceId);
+              changeQuantity:
+                record.countedQuantity -
+                before,
 
-        if (!inventory) {
-          return null;
+              action: "棚卸反映",
+            },
+          });
+
         }
 
-        return {
-          inventoryInstanceId: record.inventoryInstanceId,
-          countedQuantity: record.countedQuantity,
-          changeQuantity: record.countedQuantity - inventory.quantity,
-        };
-      })
-      .filter(
-        (
-          target
-        ): target is {
-          inventoryInstanceId: string;
-          countedQuantity: number;
-          changeQuantity: number;
-        } => target !== null
-      );
-
-    if (targetsToApply.length === 0) {
-      return NextResponse.json(
-        {
-          code: "STOCKTAKE_APPLY_INVENTORY_EMPTY",
-          message: "反映できる在庫データが見つかりません。",
-        },
-        { status: 409 }
-      );
-    }
-
-    const now = new Date();
-
-    await prisma.$transaction(async (transaction) => {
-      for (const target of targetsToApply) {
-        await transaction.inventoryInstance.update({
+        await tx.stocktakeSession.update({
           where: {
-            id: target.inventoryInstanceId,
+            id,
           },
           data: {
-            quantity: target.countedQuantity,
-            actualQuantity: target.countedQuantity,
-            stocktakeStatus: "棚卸済",
-            stocktakeAt: now,
+            status: "COMPLETED",
+            completedAt: new Date(),
           },
         });
 
-        await transaction.inventoryHistory.create({
-          data: {
-            inventoryInstanceId: target.inventoryInstanceId,
-            changeQuantity: target.changeQuantity,
-            action: `棚卸確定：${session.title}`,
-          },
-        });
       }
-
-      await transaction.stocktakeSession.update({
-        where: {
-          id: sessionId,
-        },
-        data: {
-          status: "COMPLETED",
-          completedAt: now,
-          pausedAt: null,
-        },
-      });
-    });
+    );
 
     return NextResponse.json({
       success: true,
-      code: "STOCKTAKE_APPLY_COMPLETED",
-      message: `「${session.title}」を正式確定しました。在庫へ反映済みです。`,
-      summary: {
-        recordedCount: records.length,
-        updatedInventoryCount: targetsToApply.length,
-      },
     });
+
   } catch (error) {
-    console.error("POST /api/stocktake/session/[id]/apply", error);
+
+    console.error(error);
 
     return NextResponse.json(
       {
-        code: "STOCKTAKE_APPLY_FAILED",
-        message: getErrorMessage(
-          error,
-          "棚卸結果を正式確定できませんでした。時間をおいて再試行してください。"
-        ),
+        message: "棚卸反映に失敗しました。",
       },
-      { status: 500 }
+      {
+        status: 500,
+      }
     );
+
   }
 }
