@@ -13,6 +13,7 @@ export type InstantStocktakeRecord = {
   createdAt: string;
   retryCount: number;
   lastErrorCode?: string;
+  errorReportId?: string;
 };
 
 type SaveInstantStocktakeRecordInput = Omit<

@@ -50,10 +50,10 @@ async function createReport(options: {
       response.ok &&
       typeof data === "object" &&
       data !== null &&
-      "id" in data &&
-      typeof data.id === "string"
+      "reportId" in data &&
+      typeof data.reportId === "string"
     ) {
-      return data.id;
+      return data.reportId;
     }
   } catch {
     // エラーレポート保存に失敗しても、本来の復旧処理は続ける

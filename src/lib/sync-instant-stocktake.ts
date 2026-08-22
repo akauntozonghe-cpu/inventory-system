@@ -39,6 +39,26 @@ export async function syncInstantStocktakeRecords(
 
     for (const record of records) {
       try {
+        if (record.errorReportId) {
+          const approvalResponse = await fetch(
+            `/api/error-reports/${encodeURIComponent(record.errorReportId)}`,
+            { cache: "no-store" }
+          );
+          const approval: unknown = await approvalResponse
+            .json()
+            .catch(() => null);
+
+          if (
+            !approvalResponse.ok ||
+            !approval ||
+            typeof approval !== "object" ||
+            !("approved" in approval) ||
+            approval.approved !== true
+          ) {
+            continue;
+          }
+        }
+
         const response = await fetch("/api/stocktake/record", {
           method: "POST",
           headers: {

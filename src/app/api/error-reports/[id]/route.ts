@@ -27,70 +27,62 @@ async function requireAdmin(request: NextRequest) {
   return currentUser;
 }
 
-export async function GET(request: NextRequest) {
+export async function PATCH(
+  request: NextRequest,
+  context: { params: Promise<{ id: string }> }
+) {
   try {
-    const currentUser = await requireAdmin(request);
+    const currentUser = getLoggedInUser(request);
+    const body = (await request.json()) as UpdatePayload;
+    const { id } = await context.params;
 
     if (!currentUser) {
       return NextResponse.json(
-        {
-          code: "ADMIN_ERROR_REPORTS_FORBIDDEN_403",
-          message: "エラーレポートを確認する権限がありません。",
-        },
-        { status: 403 }
+        { code: "ERROR_REPORT_UPDATE_AUTH_401", message: "ログインが必要です。" },
+        { status: 401 }
       );
     }
 
-    const reports = await prisma.errorReport.findMany({
-      orderBy: {
-        occurredAt: "desc",
-      },
-      take: 100,
-      include: {
-        reporterUser: {
-          select: {
-            id: true,
-            username: true,
-            displayName: true,
-          },
-        },
-        adminActionLogs: {
-          orderBy: {
-            createdAt: "desc",
-          },
-          take: 20,
-          include: {
-            adminUser: {
-              select: {
-                id: true,
-                username: true,
-                displayName: true,
-              },
-            },
-          },
-        },
-      },
-    });
+    if (
+      body.action === "START_AUTO_RECOVERY" ||
+      body.action === "AUTO_RECOVERY_SUCCEEDED" ||
+      body.action === "ADMIN_REQUIRED"
+    ) {
+      const report = await prisma.errorReport.findUnique({ where: { id } });
+      if (!report || (!isAdmin(currentUser) && report.reporterUserId !== currentUser.id)) {
+        return NextResponse.json(
+          { code: "ERROR_REPORT_UPDATE_NOT_FOUND_404", message: "対象のエラー情報を更新できません。" },
+          { status: 404 }
+        );
+      }
 
-    return NextResponse.json(reports);
-  } catch (error) {
-    console.error("エラーレポート一覧取得エラー", error);
+      const updated = await prisma.errorReport.update({
+        where: { id },
+        data:
+          body.action === "START_AUTO_RECOVERY"
+            ? {
+                recoveryStatus: RecoveryStatus.IN_PROGRESS,
+                recoveryAttempts: { increment: 1 },
+              }
+            : body.action === "AUTO_RECOVERY_SUCCEEDED"
+              ? {
+                  status: ErrorReportStatus.RESOLVED,
+                  recoveryStatus: RecoveryStatus.RECOVERED,
+                  recoveredAt: new Date(),
+                  resolvedAt: new Date(),
+                  recoveryNote: "自動復旧に成功しました。",
+                }
+              : {
+                  status: ErrorReportStatus.INVESTIGATING,
+                  recoveryStatus: RecoveryStatus.ADMIN_REQUIRED,
+                  recoveryNote: "自動復旧できなかったため管理者対応が必要です。",
+                },
+      });
 
-    return NextResponse.json(
-      {
-        code: "ADMIN_ERROR_REPORTS_FETCH_500",
-        message: "エラーレポート一覧を取得できませんでした。",
-      },
-      { status: 500 }
-    );
-  }
-}
+      return NextResponse.json({ success: true, report: updated });
+    }
 
-export async function PATCH(request: NextRequest) {
-  try {
-    const currentUser = await requireAdmin(request);
-
-    if (!currentUser) {
+    if (!isAdmin(currentUser)) {
       return NextResponse.json(
         {
           code: "ADMIN_ERROR_REPORTS_FORBIDDEN_403",
@@ -100,7 +92,6 @@ export async function PATCH(request: NextRequest) {
       );
     }
 
-    const body = (await request.json()) as UpdatePayload;
     const reportId = getText(body.reportId, 100);
     const note = getText(body.note, 1000);
 
@@ -186,6 +177,53 @@ export async function PATCH(request: NextRequest) {
         code: "ADMIN_ERROR_REPORTS_UPDATE_500",
         message: "エラーレポートの更新に失敗しました。",
       },
+      { status: 500 }
+    );
+  }
+}
+
+export async function GET(
+  request: NextRequest,
+  context: { params: Promise<{ id: string }> }
+) {
+  try {
+    const currentUser = getLoggedInUser(request);
+
+    if (!currentUser) {
+      return NextResponse.json(
+        { code: "ERROR_REPORT_STATUS_AUTH_401", message: "ログインが必要です。" },
+        { status: 401 }
+      );
+    }
+
+    const { id } = await context.params;
+    const report = await prisma.errorReport.findUnique({
+      where: { id },
+      select: {
+        reporterUserId: true,
+        status: true,
+        recoveryStatus: true,
+      },
+    });
+
+    if (!report || (!isAdmin(currentUser) && report.reporterUserId !== currentUser.id)) {
+      return NextResponse.json(
+        { code: "ERROR_REPORT_STATUS_NOT_FOUND_404", message: "対象のエラー情報を確認できません。" },
+        { status: 404 }
+      );
+    }
+
+    return NextResponse.json({
+      approved:
+        report.status === ErrorReportStatus.RESOLVED &&
+        report.recoveryStatus === RecoveryStatus.RECOVERED,
+      status: report.status,
+      recoveryStatus: report.recoveryStatus,
+    });
+  } catch (error) {
+    console.error("エラーレポート状態取得エラー", error);
+    return NextResponse.json(
+      { code: "ERROR_REPORT_STATUS_500", message: "復旧状態を確認できませんでした。" },
       { status: 500 }
     );
   }

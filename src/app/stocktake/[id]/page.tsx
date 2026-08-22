@@ -13,6 +13,9 @@ import BarcodeCamera from "@/components/stocktake/BarcodeCamera";
 import CategoryQrScanner from "@/components/CategoryQrScanner";
 import StocktakeInputPanel from "@/components/stocktake/StocktakeInputPanel";
 import FeedbackToast from "@/components/common/FeedbackToast";
+import StocktakeSystemErrorDialog from "@/components/stocktake/StocktakeSystemErrorDialog";
+import { recoverAfterFailure } from "@/lib/client-error-recovery";
+import { useInstantStocktake } from "@/hooks/useInstantStocktake";
 
 type FilterType = "UNRECORDED" | "RECORDED" | "DIFFERENCE" | "ALL";
 type SessionAction = "PAUSE" | "RESUME" | "COMPLETE";
@@ -96,6 +99,19 @@ function readErrorMessage(value: unknown, fallback: string) {
   return fallback;
 }
 
+function readErrorCode(value: unknown, fallback: string) {
+  if (value && typeof value === "object" && "code" in value && typeof value.code === "string") {
+    return value.code;
+  }
+  return fallback;
+}
+
+class StocktakeRequestError extends Error {
+  constructor(message: string, readonly code: string) {
+    super(message);
+  }
+}
+
 function statusLabel(status: ProgressData["session"]["status"]) {
   switch (status) {
     case "IN_PROGRESS":
@@ -142,6 +158,12 @@ export default function StocktakePage() {
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const [confirm, setConfirm] = useState<ConfirmState>(null);
+  const [systemError, setSystemError] = useState<{
+    code: string;
+    message: string;
+    reportId: string | null;
+    provisional: boolean;
+  } | null>(null);
 
   const initializedRef = useRef(false);
   const searchRequestRef = useRef(0);
@@ -154,6 +176,31 @@ export default function StocktakePage() {
 
   const isAdmin = progress?.permissions.isAdmin === true;
   const canManage = progress?.permissions.canManage === true;
+  const { pendingCount, syncing, saveInstant } = useInstantStocktake(sessionId);
+
+  const submitStocktakeRecord = useCallback(
+    async (inventoryInstanceId: string, quantity: number, recordMemo: string) => {
+      const response = await fetch("/api/stocktake/record", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          sessionId,
+          inventoryInstanceId,
+          countedQuantity: quantity,
+          memo: recordMemo || null,
+        }),
+      });
+      const data: unknown = await response.json().catch(() => null);
+      if (!response.ok) {
+        throw new StocktakeRequestError(
+          readErrorMessage(data, "棚卸入力を保存できませんでした。"),
+          readErrorCode(data, `STOCKTAKE_RECORD_HTTP_${response.status}`)
+        );
+      }
+      return data;
+    },
+    [sessionId]
+  );
 
   const loadProgress = useCallback(async () => {
     const response = await fetch(
@@ -415,44 +462,87 @@ export default function StocktakePage() {
     setSaving(true);
     setError("");
 
+    const target = selected;
+    const recordMemo = memo.trim();
+    let formallySaved = false;
+
     try {
-      const response = await fetch("/api/stocktake/record", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          sessionId,
-          inventoryInstanceId: selected.id,
-          countedQuantity: quantity,
-          memo: memo.trim() || null,
-        }),
+      await submitStocktakeRecord(target.id, quantity, recordMemo);
+      formallySaved = true;
+    } catch (saveError) {
+      const code =
+        saveError instanceof StocktakeRequestError
+          ? saveError.code
+          : "STOCKTAKE_RECORD_NETWORK_ERROR";
+      const detail =
+        saveError instanceof Error
+          ? saveError.message
+          : "棚卸入力を保存できませんでした。";
+
+      const recovery = await recoverAfterFailure({
+        code,
+        title: "棚卸入力の保存エラー",
+        message: detail,
+        route: `/stocktake/${sessionId}`,
+        sessionId,
+        detail: { inventoryInstanceId: target.id },
+        action: () => submitStocktakeRecord(target.id, quantity, recordMemo),
       });
 
-      const data: unknown = await response.json().catch(() => null);
-
-      if (!response.ok) {
-        throw new Error(
-          readErrorMessage(data, "棚卸入力を保存できませんでした。")
-        );
+      if (recovery.success) {
+        formallySaved = true;
+        setMessage("自動復旧して棚卸を正式に保存しました。");
+      } else {
+        try {
+          await saveInstant({
+            inventoryInstanceId: target.id,
+            countedQuantity: quantity,
+            memo: recordMemo || undefined,
+            errorCode: code,
+            errorReportId: recovery.reportId || undefined,
+          });
+          setSystemError({
+            code,
+            message: detail,
+            reportId: recovery.reportId,
+            provisional: true,
+          });
+          setMessage("簡易保存しました。次の商品を棚卸できます。");
+        } catch {
+          setSystemError({
+            code: "STOCKTAKE_LOCAL_SAVE_FAILED",
+            message: "正式保存と端末内の簡易保存の両方に失敗しました。この内容を控えて管理者へ連絡してください。",
+            reportId: recovery.reportId,
+            provisional: false,
+          });
+          return;
+        }
       }
+    }
+
+    try {
 
       const difference = quantity - selected.expectedQuantity;
 
-      setMessage(
-        difference === 0
-          ? "一致で保存しました。次の商品を入力できます。"
-          : `差異 ${difference > 0 ? "+" : ""}${difference} で保存しました。`
-      );
+      if (formallySaved) {
+        setMessage(
+          difference === 0
+            ? "一致で保存しました。次の商品を入力できます。"
+            : `差異 ${difference > 0 ? "+" : ""}${difference} で保存しました。`
+        );
+      }
 
       setSelected(null);
       setCountedQuantity("");
       setMemo("");
+      setKeyword("");
 
-      await Promise.all([
-        loadProgress(),
-        loadItems(keyword, filter, majorCategory),
-      ]);
+      if (formallySaved) {
+        await Promise.all([
+          loadProgress(),
+          loadItems("", filter, majorCategory),
+        ]);
+      }
     } catch (saveError) {
       setError(
         saveError instanceof Error
@@ -570,6 +660,11 @@ export default function StocktakePage() {
         title="棚卸操作エラー"
         onClose={() => setError("")}
       />
+      {pendingCount > 0 && (
+        <div className="fixed bottom-4 left-4 z-[190] rounded-2xl border-2 border-amber-400 bg-amber-50 px-4 py-3 text-sm font-black text-amber-950 shadow-xl">
+          簡易保存 {pendingCount}件（{syncing ? "復旧確認中" : "管理者復旧待ち"}）
+        </div>
+      )}
       <FeedbackToast
         message={message}
         tone="success"
@@ -1092,6 +1187,14 @@ export default function StocktakePage() {
             continuous
           />
         </BarcodeCamera>
+      )}
+
+      {systemError && (
+        <StocktakeSystemErrorDialog
+          {...systemError}
+          isAdmin={isAdmin}
+          onClose={() => setSystemError(null)}
+        />
       )}
 
       {categoryQrOpen && (

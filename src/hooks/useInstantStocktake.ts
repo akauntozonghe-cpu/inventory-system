@@ -12,6 +12,7 @@ type SaveInput = {
   countedQuantity: number;
   memo?: string;
   errorCode?: string;
+  errorReportId?: string;
 };
 
 export function useInstantStocktake(sessionId: string) {
@@ -46,6 +47,7 @@ export function useInstantStocktake(sessionId: string) {
         countedQuantity: input.countedQuantity,
         memo: input.memo,
         lastErrorCode: input.errorCode,
+        errorReportId: input.errorReportId,
       });
 
       await refreshPendingCount();
@@ -67,9 +69,13 @@ export function useInstantStocktake(sessionId: string) {
     };
 
     window.addEventListener("online", handleOnline);
+    const timer = window.setInterval(() => {
+      if (navigator.onLine) void sync();
+    }, 15000);
 
     return () => {
       window.removeEventListener("online", handleOnline);
+      window.clearInterval(timer);
     };
   }, [refreshPendingCount, sync]);
 
