@@ -75,6 +75,7 @@ export async function POST(request: NextRequest) {
       displayName: user.displayName,
       role: user.role,
       mustChangePassword: user.mustChangePassword,
+      featurePermissions: user.featurePermissions,
     };
 
     console.log("CREATING SESSION");

@@ -7,6 +7,7 @@ import {
 } from "node:crypto";
 import { promisify } from "node:util";
 import { NextResponse, type NextRequest } from "next/server";
+import type { FeatureKey } from "@/lib/feature-permissions";
 
 const scrypt = promisify(scryptCallback);
 
@@ -24,6 +25,7 @@ export type LoggedInUser = {
   displayName: string;
   role: UserRole;
   mustChangePassword: boolean;
+  featurePermissions?: FeatureKey[];
   expiresAt: number;
 };
 

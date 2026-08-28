@@ -66,6 +66,10 @@ export async function GET(
     const isOperator =
       session.operatorUserId === null ||
       session.operatorUserId === user.id;
+    const permissionUser = await prisma.appUser.findUnique({
+      where: { id: user.id },
+      select: { featurePermissions: true },
+    });
 
     if (!isOperator && !isAdmin) {
       return NextResponse.json(
@@ -153,6 +157,9 @@ export async function GET(
 
         // 管理者は他人の棚卸を含め、状態確認・中断・再開・終了を管理できます。
         canManage: isAdmin,
+        canRegisterItem:
+          isAdmin ||
+          permissionUser?.featurePermissions.includes("ITEM_REGISTER") === true,
       },
 
       summary: {

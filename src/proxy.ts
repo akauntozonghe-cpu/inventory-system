@@ -4,6 +4,8 @@ import {
   hasAdminAccess,
   verifySessionToken,
 } from "@/lib/auth";
+import { prisma } from "@/lib/prisma";
+import { requiredFeature } from "@/lib/feature-permissions";
 
 function isMutation(method: string) {
   return ["POST", "PUT", "PATCH", "DELETE"].includes(method);
@@ -23,7 +25,6 @@ function isAdminOnlyMutation(
     "/api/inventory/update",
     "/api/import",
     "/api/reset",
-    "/api/stocktake/register-item",
   ];
 
   if (adminRoutes.some((route) => pathname === route)) {
@@ -67,7 +68,7 @@ function isSystemAdminRoute(pathname: string) {
   );
 }
 
-export function proxy(request: NextRequest) {
+export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
   const { method } = request;
 
@@ -103,6 +104,51 @@ export function proxy(request: NextRequest) {
     return NextResponse.redirect(loginUrl);
   }
 
+  const liveUser = await prisma.appUser.findUnique({
+    where: { id: user.id },
+    select: { isActive: true, role: true, featurePermissions: true },
+  });
+
+  if (!liveUser?.isActive) {
+    if (pathname.startsWith("/api/")) {
+      return NextResponse.json(
+        { code: "USER_DISABLED", message: "このユーザーは停止されています。" },
+        { status: 401 }
+      );
+    }
+    const loginUrl = request.nextUrl.clone();
+    loginUrl.pathname = "/login";
+    loginUrl.search = "";
+    const response = NextResponse.redirect(loginUrl);
+    response.cookies.delete(AUTH_COOKIE);
+    return response;
+  }
+
+  const feature = requiredFeature(
+    pathname,
+    method,
+    request.nextUrl.searchParams.has("sessionId")
+  );
+  if (
+    liveUser.role !== "ADMIN" &&
+    feature &&
+    !liveUser.featurePermissions.includes(feature)
+  ) {
+    if (pathname.startsWith("/api/")) {
+      return NextResponse.json(
+        {
+          code: `FEATURE_${feature}_DISABLED`,
+          message: "この機能は管理者によって利用停止されています。",
+        },
+        { status: 403 }
+      );
+    }
+    const homeUrl = request.nextUrl.clone();
+    homeUrl.pathname = "/";
+    homeUrl.searchParams.set("permission", feature);
+    return NextResponse.redirect(homeUrl);
+  }
+
   const isPasswordChangePath =
     pathname === "/account/password" ||
     pathname.startsWith("/api/auth/password") ||
@@ -132,7 +178,7 @@ export function proxy(request: NextRequest) {
   // 管理者アカウントだけが直接開ける。
   if (
     isSystemAdminRoute(pathname) &&
-    user.role !== "ADMIN"
+    liveUser.role !== "ADMIN"
   ) {
     if (pathname.startsWith("/api/")) {
       return NextResponse.json(

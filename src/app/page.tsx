@@ -3,12 +3,14 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import type { FeatureKey } from "@/lib/feature-permissions";
 
 type CurrentUser = {
   id: string;
   username: string;
   displayName: string;
   role: "ADMIN" | "WORKER";
+  featurePermissions: FeatureKey[];
 };
 
 type ApiError = {
@@ -26,6 +28,7 @@ type Menu = {
   title: string;
   description: string;
   color: string;
+  feature?: FeatureKey;
 };
 
 const workerMenus: Menu[] = [
@@ -35,6 +38,7 @@ const workerMenus: Menu[] = [
     title: "棚卸開始",
     description: "新しい棚卸の開始、中断している棚卸の再開を行います。",
     color: "bg-blue-500",
+    feature: "STOCKTAKE",
   },
   {
     href: "/inventory-search",
@@ -42,6 +46,7 @@ const workerMenus: Menu[] = [
     title: "在庫検索",
     description: "JAN、商品名、分類、メーカー、保管場所から在庫を検索します。",
     color: "bg-emerald-500",
+    feature: "INVENTORY_SEARCH",
   },
   {
     href: "/items",
@@ -49,6 +54,7 @@ const workerMenus: Menu[] = [
     title: "商品一覧",
     description: "登録済みの商品情報、在庫、バーコードを確認します。",
     color: "bg-violet-500",
+    feature: "ITEM_VIEW",
   },
   {
     href: "/stocktake/history",
@@ -56,6 +62,7 @@ const workerMenus: Menu[] = [
     title: "棚卸履歴",
     description: "自分が実施した棚卸と、その結果を確認します。",
     color: "bg-cyan-500",
+    feature: "STOCKTAKE_HISTORY",
   },
 ];
 
@@ -84,9 +91,11 @@ function isCurrentUser(value: unknown): value is CurrentUser {
     "username" in value &&
     "displayName" in value &&
     "role" in value &&
+    "featurePermissions" in value &&
     typeof (value as CurrentUser).id === "string" &&
     typeof (value as CurrentUser).username === "string" &&
     typeof (value as CurrentUser).displayName === "string" &&
+    Array.isArray((value as CurrentUser).featurePermissions) &&
     ((value as CurrentUser).role === "ADMIN" ||
       (value as CurrentUser).role === "WORKER")
   );
@@ -265,7 +274,9 @@ export default function HomePage() {
   const menus =
     user.role === "ADMIN"
       ? [...adminMenus, ...workerMenus]
-      : workerMenus;
+      : workerMenus.filter(
+          (menu) => !menu.feature || user.featurePermissions.includes(menu.feature)
+        );
 
   return (
     <main className="min-h-screen bg-slate-100 p-4 text-slate-900 sm:p-8">

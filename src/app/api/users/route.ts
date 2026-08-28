@@ -5,6 +5,7 @@ import {
   hashPassword,
   isAdmin,
 } from "@/lib/auth";
+import { DEFAULT_WORKER_FEATURES, normalizeFeaturePermissions } from "@/lib/feature-permissions";
 
 export async function GET(request: NextRequest) {
   const currentUser = getLoggedInUser(request);
@@ -30,6 +31,8 @@ export async function GET(request: NextRequest) {
         displayName: true,
         role: true,
         isActive: true,
+        mustChangePassword: true,
+        featurePermissions: true,
         createdAt: true,
       },
     });
@@ -75,6 +78,12 @@ export async function POST(request: NextRequest) {
 
     const role: "ADMIN" | "WORKER" =
       body.role === "ADMIN" ? "ADMIN" : "WORKER";
+    const featurePermissions =
+      role === "ADMIN"
+        ? DEFAULT_WORKER_FEATURES
+        : body.featurePermissions === undefined
+          ? DEFAULT_WORKER_FEATURES
+          : normalizeFeaturePermissions(body.featurePermissions);
 
     if (!username || !displayName || !password) {
       return NextResponse.json(
@@ -127,6 +136,7 @@ export async function POST(request: NextRequest) {
     displayName,
     passwordHash: await hashPassword(password),
     role,
+    featurePermissions,
     mustChangePassword: true,
   },
   select: {
@@ -135,6 +145,8 @@ export async function POST(request: NextRequest) {
     displayName: true,
     role: true,
     isActive: true,
+    mustChangePassword: true,
+    featurePermissions: true,
     createdAt: true,
   },
 });

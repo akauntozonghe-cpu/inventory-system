@@ -13,6 +13,7 @@ import BarcodeCamera from "@/components/stocktake/BarcodeCamera";
 import CategoryQrScanner from "@/components/CategoryQrScanner";
 import StocktakeInputPanel from "@/components/stocktake/StocktakeInputPanel";
 import FeedbackToast from "@/components/common/FeedbackToast";
+import UnregisteredItemDialog from "@/components/stocktake/UnregisteredItemDialog";
 import StocktakeSystemErrorDialog from "@/components/stocktake/StocktakeSystemErrorDialog";
 import { recoverAfterFailure } from "@/lib/client-error-recovery";
 import { useInstantStocktake } from "@/hooks/useInstantStocktake";
@@ -67,6 +68,7 @@ type ProgressData = {
     isAdmin: boolean;
     canOperate: boolean;
     canManage: boolean;
+    canRegisterItem: boolean;
   };
   summary: {
     targetCount: number;
@@ -154,6 +156,7 @@ export default function StocktakePage() {
   const [normalCameraOpen, setNormalCameraOpen] = useState(false);
   const [continuousCameraOpen, setContinuousCameraOpen] = useState(false);
   const [categoryQrOpen, setCategoryQrOpen] = useState(false);
+  const [registerItemOpen, setRegisterItemOpen] = useState(false);
 
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
@@ -169,6 +172,7 @@ export default function StocktakePage() {
   const searchRequestRef = useRef(0);
   const barcodeBusyRef = useRef(false);
   const continuousQuantityRef = useRef<HTMLInputElement | null>(null);
+  const hadPendingRecoveryRef = useRef(false);
 
   const canOperate =
     progress?.permissions.canOperate === true &&
@@ -176,6 +180,7 @@ export default function StocktakePage() {
 
   const isAdmin = progress?.permissions.isAdmin === true;
   const canManage = progress?.permissions.canManage === true;
+  const canRegisterItem = progress?.permissions.canRegisterItem === true;
   const { pendingCount, syncing, saveInstant } = useInstantStocktake(sessionId);
 
   const submitStocktakeRecord = useCallback(
@@ -272,6 +277,23 @@ export default function StocktakePage() {
     },
     [sessionId]
   );
+
+  useEffect(() => {
+    if (pendingCount > 0) {
+      hadPendingRecoveryRef.current = true;
+      return;
+    }
+
+    if (hadPendingRecoveryRef.current) {
+      hadPendingRecoveryRef.current = false;
+      setSystemError(null);
+      setMessage("管理者復旧を確認し、簡易保存した棚卸を正式登録しました。");
+      void Promise.all([
+        loadProgress(),
+        loadItems("", filter, majorCategory),
+      ]);
+    }
+  }, [filter, loadItems, loadProgress, majorCategory, pendingCount]);
 
   const refresh = useCallback(async () => {
     await Promise.all([
@@ -705,6 +727,16 @@ export default function StocktakePage() {
             >
               連続スキャン
             </button>
+
+            {canRegisterItem && canOperate && (
+              <button
+                type="button"
+                onClick={() => setRegisterItemOpen(true)}
+                className="rounded-xl bg-emerald-600 px-4 py-3 font-bold text-white transition hover:bg-emerald-500"
+              >
+                ＋ 商品登録
+              </button>
+            )}
 
             {canOperate && (
               <button
@@ -1196,6 +1228,22 @@ export default function StocktakePage() {
           onClose={() => setSystemError(null)}
         />
       )}
+
+      <UnregisteredItemDialog
+        open={registerItemOpen}
+        sessionId={sessionId}
+        initialJanCode={keyword}
+        onClose={() => setRegisterItemOpen(false)}
+        onRegistered={(target) => {
+          setRegisterItemOpen(false);
+          setKeyword("");
+          setMessage(`「${target.item.name}」を登録し、棚卸対象へ追加しました。`);
+          void Promise.all([
+            loadProgress(),
+            loadItems("", filter, majorCategory),
+          ]);
+        }}
+      />
 
       {categoryQrOpen && (
         <CategoryQrScanner

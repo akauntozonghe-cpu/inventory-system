@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useEffect } from "react";
 
 type Props = {
   code: string;
@@ -19,6 +20,11 @@ export default function StocktakeSystemErrorDialog({
   isAdmin,
   onClose,
 }: Props) {
+  useEffect(() => {
+    const timer = window.setTimeout(onClose, 8000);
+    return () => window.clearTimeout(timer);
+  }, [code, onClose]);
+
   return (
     <div className="fixed inset-0 z-[220] flex items-center justify-center bg-slate-950/75 p-4">
       <section
@@ -44,6 +50,9 @@ export default function StocktakeSystemErrorDialog({
             今回の棚卸は端末内へ簡易保存しました。作業は続けられます。管理者が復旧完了にすると、この端末から正式登録されます。
           </p>
         )}
+        <p className="mt-3 text-center text-xs font-bold text-slate-600">
+          この表示は8秒後に自動で閉じます。未解決の間は画面左下に状態を表示します。
+        </p>
         <div className="mt-6 grid gap-3 sm:grid-cols-2">
           {isAdmin && (
             <Link

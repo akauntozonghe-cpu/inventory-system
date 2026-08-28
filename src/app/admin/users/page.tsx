@@ -3,6 +3,12 @@
 import { FormEvent, useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import FeedbackToast from "@/components/common/FeedbackToast";
+import {
+  DEFAULT_WORKER_FEATURES,
+  FEATURE_KEYS,
+  FEATURE_LABELS,
+  type FeatureKey,
+} from "@/lib/feature-permissions";
 
 type UserRole = "ADMIN" | "WORKER";
 
@@ -14,6 +20,7 @@ type User = {
   isActive: boolean;
   mustChangePassword: boolean;
   createdAt: string;
+  featurePermissions: FeatureKey[];
 };
 
 type UserForm = {
@@ -21,6 +28,7 @@ type UserForm = {
   displayName: string;
   password: string;
   role: UserRole;
+  featurePermissions: FeatureKey[];
 };
 
 type IssuedPassword = {
@@ -34,6 +42,7 @@ const initialForm: UserForm = {
   displayName: "",
   password: "",
   role: "WORKER",
+  featurePermissions: DEFAULT_WORKER_FEATURES,
 };
 
 function getMessage(data: unknown, fallback: string) {
@@ -104,6 +113,35 @@ export default function UserManagementPage() {
     useState("");
 
   const [statusTarget, setStatusTarget] = useState<User | null>(null);
+
+  const updatePermissions = async (user: User, feature: FeatureKey) => {
+    const nextPermissions = user.featurePermissions.includes(feature)
+      ? user.featurePermissions.filter((value) => value !== feature)
+      : [...user.featurePermissions, feature];
+
+    setActionUserId(user.id);
+    setError("");
+    setSuccess("");
+    try {
+      const response = await fetch(`/api/users/${user.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ featurePermissions: nextPermissions }),
+      });
+      const data: unknown = await response.json();
+      if (!response.ok) throw new Error(getMessage(data, "利用機能を変更できませんでした。"));
+      setUsers((previous) =>
+        previous.map((entry) =>
+          entry.id === user.id ? { ...entry, featurePermissions: nextPermissions } : entry
+        )
+      );
+      setSuccess(`${user.displayName}さんの利用機能を更新しました。`);
+    } catch (caughtError) {
+      setError(caughtError instanceof Error ? caughtError.message : "利用機能を変更できませんでした。");
+    } finally {
+      setActionUserId(null);
+    }
+  };
 
   const [issuedPassword, setIssuedPassword] =
     useState<IssuedPassword | null>(null);
@@ -619,6 +657,39 @@ export default function UserManagementPage() {
                                 : "有効化する"}
                           </button>
                         </div>
+                      </div>
+                      <div className="mt-4 border-t border-slate-200 pt-4">
+                        <p className="text-sm font-black text-slate-900">利用できる機能</p>
+                        {user.role === "ADMIN" ? (
+                          <p className="mt-2 text-sm font-bold text-violet-700">
+                            管理者はすべての機能を利用できます。
+                          </p>
+                        ) : (
+                          <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                            {FEATURE_KEYS.map((feature) => (
+                              <label
+                                key={feature}
+                                className="flex cursor-pointer items-start gap-3 rounded-xl border border-slate-200 p-3 hover:bg-slate-50"
+                              >
+                                <input
+                                  type="checkbox"
+                                  checked={user.featurePermissions.includes(feature)}
+                                  disabled={busy || !user.isActive}
+                                  onChange={() => void updatePermissions(user, feature)}
+                                  className="mt-1 h-5 w-5 accent-blue-600"
+                                />
+                                <span>
+                                  <span className="block text-sm font-black text-slate-900">
+                                    {FEATURE_LABELS[feature].title}
+                                  </span>
+                                  <span className="mt-1 block text-xs font-semibold text-slate-600">
+                                    {FEATURE_LABELS[feature].description}
+                                  </span>
+                                </span>
+                              </label>
+                            ))}
+                          </div>
+                        )}
                       </div>
                     </article>
                   );

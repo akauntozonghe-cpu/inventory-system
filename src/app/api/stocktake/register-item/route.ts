@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { requireAdmin } from "@/lib/auth";
+import { getLoggedInUser, hasAdminAccess } from "@/lib/auth";
 import { createAdminActionLog } from "@/lib/error-report";
 
 type RegisterItemBody = {
@@ -53,19 +53,31 @@ function getErrorCode(error: unknown) {
 }
 
 export async function POST(request: NextRequest) {
-  const auth = requireAdmin(request);
+  const actorUser = getLoggedInUser(request);
 
-  if (auth.response) {
-    return auth.response;
-  }
-
-  const adminUser = auth.user;
-
-  if (!adminUser) {
+  if (!actorUser) {
     return NextResponse.json(
       {
-        code: "ADMIN_REQUIRED",
-        message: "未登録商品の登録には管理者権限が必要です。",
+        code: "REGISTER_ITEM_AUTH_401",
+        message: "ログイン情報を確認できませんでした。",
+      },
+      { status: 401 }
+    );
+  }
+
+  const liveUser = await prisma.appUser.findUnique({
+    where: { id: actorUser.id },
+    select: { isActive: true, featurePermissions: true },
+  });
+
+  if (
+    !liveUser?.isActive ||
+    (!hasAdminAccess(request) && !liveUser.featurePermissions.includes("ITEM_REGISTER"))
+  ) {
+    return NextResponse.json(
+      {
+        code: "REGISTER_ITEM_PERMISSION_403",
+        message: "商品登録は管理者から許可されたユーザーのみ実行できます。",
       },
       { status: 403 }
     );
@@ -367,7 +379,7 @@ export async function POST(request: NextRequest) {
     );
 
     await createAdminActionLog({
-      adminUserId: adminUser.id,
+      adminUserId: actorUser.id,
       action: "STOCKTAKE_REGISTER_UNLISTED_ITEM",
       route: "/api/stocktake/register-item",
       targetSessionId: sessionId,

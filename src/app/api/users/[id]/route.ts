@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getLoggedInUser, isAdmin } from "@/lib/auth";
+import { normalizeFeaturePermissions } from "@/lib/feature-permissions";
 
 export async function PATCH(
   request: NextRequest,
@@ -22,17 +23,20 @@ export async function PATCH(
     const { id } = await params;
     const body = await request.json();
 
-    if (typeof body.isActive !== "boolean") {
+    const hasStatus = typeof body.isActive === "boolean";
+    const hasPermissions = Array.isArray(body.featurePermissions);
+
+    if (!hasStatus && !hasPermissions) {
       return NextResponse.json(
         {
           code: "INVALID_USER_STATUS",
-          message: "有効・停止の指定が正しくありません。",
+          message: "変更するユーザー状態または利用機能を指定してください。",
         },
         { status: 400 }
       );
     }
 
-    if (id === currentUser.id && body.isActive === false) {
+    if (id === currentUser.id && hasStatus && body.isActive === false) {
       return NextResponse.json(
         {
           code: "CANNOT_DISABLE_SELF",
@@ -65,7 +69,7 @@ export async function PATCH(
     if (
       targetUser.role === "ADMIN" &&
       targetUser.isActive &&
-      body.isActive === false
+      hasStatus && body.isActive === false
     ) {
       const activeAdminCount = await prisma.appUser.count({
         where: {
@@ -88,7 +92,10 @@ export async function PATCH(
     const user = await prisma.appUser.update({
       where: { id },
       data: {
-        isActive: body.isActive,
+        ...(hasStatus ? { isActive: body.isActive } : {}),
+        ...(hasPermissions && targetUser.role !== "ADMIN"
+          ? { featurePermissions: normalizeFeaturePermissions(body.featurePermissions) }
+          : {}),
       },
       select: {
         id: true,
@@ -96,6 +103,7 @@ export async function PATCH(
         displayName: true,
         role: true,
         isActive: true,
+        featurePermissions: true,
       },
     });
 
