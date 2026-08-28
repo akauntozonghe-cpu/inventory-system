@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getLoggedInUser, hasAdminAccess } from "@/lib/auth";
 import { createAdminActionLog } from "@/lib/error-report";
+import { resolveStocktakeRegistration } from "@/lib/stocktake-registration";
 
 type RegisterItemBody = {
   sessionId?: unknown;
@@ -182,6 +183,13 @@ export async function POST(request: NextRequest) {
 
         let item = null;
         let itemCreated = false;
+        const manufacturer = getOptionalText(body.manufacturer, 200);
+        const majorCategory = getOptionalText(body.majorCategory, 100);
+        const minorCategory = getOptionalText(body.minorCategory, 100);
+        const managementGroupCode = getOptionalText(
+          body.managementGroupCode,
+          100
+        );
 
         if (managementCode) {
           item = await transaction.item.findUnique({
@@ -207,6 +215,19 @@ export async function POST(request: NextRequest) {
             where: {
               systemBarcode,
             },
+          });
+        }
+
+        if (!item && !managementCode && !janCode && !systemBarcode) {
+          item = await transaction.item.findFirst({
+            where: {
+              name: { equals: name, mode: "insensitive" },
+              manufacturer,
+              majorCategory,
+              minorCategory,
+              isArchived: false,
+            },
+            orderBy: { createdAt: "asc" },
           });
         }
 
@@ -261,26 +282,10 @@ export async function POST(request: NextRequest) {
           });
 
         let inventoryCreated = false;
+        const registration = resolveStocktakeRegistration(inventory, quantity);
+        const { alreadyRegistered } = registration;
 
-        if (inventory) {
-          inventory =
-            await transaction.inventoryInstance.update({
-              where: {
-                id: inventory.id,
-              },
-              data: {
-                quantity: inventory.quantity + quantity,
-                actualQuantity:
-                  inventory.actualQuantity === null
-                    ? inventory.quantity + quantity
-                    : inventory.actualQuantity + quantity,
-                unit,
-                status: "保管中",
-                stocktakeStatus: "未棚卸",
-                stocktakeAt: null,
-              },
-            });
-        } else {
+        if (!inventory) {
           inventory =
             await transaction.inventoryInstance.create({
               data: {
@@ -299,20 +304,23 @@ export async function POST(request: NextRequest) {
                 actualQuantity: quantity,
                 allocationType: "home",
                 status: "保管中",
-                stocktakeStatus: "未棚卸",
+                stocktakeStatus: "棚卸済",
+                stocktakeAt: new Date(),
               },
             });
 
           inventoryCreated = true;
         }
 
-        await transaction.inventoryHistory.create({
-          data: {
-            inventoryInstanceId: inventory.id,
-            changeQuantity: quantity,
-            action: "棚卸中の未登録商品追加",
-          },
-        });
+        if (inventoryCreated) {
+          await transaction.inventoryHistory.create({
+            data: {
+              inventoryInstanceId: inventory.id,
+              changeQuantity: quantity,
+              action: "棚卸中の商品登録",
+            },
+          });
+        }
 
         const target = await transaction.stocktakeTarget.upsert({
           where: {
@@ -339,15 +347,42 @@ export async function POST(request: NextRequest) {
           },
         });
 
+        const countedQuantity = registration.countedQuantity;
+
+        await transaction.stocktakeRecord.upsert({
+          where: {
+            sessionId_inventoryInstanceId: {
+              sessionId,
+              inventoryInstanceId: inventory.id,
+            },
+          },
+          update: alreadyRegistered
+            ? {}
+            : {
+                countedQuantity,
+                memo: "棚卸画面の商品登録時に自動記録",
+              },
+          create: {
+            sessionId,
+            inventoryInstanceId: inventory.id,
+            countedQuantity,
+            memo: alreadyRegistered
+              ? "登録済み商品を確認"
+              : "棚卸画面の商品登録時に自動記録",
+          },
+        });
+
         return {
           session,
           itemCreated,
           inventoryCreated,
+          alreadyRegistered,
           target: {
             id: target.inventoryInstance.id,
             expectedQuantity: target.expectedQuantity,
-            isRecorded: false,
-            countedQuantity: null,
+            isRecorded: true,
+            countedQuantity,
+            alreadyRegistered,
             item: {
               id: target.inventoryInstance.item.id,
               name: target.inventoryInstance.item.name,
@@ -396,15 +431,22 @@ export async function POST(request: NextRequest) {
         locationName: result.created.locationName,
         itemCreated: result.itemCreated,
         inventoryCreated: result.inventoryCreated,
+        alreadyRegistered: result.alreadyRegistered,
       },
     });
 
     return NextResponse.json(
       {
         success: true,
+        code: result.alreadyRegistered
+          ? "REGISTER_ITEM_ALREADY_REGISTERED"
+          : "REGISTER_ITEM_CREATED_AND_COUNTED",
+        message: result.alreadyRegistered
+          ? "同じ商品・保管場所・ロットは登録済みです。既存データを表示します。"
+          : "商品を登録し、棚卸済みとして記録しました。",
         ...result,
       },
-      { status: 201 }
+      { status: result.alreadyRegistered ? 200 : 201 }
     );
   } catch (error) {
     console.error("POST /api/stocktake/register-item", error);

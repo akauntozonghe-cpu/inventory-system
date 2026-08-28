@@ -72,7 +72,7 @@ export default function SystemBarcodeLabel({
   const [issuing, setIssuing] = useState(false);
   const [message, setMessage] = useState("");
   const [printLayout, setPrintLayout] = useState<PrintLayout>("A4");
-  const [printCopies, setPrintCopies] = useState(10);
+  const [printCopies, setPrintCopies] = useState(1);
 
   const barcode = janCode || systemJan;
   const barcodeTitle = janCode ? "既存JANコード" : "システムJAN";
@@ -226,7 +226,7 @@ export default function SystemBarcodeLabel({
           <title>${escapeHtml(itemName)} ラベル</title>
           <style>
             @page {
-              size: ${printLayout === "A4" ? "A4 portrait" : "82mm 50mm"};
+              size: ${printLayout === "A4" ? "A4 portrait" : "62mm 32mm"};
               margin: ${printLayout === "A4" ? "8mm" : "0"};
             }
 
@@ -236,33 +236,33 @@ export default function SystemBarcodeLabel({
               margin: 0;
               color: #111827;
               font-family: Arial, "Noto Sans JP", sans-serif;
-              ${printLayout === "A4" ? "display:grid;grid-template-columns:repeat(2,92mm);grid-auto-rows:50mm;gap:4mm 3mm;" : ""}
+              ${printLayout === "A4" ? "display:grid;grid-template-columns:repeat(3,62mm);grid-auto-rows:32mm;gap:2mm;" : ""}
             }
 
             .label {
-              width: ${printLayout === "A4" ? "92mm" : "82mm"};
-              height: 50mm;
+              width: 62mm;
+              height: 32mm;
               overflow: hidden;
               border: 0.25mm dashed #94a3b8;
-              padding: ${printLayout === "A4" ? "3mm" : "2.5mm"};
+              padding: 2mm;
               break-inside: avoid;
               page-break-inside: avoid;
             }
 
-            ${printLayout === "A4" ? ".label:nth-child(10n){break-after:page;page-break-after:always;}" : ".label{break-after:page;page-break-after:always;}.label:last-child{break-after:auto;page-break-after:auto;}"}
+            ${printLayout === "A4" ? ".label:nth-child(24n){break-after:page;page-break-after:always;}" : ".label{break-after:page;page-break-after:always;}.label:last-child{break-after:auto;page-break-after:auto;}"}
 
             .system {
               margin: 0;
               color: #475569;
-              font-size: 8pt;
+              font-size: 6pt;
               font-weight: 700;
             }
 
             .name {
               margin: 1mm 0;
-              max-height: 9mm;
+              max-height: 6mm;
               overflow: hidden;
-              font-size: 11pt;
+              font-size: 8.5pt;
               font-weight: 800;
               word-break: break-word;
             }
@@ -270,14 +270,14 @@ export default function SystemBarcodeLabel({
             .code {
               margin: 0 0 2mm;
               font-family: monospace;
-              font-size: 10pt;
+              font-size: 7pt;
               font-weight: 700;
             }
 
             svg {
               display: block;
               width: 100%;
-              height: 27mm;
+              height: 15mm;
             }
 
             @media print {
@@ -362,8 +362,8 @@ export default function SystemBarcodeLabel({
                 onChange={(event) => setPrintLayout(event.target.value as PrintLayout)}
                 className="mt-1 w-full rounded-lg border bg-white p-2"
               >
-                <option value="A4">A4・10枚配置</option>
-                <option value="LABEL">ラベルプリンター・82×50mm</option>
+                <option value="A4">A4・小型24枚配置（62×32mm）</option>
+                <option value="LABEL">ラベルプリンター・62×32mm</option>
               </select>
             </label>
             <label className="text-sm font-bold text-slate-700">

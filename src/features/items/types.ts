@@ -12,4 +12,5 @@ export type Item = {
   isArchived: boolean;
   archivedAt: string | null;
   archiveReason: string | null;
+  createdAt: string;
 };

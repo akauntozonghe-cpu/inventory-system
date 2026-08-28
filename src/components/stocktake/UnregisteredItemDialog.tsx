@@ -13,6 +13,7 @@ type RegisteredTarget = {
   expectedQuantity: number;
   isRecorded: boolean;
   countedQuantity: number | null;
+  alreadyRegistered?: boolean;
   item: {
     id: string;
     name: string;

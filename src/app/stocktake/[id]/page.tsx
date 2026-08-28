@@ -1237,7 +1237,11 @@ export default function StocktakePage() {
         onRegistered={(target) => {
           setRegisterItemOpen(false);
           setKeyword("");
-          setMessage(`「${target.item.name}」を登録し、棚卸対象へ追加しました。`);
+          setMessage(
+            target.alreadyRegistered
+              ? `「${target.item.name}」は登録済みです。既存の棚卸結果を表示します。`
+              : `「${target.item.name}」を登録し、棚卸済みとして記録しました。`
+          );
           void Promise.all([
             loadProgress(),
             loadItems("", filter, majorCategory),

@@ -78,11 +78,11 @@ function createBarcodeSvg(value: string) {
 
   JsBarcode(svg, value, {
     format: barcodeFormat(value),
-    width: 1.8,
-    height: 56,
+    width: 1.35,
+    height: 34,
     displayValue: true,
-    fontSize: 13,
-    margin: 5,
+    fontSize: 10,
+    margin: 2,
     background: "#ffffff",
     lineColor: "#111827",
   });
@@ -326,47 +326,52 @@ export default function ItemTable({ items, reload, onEdit }: Props) {
             }
             .grid {
               display: grid;
-              grid-template-columns: repeat(2, 1fr);
-              gap: 4mm;
+              grid-template-columns: repeat(3, 62mm);
+              grid-auto-rows: 32mm;
+              gap: 2mm;
             }
             .label {
-              min-height: 45mm;
-              padding: 4mm;
+              width: 62mm;
+              height: 32mm;
+              overflow: hidden;
+              padding: 2mm;
               border: 1px solid #cbd5e1;
-              border-radius: 3mm;
+              border-radius: 1.5mm;
               break-inside: avoid;
             }
             .caption {
               margin: 0;
               color: #475569;
-              font-size: 8pt;
+              font-size: 6pt;
               font-weight: 700;
             }
             h1 {
-              margin: 2mm 0 1mm;
-              font-size: 13pt;
-              line-height: 1.3;
+              margin: 1mm 0 0.5mm;
+              max-height: 7mm;
+              overflow: hidden;
+              font-size: 9pt;
+              line-height: 1.15;
               word-break: break-word;
             }
             .category {
               margin: 0;
               color: #475569;
-              font-size: 8pt;
+              font-size: 6pt;
             }
             .code {
-              margin: 2mm 0 0;
+              margin: 0.5mm 0 0;
               font-family: monospace;
-              font-size: 8pt;
+              font-size: 6.5pt;
               font-weight: 700;
             }
             .barcode {
-              margin-top: 1mm;
+              margin-top: 0.5mm;
               text-align: center;
             }
             svg {
               display: inline-block;
               max-width: 100%;
-              height: auto;
+              height: 10mm;
             }
           </style>
         </head>
@@ -551,6 +556,13 @@ export default function ItemTable({ items, reload, onEdit }: Props) {
                         <dt className="font-bold text-slate-500">基本単位</dt>
                         <dd className="mt-1 text-slate-800">
                           {item.defaultUnit ?? "-"}
+                        </dd>
+                      </div>
+
+                      <div>
+                        <dt className="font-bold text-slate-500">登録日時</dt>
+                        <dd className="mt-1 text-slate-800">
+                          {new Date(item.createdAt).toLocaleString("ja-JP")}
                         </dd>
                       </div>
                     </dl>

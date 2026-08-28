@@ -14,7 +14,13 @@ import FeedbackToast from "@/components/common/FeedbackToast";
 import ItemTable from "./ItemTable";
 import type { Item } from "./types";
 
-type SortType = "nameAsc" | "nameDesc" | "barcodeAsc" | "barcodeDesc";
+type SortType =
+  | "createdDesc"
+  | "createdAsc"
+  | "nameAsc"
+  | "nameDesc"
+  | "barcodeAsc"
+  | "barcodeDesc";
 
 type CurrentUser = {
   id: string;
@@ -59,7 +65,8 @@ export default function ItemPage() {
   const [currentUser, setCurrentUser] = useState<CurrentUser | null>(null);
   const [search, setSearch] = useState("");
   const [majorCategory, setMajorCategory] = useState("");
-  const [sort, setSort] = useState<SortType>("nameAsc");
+  const [sort, setSort] = useState<SortType>("createdDesc");
+  const [todayOnly, setTodayOnly] = useState(false);
   const [showArchived, setShowArchived] = useState(false);
   const [loading, setLoading] = useState(true);
   const [scannerOpen, setScannerOpen] = useState(false);
@@ -161,6 +168,9 @@ export default function ItemPage() {
   const filteredItems = useMemo(() => {
     const keyword = search.trim().toLowerCase();
 
+    const today = new Date();
+    const todayStart = new Date(today.getFullYear(), today.getMonth(), today.getDate()).getTime();
+
     return items.filter((item) => {
       const category = item.majorCategory?.trim() ?? "";
 
@@ -183,11 +193,12 @@ export default function ItemPage() {
         .toLowerCase();
 
       return (
+        (!todayOnly || new Date(item.createdAt).getTime() >= todayStart) &&
         matchesCategory &&
         (!keyword || searchableText.includes(keyword))
       );
     });
-  }, [items, majorCategory, search]);
+  }, [items, majorCategory, search, todayOnly]);
 
   const sortedItems = useMemo(() => {
     const list = [...filteredItems];
@@ -196,6 +207,16 @@ export default function ItemPage() {
       item.janCode || item.systemBarcode || "";
 
     switch (sort) {
+      case "createdDesc":
+        return list.sort(
+          (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+        );
+
+      case "createdAsc":
+        return list.sort(
+          (a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
+        );
+
       case "nameDesc":
         return list.sort((a, b) => b.name.localeCompare(a.name, "ja"));
 
@@ -470,12 +491,24 @@ export default function ItemPage() {
               onChange={(event) => setSort(event.target.value as SortType)}
               className="rounded-xl border border-slate-300 bg-white px-4 py-3 font-bold text-slate-700 outline-none"
             >
+              <option value="createdDesc">登録順：新しい順</option>
+              <option value="createdAsc">登録順：古い順</option>
               <option value="nameAsc">商品名：昇順</option>
               <option value="nameDesc">商品名：降順</option>
               <option value="barcodeAsc">識別コード：昇順</option>
               <option value="barcodeDesc">識別コード：降順</option>
             </select>
           </div>
+
+          <label className="mt-3 inline-flex cursor-pointer items-center gap-3 rounded-xl bg-blue-50 px-4 py-3 text-sm font-black text-blue-950">
+            <input
+              type="checkbox"
+              checked={todayOnly}
+              onChange={(event) => setTodayOnly(event.target.checked)}
+              className="h-5 w-5 accent-blue-600"
+            />
+            本日登録した商品のみ表示（一括印刷対象）
+          </label>
 
           <div className="mt-4 flex flex-wrap gap-2">
             <button
