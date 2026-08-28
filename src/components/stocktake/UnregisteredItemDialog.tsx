@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import Link from "next/link";
 import FeedbackToast from "@/components/common/FeedbackToast";
 
 type Location = {
@@ -25,6 +26,19 @@ type RegisteredTarget = {
     id: string;
     name: string;
   } | null;
+};
+
+type DuplicateCandidate = {
+  itemId: string;
+  name: string;
+  janCode: string | null;
+  managementCode: string | null;
+  manufacturer: string | null;
+  lotNo: string | null;
+  locationName: string | null;
+  quantity: number;
+  score: number;
+  reasons: string[];
 };
 
 type UnregisteredItemDialogProps = {
@@ -63,6 +77,9 @@ export default function UnregisteredItemDialog({
   const [loadingLocations, setLoadingLocations] = useState(false);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState("");
+  const [duplicateCandidates, setDuplicateCandidates] = useState<DuplicateCandidate[]>([]);
+  const [checkingDuplicates, setCheckingDuplicates] = useState(false);
+  const [duplicateConfirmed, setDuplicateConfirmed] = useState(false);
   const nameRef = useRef<HTMLInputElement | null>(null);
   const locationRef = useRef<HTMLSelectElement | null>(null);
   const quantityRef = useRef<HTMLInputElement | null>(null);
@@ -132,6 +149,42 @@ export default function UnregisteredItemDialog({
 
     void loadLocations();
   }, [locations.length, open]);
+
+  useEffect(() => {
+    if (!open || (!form.name.trim() && !form.janCode.trim() && !form.managementCode.trim())) {
+      setDuplicateCandidates([]);
+      return;
+    }
+
+    const timer = window.setTimeout(async () => {
+      setDuplicateConfirmed(false);
+      setCheckingDuplicates(true);
+      try {
+        const query = new URLSearchParams({
+          name: form.name,
+          janCode: form.janCode,
+          managementCode: form.managementCode,
+          manufacturer: form.manufacturer,
+          lotNo: form.lotNo,
+          storageLocationId: form.storageLocationId,
+        });
+        const response = await fetch(
+          `/api/stocktake/duplicate-candidates?${query.toString()}`,
+          { cache: "no-store" }
+        );
+        const data: unknown = await response.json();
+        setDuplicateCandidates(
+          response.ok && Array.isArray(data) ? data as DuplicateCandidate[] : []
+        );
+      } catch {
+        setDuplicateCandidates([]);
+      } finally {
+        setCheckingDuplicates(false);
+      }
+    }, 450);
+
+    return () => window.clearTimeout(timer);
+  }, [form.janCode, form.lotNo, form.managementCode, form.manufacturer, form.name, form.storageLocationId, open]);
 
   if (!open) {
     return null;
@@ -435,10 +488,58 @@ export default function UnregisteredItemDialog({
           </label>
         </div>
 
+        {(checkingDuplicates || duplicateCandidates.length > 0) && (
+          <section className="mt-6 rounded-2xl border-2 border-amber-300 bg-amber-50 p-4">
+            <h3 className="font-black text-amber-950">既存商品の可能性を確認</h3>
+            {checkingDuplicates ? (
+              <p className="mt-2 text-sm font-bold text-amber-900">
+                商品名・JAN・Lot・保管場所を照合中…
+              </p>
+            ) : (
+              <div className="mt-3 space-y-2">
+                {duplicateCandidates.map((candidate) => (
+                  <Link
+                    key={`${candidate.itemId}-${candidate.lotNo ?? ""}-${candidate.locationName ?? ""}`}
+                    href={`/items/${candidate.itemId}`}
+                    target="_blank"
+                    className="block rounded-xl bg-white p-3 shadow-sm"
+                  >
+                    <span className="font-black text-slate-950">{candidate.name}</span>
+                    <span className="ml-2 rounded-full bg-amber-200 px-2 py-1 text-xs font-black text-amber-950">
+                      一致度 {candidate.score}%
+                    </span>
+                    <span className="mt-1 block text-xs font-bold text-slate-700">
+                      {candidate.reasons.join("・")}／Lot {candidate.lotNo || "なし"}／
+                      {candidate.locationName || "場所未設定"}／在庫 {candidate.quantity}
+                    </span>
+                  </Link>
+                ))}
+                <p className="text-xs font-bold leading-5 text-amber-950">
+                  同じ商品なら新規作成されず、既存商品を「登録済み」として扱います。候補の詳細は別画面で確認できます。
+                </p>
+                <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-amber-300 bg-white p-3 text-sm font-black text-slate-900">
+                  <input
+                    type="checkbox"
+                    checked={duplicateConfirmed}
+                    onChange={(event) => setDuplicateConfirmed(event.target.checked)}
+                    className="mt-0.5 h-5 w-5 accent-amber-600"
+                  />
+                  候補を確認しました。この内容で登録処理を続けます
+                </label>
+              </div>
+            )}
+          </section>
+        )}
+
         <button
           type="button"
           onClick={() => void submit()}
-          disabled={saving || loadingLocations}
+          disabled={
+            saving ||
+            loadingLocations ||
+            checkingDuplicates ||
+            (duplicateCandidates.length > 0 && !duplicateConfirmed)
+          }
           className="mt-7 w-full rounded-2xl bg-blue-600 py-4 text-lg font-bold text-white hover:bg-blue-700 disabled:bg-slate-400"
         >
           {saving

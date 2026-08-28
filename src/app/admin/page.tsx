@@ -90,6 +90,13 @@ const stocktakeMenus: MenuItem[] = [
 
 const inventoryMenus: MenuItem[] = [
   {
+    href: "/admin/activity",
+    icon: "📅",
+    title: "作業カレンダー",
+    description: "日付ごとの商品登録、棚卸、在庫変更、管理操作を確認し、その日の登録分を印刷します。",
+    color: "bg-rose-600",
+  },
+  {
     href: "/items",
     icon: "🏷️",
     title: "商品・在庫一覧",
@@ -112,14 +119,6 @@ const inventoryMenus: MenuItem[] = [
     description:
       "倉庫、棚、引き出しなどの保管場所を登録・編集します。",
     color: "bg-indigo-600",
-  },
-  {
-    href: "/inventory-search",
-    icon: "🔎",
-    title: "在庫検索",
-    description:
-      "JAN、商品名、メーカー、分類、保管場所から在庫を横断検索します。",
-    color: "bg-teal-600",
   },
 ];
 

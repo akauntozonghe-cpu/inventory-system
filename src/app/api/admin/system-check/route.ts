@@ -168,6 +168,9 @@ export async function POST(request: NextRequest) {
         inventoryCount,
         itemCount,
         storageLocationCount,
+        duplicateItems,
+        stocktakeRecordsForIntegrity,
+        stocktakeTargetsForIntegrity,
       ] = await Promise.all([
         prisma.appUser.count({
           where: {
@@ -201,7 +204,35 @@ export async function POST(request: NextRequest) {
         prisma.inventoryInstance.count(),
         prisma.item.count(),
         prisma.storageLocation.count(),
+        prisma.item.findMany({
+          where: { isArchived: false },
+          select: { id: true, name: true, janCode: true, managementCode: true },
+        }),
+        prisma.stocktakeRecord.findMany({
+          select: { sessionId: true, inventoryInstanceId: true },
+        }),
+        prisma.stocktakeTarget.findMany({
+          select: { sessionId: true, inventoryInstanceId: true },
+        }),
       ]);
+
+      const duplicateKeys = new Map<string, number>();
+      for (const item of duplicateItems) {
+        for (const value of [
+          item.janCode ? `jan:${item.janCode.replace(/[\s-]/g, "")}` : "",
+          item.managementCode ? `management:${item.managementCode.replace(/[\s-]/g, "").toLowerCase()}` : "",
+          `name:${item.name.normalize("NFKC").trim().toLowerCase()}`,
+        ]) {
+          if (value) duplicateKeys.set(value, (duplicateKeys.get(value) ?? 0) + 1);
+        }
+      }
+      const duplicateGroupCount = Array.from(duplicateKeys.values()).filter((count) => count > 1).length;
+      const targetKeys = new Set(
+        stocktakeTargetsForIntegrity.map((target) => `${target.sessionId}:${target.inventoryInstanceId}`)
+      );
+      const recordWithoutTargetCount = stocktakeRecordsForIntegrity.filter(
+        (record) => !targetKeys.has(`${record.sessionId}:${record.inventoryInstanceId}`)
+      ).length;
 
       const responseTimeMs = Date.now() - startedAt;
 
@@ -279,6 +310,30 @@ export async function POST(request: NextRequest) {
               : `JAN・システムバーコードの両方がない在庫が ${inventoryWithoutBarcodeCount}件あります。`,
           expected: "0件",
           actual: `${inventoryWithoutBarcodeCount}件`,
+        },
+        {
+          code: "CHECK_DUPLICATE_PRODUCTS",
+          title: "商品重複候補",
+          status: duplicateGroupCount === 0 ? "PASS" : "WARNING",
+          detail:
+            duplicateGroupCount === 0
+              ? "JAN・管理コード・正規化商品名の重複候補はありません。"
+              : `重複の可能性がある識別情報が ${duplicateGroupCount}組あります。商品一覧で確認してください。`,
+          expected: "0組",
+          actual: `${duplicateGroupCount}組`,
+          errorCode: duplicateGroupCount === 0 ? undefined : "SYSTEM_CHECK_DUPLICATE_PRODUCTS",
+        },
+        {
+          code: "CHECK_STOCKTAKE_TARGET_LINK",
+          title: "棚卸記録と対象の整合性",
+          status: recordWithoutTargetCount === 0 ? "PASS" : "FAIL",
+          detail:
+            recordWithoutTargetCount === 0
+              ? "すべての棚卸記録が棚卸対象と対応しています。"
+              : `棚卸対象と対応しない記録が ${recordWithoutTargetCount}件あります。`,
+          expected: "0件",
+          actual: `${recordWithoutTargetCount}件`,
+          errorCode: recordWithoutTargetCount === 0 ? undefined : "SYSTEM_CHECK_STOCKTAKE_ORPHAN_RECORD",
         },
       ];
 

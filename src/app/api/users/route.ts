@@ -136,7 +136,7 @@ export async function POST(request: NextRequest) {
     displayName,
     passwordHash: await hashPassword(password),
     role,
-    featurePermissions,
+    featurePermissions: featurePermissions as never,
     mustChangePassword: true,
   },
   select: {

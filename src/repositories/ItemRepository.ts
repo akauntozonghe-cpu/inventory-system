@@ -41,6 +41,21 @@ export class ItemRepository {
     return prisma.item.findMany({
       where: options.includeArchived ? undefined : { isArchived: false },
       orderBy: [{ isArchived: "asc" }, { name: "asc" }],
+      include: {
+        inventoryInstances: {
+          select: {
+            id: true,
+            quantity: true,
+            actualQuantity: true,
+            lotNo: true,
+            expirationDate: true,
+            unit: true,
+            stocktakeStatus: true,
+            storageLocation: { select: { id: true, name: true } },
+          },
+          orderBy: { createdAt: "asc" },
+        },
+      },
     });
   }
 

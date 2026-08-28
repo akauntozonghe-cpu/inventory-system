@@ -132,7 +132,7 @@ export async function proxy(request: NextRequest) {
   if (
     liveUser.role !== "ADMIN" &&
     feature &&
-    !liveUser.featurePermissions.includes(feature)
+    !liveUser.featurePermissions.includes(feature as never)
   ) {
     if (pathname.startsWith("/api/")) {
       return NextResponse.json(

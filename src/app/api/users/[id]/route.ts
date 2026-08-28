@@ -94,7 +94,7 @@ export async function PATCH(
       data: {
         ...(hasStatus ? { isActive: body.isActive } : {}),
         ...(hasPermissions && targetUser.role !== "ADMIN"
-          ? { featurePermissions: normalizeFeaturePermissions(body.featurePermissions) }
+          ? { featurePermissions: normalizeFeaturePermissions(body.featurePermissions) as never }
           : {}),
       },
       select: {

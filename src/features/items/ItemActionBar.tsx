@@ -22,10 +22,10 @@ export default function ItemActionBar({
       </button>
 
       <button
-        onClick={() => alert("CSV出力は次回実装")}
+        onClick={() => (location.href = "/admin/export")}
         className="rounded-lg bg-cyan-600 px-5 py-3 text-white transition hover:bg-cyan-700"
       >
-        📤 CSV出力
+        📤 CSV・バックアップ出力
       </button>
 
       <button

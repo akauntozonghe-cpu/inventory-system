@@ -9,19 +9,18 @@ describe("feature permissions", () => {
   it("不正値と重複を除外して既定順へ揃える", () => {
     expect(
       normalizeFeaturePermissions([
-        "ITEM_VIEW",
+        "CATALOG",
         "UNKNOWN",
-        "ITEM_VIEW",
+        "CATALOG",
         "STOCKTAKE",
       ])
-    ).toEqual(["STOCKTAKE", "ITEM_VIEW"]);
+    ).toEqual(["STOCKTAKE", "CATALOG"]);
   });
 
   it("既存作業者は全日常機能を引き続き利用できる", () => {
     expect(DEFAULT_WORKER_FEATURES).toEqual([
       "STOCKTAKE",
-      "INVENTORY_SEARCH",
-      "ITEM_VIEW",
+      "CATALOG",
       "STOCKTAKE_HISTORY",
     ]);
   });
@@ -29,10 +28,10 @@ describe("feature permissions", () => {
   it.each([
     ["/stocktake/start", "GET", "STOCKTAKE"],
     ["/api/stocktake/record", "POST", "STOCKTAKE"],
-    ["/inventory-search", "GET", "INVENTORY_SEARCH"],
-    ["/api/inventory/search", "GET", "INVENTORY_SEARCH"],
-    ["/items/abc", "GET", "ITEM_VIEW"],
-    ["/api/items", "GET", "ITEM_VIEW"],
+    ["/inventory-search", "GET", "CATALOG"],
+    ["/api/inventory/search", "GET", "CATALOG"],
+    ["/items/abc", "GET", "CATALOG"],
+    ["/api/items", "GET", "CATALOG"],
     ["/stocktake/history", "GET", "STOCKTAKE_HISTORY"],
     ["/api/stocktake/register-item", "POST", "ITEM_REGISTER"],
     ["/admin/users", "GET", null],

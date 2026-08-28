@@ -21,6 +21,7 @@ export default function BarcodeScanner({
 
   const [running, setRunning] =
     useState(false);
+  const [errorMessage, setErrorMessage] = useState("");
 
   useEffect(() => {
     return () => {
@@ -39,7 +40,7 @@ export default function BarcodeScanner({
         await BrowserMultiFormatReader.listVideoInputDevices();
 
       if (devices.length === 0) {
-        alert("カメラが見つかりません。");
+        setErrorMessage("カメラが見つかりません。端末の接続と権限を確認してください。");
         return;
       }
 
@@ -64,7 +65,7 @@ export default function BarcodeScanner({
     } catch (error) {
       console.error(error);
 
-      alert("カメラを起動できませんでした。");
+      setErrorMessage("カメラを起動できませんでした。ブラウザのカメラ権限を確認してください。");
     }
   }
 
@@ -125,6 +126,12 @@ export default function BarcodeScanner({
         )}
 
       </div>
+
+      {errorMessage && (
+        <p role="alert" className="rounded-xl bg-red-50 p-3 text-sm font-bold text-red-900">
+          {errorMessage}
+        </p>
+      )}
 
     </div>
   );

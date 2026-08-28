@@ -67,6 +67,7 @@ export default function ItemPage() {
   const [majorCategory, setMajorCategory] = useState("");
   const [sort, setSort] = useState<SortType>("createdDesc");
   const [todayOnly, setTodayOnly] = useState(false);
+  const [registeredDate, setRegisteredDate] = useState("");
   const [showArchived, setShowArchived] = useState(false);
   const [loading, setLoading] = useState(true);
   const [scannerOpen, setScannerOpen] = useState(false);
@@ -146,6 +147,14 @@ export default function ItemPage() {
   }, [fetchUser]);
 
   useEffect(() => {
+    const date = new URLSearchParams(window.location.search).get("registeredDate") ?? "";
+    if (/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+      setRegisteredDate(date);
+      setSort("createdAsc");
+    }
+  }, []);
+
+  useEffect(() => {
     void fetchItems();
   }, [fetchItems]);
 
@@ -170,6 +179,10 @@ export default function ItemPage() {
 
     const today = new Date();
     const todayStart = new Date(today.getFullYear(), today.getMonth(), today.getDate()).getTime();
+    const selectedStart = registeredDate
+      ? new Date(`${registeredDate}T00:00:00`).getTime()
+      : 0;
+    const selectedEnd = selectedStart + 24 * 60 * 60 * 1000;
 
     return items.filter((item) => {
       const category = item.majorCategory?.trim() ?? "";
@@ -187,6 +200,12 @@ export default function ItemPage() {
         item.majorCategory,
         item.minorCategory,
         item.defaultUnit,
+        ...item.inventoryInstances.flatMap((inventory) => [
+          inventory.storageLocation?.name,
+          inventory.lotNo,
+          inventory.expirationDate,
+          inventory.stocktakeStatus,
+        ]),
       ]
         .filter((value): value is string => Boolean(value))
         .join(" ")
@@ -194,11 +213,14 @@ export default function ItemPage() {
 
       return (
         (!todayOnly || new Date(item.createdAt).getTime() >= todayStart) &&
+        (!registeredDate ||
+          (new Date(item.createdAt).getTime() >= selectedStart &&
+            new Date(item.createdAt).getTime() < selectedEnd)) &&
         matchesCategory &&
         (!keyword || searchableText.includes(keyword))
       );
     });
-  }, [items, majorCategory, search, todayOnly]);
+  }, [items, majorCategory, registeredDate, search, todayOnly]);
 
   const sortedItems = useMemo(() => {
     const list = [...filteredItems];
@@ -339,11 +361,11 @@ export default function ItemPage() {
             </p>
 
             <h1 className="mt-1 text-3xl font-black text-slate-900">
-              商品一覧・ラベル管理
+              商品・在庫・ラベル管理
             </h1>
 
             <p className="mt-2 text-slate-600">
-              商品情報の検索、詳細確認、バーコードラベル印刷を行えます。
+              商品、現在庫、保管場所、Lot、期限を一画面で検索し、登録日ごとのラベル印刷まで行えます。
             </p>
           </div>
 
@@ -509,6 +531,15 @@ export default function ItemPage() {
             />
             本日登録した商品のみ表示（一括印刷対象）
           </label>
+
+          {registeredDate && (
+            <div className="mt-3 flex flex-wrap items-center gap-3 rounded-xl border border-emerald-300 bg-emerald-50 px-4 py-3 text-sm font-black text-emerald-950">
+              <span>{registeredDate} の登録商品だけを表示中</span>
+              <button type="button" onClick={() => setRegisteredDate("")} className="rounded-lg bg-white px-3 py-1.5 text-emerald-800 shadow-sm">
+                日付指定を解除
+              </button>
+            </div>
+          )}
 
           <div className="mt-4 flex flex-wrap gap-2">
             <button

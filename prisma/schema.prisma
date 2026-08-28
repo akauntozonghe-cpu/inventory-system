@@ -15,7 +15,7 @@ model AppUser {
   role               UserRole @default(WORKER)
   isActive           Boolean  @default(true)
   mustChangePassword Boolean  @default(false)
-  featurePermissions FeaturePermission[] @default([STOCKTAKE, INVENTORY_SEARCH, ITEM_VIEW, STOCKTAKE_HISTORY])
+  featurePermissions FeaturePermission[] @default([STOCKTAKE, CATALOG, STOCKTAKE_HISTORY])
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -496,4 +496,5 @@ enum FeaturePermission {
   ITEM_VIEW
   STOCKTAKE_HISTORY
   ITEM_REGISTER
+  CATALOG
 }

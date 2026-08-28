@@ -484,6 +484,17 @@ export default function ItemTable({ items, reload, onEdit }: Props) {
               [item.majorCategory, item.minorCategory]
                 .filter(Boolean)
                 .join(" / ") || "-";
+            const totalQuantity = item.inventoryInstances.reduce(
+              (sum, inventory) => sum + (inventory.actualQuantity ?? inventory.quantity),
+              0
+            );
+            const locationNames = Array.from(
+              new Set(
+                item.inventoryInstances
+                  .map((inventory) => inventory.storageLocation?.name)
+                  .filter((name): name is string => Boolean(name))
+              )
+            );
 
             return (
               <article
@@ -533,6 +544,19 @@ export default function ItemTable({ items, reload, onEdit }: Props) {
                     </p>
 
                     <dl className="mt-4 grid grid-cols-2 gap-3 text-sm">
+                      <div>
+                        <dt className="font-bold text-slate-500">現在庫合計</dt>
+                        <dd className="mt-1 text-lg font-black text-emerald-700">
+                          {totalQuantity} {item.defaultUnit ?? "個"}
+                        </dd>
+                      </div>
+
+                      <div>
+                        <dt className="font-bold text-slate-500">保管場所</dt>
+                        <dd className="mt-1 text-slate-800">
+                          {locationNames.join("、") || "未設定"}
+                        </dd>
+                      </div>
                       <div>
                         <dt className="font-bold text-slate-500">分類</dt>
                         <dd className="mt-1 text-slate-800">{category}</dd>

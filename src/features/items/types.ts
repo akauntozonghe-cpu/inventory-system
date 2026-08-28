@@ -13,4 +13,14 @@ export type Item = {
   archivedAt: string | null;
   archiveReason: string | null;
   createdAt: string;
+  inventoryInstances: Array<{
+    id: string;
+    quantity: number;
+    actualQuantity: number | null;
+    lotNo: string | null;
+    expirationDate: string | null;
+    unit: string | null;
+    stocktakeStatus: string;
+    storageLocation: { id: string; name: string } | null;
+  }>;
 };
