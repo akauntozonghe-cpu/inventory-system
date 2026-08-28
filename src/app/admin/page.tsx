@@ -124,6 +124,13 @@ const inventoryMenus: MenuItem[] = [
 
 const systemMenus: MenuItem[] = [
   {
+    href: "/admin/operation-mode",
+    icon: "🛠️",
+    title: "運用モード設定",
+    description: "通常・点検・メンテナンスを画面から切り替え、利用者へ案内を表示します。",
+    color: "bg-amber-600",
+  },
+  {
     href: "/admin/system-check",
     icon: "🩺",
     title: "システム点検",

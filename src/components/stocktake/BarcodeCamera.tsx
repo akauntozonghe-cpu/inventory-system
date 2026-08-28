@@ -67,6 +67,7 @@ export default function BarcodeCamera({
         stoppedRef.current = false;
 
         const hints = new Map<DecodeHintType, BarcodeFormat[]>();
+        hints.set(DecodeHintType.TRY_HARDER, true as never);
         hints.set(DecodeHintType.POSSIBLE_FORMATS, [
           BarcodeFormat.EAN_13,
           BarcodeFormat.EAN_8,
@@ -91,20 +92,16 @@ export default function BarcodeCamera({
           return;
         }
 
+        const videoConstraints: MediaTrackConstraints = {
+          facingMode: { ideal: "environment" },
+          width: { ideal: 2560, min: 1280 },
+          height: { ideal: 1440, min: 720 },
+        };
+
         const controls = await reader.decodeFromConstraints(
           {
             audio: false,
-            video: {
-              facingMode: {
-                ideal: "environment",
-              },
-              width: {
-                ideal: 1920,
-              },
-              height: {
-                ideal: 1080,
-              },
-            },
+            video: videoConstraints,
           },
           videoRef.current,
           (result, scanError) => {
@@ -157,6 +154,22 @@ export default function BarcodeCamera({
         );
 
         controlsRef.current = controls;
+
+        // 同じ読取エンジン・解像度・連続AFを単品/連続の両方で使う。
+        // focusMode は一部端末のみ対応するため capability を確認して適用する。
+        const track = videoRef.current.srcObject instanceof MediaStream
+          ? videoRef.current.srcObject.getVideoTracks()[0]
+          : undefined;
+        if (track) {
+          const capabilities = track.getCapabilities?.() as MediaTrackCapabilities & {
+            focusMode?: string[];
+          };
+          if (capabilities?.focusMode?.includes("continuous")) {
+            await track.applyConstraints({
+              advanced: [{ focusMode: "continuous" } as MediaTrackConstraintSet],
+            });
+          }
+        }
 
         if (mounted) {
           setStatus(

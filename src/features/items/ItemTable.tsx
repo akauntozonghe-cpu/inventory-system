@@ -90,7 +90,7 @@ function createBarcodeSvg(value: string) {
   return new XMLSerializer().serializeToString(svg);
 }
 
-export default function ItemTable({ items, reload, onEdit }: Props) {
+export default function ItemTable({ items, reload }: Props) {
   const [currentUser, setCurrentUser] = useState<CurrentUser | null>(null);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [message, setMessage] = useState("");
@@ -602,18 +602,8 @@ export default function ItemTable({ items, reload, onEdit }: Props) {
                         href={`/items/${item.id}`}
                         className="rounded-xl bg-sky-600 px-4 py-2 font-bold text-white transition hover:bg-sky-700"
                       >
-                        詳細
+                        {isAdmin ? "詳細・すべて編集" : "詳細"}
                       </Link>
-
-                      {isAdmin && (
-                        <button
-                          type="button"
-                          onClick={() => onEdit(item)}
-                          className="rounded-xl bg-amber-500 px-4 py-2 font-bold text-white transition hover:bg-amber-600"
-                        >
-                          編集
-                        </button>
-                      )}
                     </div>
                   </div>
                 </div>

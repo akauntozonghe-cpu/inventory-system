@@ -303,6 +303,24 @@ export default function StocktakePage() {
   }, [filter, keyword, loadItems, loadProgress, majorCategory]);
 
   useEffect(() => {
+    // 複数端末の入力や在庫変更を定期反映する。入力中は数量を上書きしない。
+    const sync = () => {
+      if (document.visibilityState !== "visible" || selected || saving) return;
+      void refresh().catch(() => {
+        // 一時的な通信断では操作を止めず、次回同期で自動復旧する。
+      });
+    };
+    const timer = window.setInterval(sync, 8_000);
+    window.addEventListener("focus", sync);
+    window.addEventListener("online", sync);
+    return () => {
+      window.clearInterval(timer);
+      window.removeEventListener("focus", sync);
+      window.removeEventListener("online", sync);
+    };
+  }, [refresh, saving, selected]);
+
+  useEffect(() => {
     let mounted = true;
 
     const initialize = async () => {

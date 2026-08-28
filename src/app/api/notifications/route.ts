@@ -36,6 +36,41 @@ export async function GET(request: NextRequest) {
   }
 
   try {
+    if (user.role === "ADMIN") {
+      const now = new Date();
+      const today = new Intl.DateTimeFormat("en-CA", {
+        timeZone: "Asia/Tokyo", year: "numeric", month: "2-digit", day: "2-digit",
+      }).format(now);
+      const alertLimit = new Date(now.getTime() + 30 * 86_400_000);
+      const limitDate = new Intl.DateTimeFormat("en-CA", {
+        timeZone: "Asia/Tokyo", year: "numeric", month: "2-digit", day: "2-digit",
+      }).format(alertLimit);
+      const [expiring, existing] = await Promise.all([
+        prisma.inventoryInstance.findMany({
+          where: { expirationDate: { not: null, lte: limitDate }, status: { not: "廃止" } },
+          select: { id: true, expirationDate: true, item: { select: { name: true } } },
+          orderBy: { expirationDate: "asc" },
+          take: 100,
+        }),
+        prisma.notification.findFirst({
+          where: { type: "EXPIRY_ALERT", title: `期限確認 ${today}` },
+          select: { id: true },
+        }),
+      ]);
+      if (expiring.length > 0 && !existing) {
+        const expiredCount = expiring.filter((entry) => (entry.expirationDate ?? "") < today).length;
+        await prisma.notification.create({
+          data: {
+            type: "EXPIRY_ALERT",
+            audience: "ADMIN",
+            title: `期限確認 ${today}`,
+            message: `期限切れ ${expiredCount}件、30日以内 ${expiring.length - expiredCount}件を確認してください。`,
+            detail: { generatedAt: now.toISOString(), inventoryIds: expiring.map((entry) => entry.id), sampleNames: expiring.slice(0, 10).map((entry) => entry.item.name) },
+          },
+        });
+      }
+    }
+
     const where =
       user.role === "ADMIN"
         ? {

@@ -66,6 +66,14 @@ model StorageLocation {
   itemRegistrationRequests ItemRegistrationRequest[]
 }
 
+model SystemOperationSetting {
+  id              String   @id @default("system")
+  mode            String   @default("NORMAL")
+  message         String?
+  updatedByUserId String?
+  updatedAt       DateTime @updatedAt
+}
+
 model InventoryInstance {
   id String @id @default(cuid())
 

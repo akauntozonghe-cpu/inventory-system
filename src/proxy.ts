@@ -124,6 +124,27 @@ export async function proxy(request: NextRequest) {
     return response;
   }
 
+  const operationSetting = await prisma.systemOperationSetting.findUnique({
+    where: { id: "system" },
+    select: { mode: true, message: true },
+  });
+  const statusPath = pathname === "/api/system-status";
+  if (
+    operationSetting?.mode === "MAINTENANCE" &&
+    liveUser.role !== "ADMIN" &&
+    isMutation(method) &&
+    !statusPath &&
+    !pathname.startsWith("/api/auth/logout")
+  ) {
+    return NextResponse.json(
+      {
+        code: "SYSTEM_MAINTENANCE_503",
+        message: operationSetting.message || "現在メンテナンス中のため、更新操作を一時停止しています。",
+      },
+      { status: 503, headers: { "Retry-After": "60" } }
+    );
+  }
+
   const feature = requiredFeature(
     pathname,
     method,
