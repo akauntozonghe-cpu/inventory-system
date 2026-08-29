@@ -47,7 +47,6 @@ const workerMenus: Menu[] = [
     title: "フリマ販売",
     description: "出品、価格・送料・利益、販売先設定をまとめて管理します。",
     color: "bg-violet-600",
-    adminOnly: true,
   },
   {
     href: "/items",

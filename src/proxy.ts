@@ -58,12 +58,20 @@ function isAdminOnlyMutation(
 }
 
 function isSystemAdminRoute(pathname: string) {
+  // フリマはホームから全ユーザーが利用する通常機能。
+  // 既存URLとの互換性のため /admin 配下のURLは維持する。
+  if (
+    pathname.startsWith("/admin/marketplace") ||
+    pathname.startsWith("/api/admin/marketplace")
+  ) {
+    return false;
+  }
+
   return (
     pathname === "/admin" ||
     pathname.startsWith("/admin/maintenance-recovery") ||
     pathname.startsWith("/admin/users") ||
     pathname.startsWith("/admin/error-reports") ||
-    pathname.startsWith("/admin/marketplace") ||
     pathname.startsWith("/admin/category-qr") ||
     pathname.startsWith("/api/users") ||
     pathname.startsWith("/api/admin/")

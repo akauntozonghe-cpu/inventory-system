@@ -1,12 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requireAdmin } from "@/lib/auth";
+import { requireLogin } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 
 function numberValue(value: unknown, min = 0, max = 10_000_000) { const parsed = Number(value); return Number.isFinite(parsed) && parsed >= min && parsed <= max ? Math.round(parsed) : null; }
 function stringValue(value: unknown, max = 200) { return typeof value === "string" ? value.trim().slice(0, max) : ""; }
 
 export async function GET(request: NextRequest) {
-  const auth = requireAdmin(request); if (auth.response) return auth.response;
+  const auth = requireLogin(request); if (auth.response) return auth.response;
   const [setting, inventories, soldListings] = await Promise.all([
     prisma.salesRecommendationSetting.findUnique({ where: { id: "system" } }),
     prisma.inventoryInstance.findMany({ where: { quantity: { gt: 0 }, status: { not: "廃止" } }, include: { item: true, marketplaceListings: { where: { status: { in: ["DRAFT","READY","LISTED"] } }, select: { listedQuantity: true } } }, orderBy: { updatedAt: "asc" }, take: 500 }),
@@ -28,7 +28,7 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
-  const auth = requireAdmin(request); if (auth.response || !auth.user) return auth.response;
+  const auth = requireLogin(request); if (auth.response || !auth.user) return auth.response;
   const body = await request.json().catch(() => null) as Record<string, unknown> | null; const action = stringValue(body?.action, 50);
   if (action === "SAVE_RECOMMENDATION_SETTING") {
     const latitude = Number(body?.latitude); const longitude = Number(body?.longitude);

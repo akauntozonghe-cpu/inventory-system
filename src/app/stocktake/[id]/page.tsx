@@ -960,14 +960,21 @@ export default function StocktakePage() {
               )}
             </section>
 
-            <section className="space-y-3">
-              {searching ? (
-                <div className="rounded-3xl bg-white p-8 text-center text-slate-500 shadow-sm">
-                  棚卸対象を検索しています…
+            <section className="relative space-y-3" aria-busy={searching}>
+              {searching && items.length > 0 && (
+                <div
+                  role="status"
+                  className="sticky top-3 z-10 ml-auto w-fit rounded-full bg-slate-900/85 px-3 py-1.5 text-xs font-bold text-white shadow-sm backdrop-blur"
+                >
+                  最新情報へ更新中
                 </div>
-              ) : items.length === 0 ? (
+              )}
+
+              {items.length === 0 ? (
                 <div className="rounded-3xl bg-white p-8 text-center text-slate-500 shadow-sm">
-                  該当する棚卸対象がありません。
+                  {searching
+                    ? "棚卸対象を検索しています…"
+                    : "該当する棚卸対象がありません。"}
                 </div>
               ) : (
                 items.map((item) => {

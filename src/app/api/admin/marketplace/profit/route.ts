@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requireAdmin } from "@/lib/auth";
+import { requireLogin } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 
 export async function POST(request: NextRequest) {
-  const auth = requireAdmin(request); if (auth.response) return auth.response;
+  const auth = requireLogin(request); if (auth.response) return auth.response;
   const body = await request.json().catch(() => null) as { inventoryInstanceId?: unknown; channel?: unknown; price?: unknown; packagingCost?: unknown } | null;
   const inventoryInstanceId = typeof body?.inventoryInstanceId === "string" ? body.inventoryInstanceId : ""; const channel = typeof body?.channel === "string" ? body.channel : "flea_market"; const price = Math.round(Number(body?.price));
   if (!inventoryInstanceId || !Number.isFinite(price) || price <= 0) return NextResponse.json({ message: "商品と販売価格を指定してください。" }, { status: 400 });

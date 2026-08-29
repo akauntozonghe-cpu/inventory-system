@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requireAdmin } from "@/lib/auth";
+import { requireLogin } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 
 const STATUSES = ["DRAFT", "READY", "LISTED", "SOLD", "CANCELLED"] as const;
@@ -9,7 +9,7 @@ function positiveInt(value: unknown) { const parsed = Number(value); return Numb
 function csvCell(value: unknown) { const content = String(value ?? ""); return `"${content.replace(/"/g, '""')}"`; }
 
 export async function GET(request: NextRequest) {
-  const auth = requireAdmin(request); if (auth.response) return auth.response;
+  const auth = requireLogin(request); if (auth.response) return auth.response;
   const [listings, inventories, channels, shippingRates, recommendationSetting] = await Promise.all([
     prisma.marketplaceListing.findMany({ orderBy: { updatedAt: "desc" }, include: { inventoryInstance: { include: { item: true, storageLocation: true } } } }),
     prisma.inventoryInstance.findMany({ where: { quantity: { gt: 0 }, status: { not: "廃止" } }, orderBy: { updatedAt: "desc" }, include: { item: true, storageLocation: true }, take: 500 }),
@@ -27,7 +27,7 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
-  const auth = requireAdmin(request); if (auth.response || !auth.user) return auth.response;
+  const auth = requireLogin(request); if (auth.response || !auth.user) return auth.response;
   const body = await request.json().catch(() => null) as Record<string, unknown> | null;
   const inventoryInstanceId = text(body?.inventoryInstanceId, 100); const price = positiveInt(body?.price); const listedQuantity = positiveInt(body?.listedQuantity);
   if (!inventoryInstanceId || !price || !listedQuantity) return NextResponse.json({ code: "MARKETPLACE_INPUT_INVALID", message: "商品、価格、出品数を正しく入力してください。" }, { status: 400 });
@@ -45,7 +45,7 @@ export async function POST(request: NextRequest) {
 }
 
 export async function PATCH(request: NextRequest) {
-  const auth = requireAdmin(request); if (auth.response || !auth.user) return auth.response;
+  const auth = requireLogin(request); if (auth.response || !auth.user) return auth.response;
   const body = await request.json().catch(() => null) as Record<string, unknown> | null;
   const id = text(body?.id, 100); const status = text(body?.status, 20);
   if (!id || !STATUSES.includes(status as typeof STATUSES[number])) return NextResponse.json({ code: "MARKETPLACE_STATUS_INVALID", message: "更新内容が正しくありません。" }, { status: 400 });
