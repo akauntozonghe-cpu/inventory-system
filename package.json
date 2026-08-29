@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
   "dev": "next dev",
-  "build": "prisma generate && vitest run && next build",
+  "build": "prisma migrate deploy && prisma generate && vitest run && next build",
   "verify": "npm test && npm run build",
   "start": "next start -H 0.0.0.0",
   "lint": "eslint",
