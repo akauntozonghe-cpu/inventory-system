@@ -172,6 +172,11 @@ export async function POST(
             stocktakeStatus: "棚卸済",
             stocktakeAt: now,
           },
+          // 棚卸確定では返却値を使わない。全列の暗黙取得を避け、
+          // 拡張列の移行中でも既存在庫を安全に確定できるようにする。
+          select: {
+            id: true,
+          },
         });
 
         await transaction.inventoryHistory.create({

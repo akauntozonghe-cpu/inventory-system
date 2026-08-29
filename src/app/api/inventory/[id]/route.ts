@@ -36,6 +36,30 @@ function isAllocationType(value: unknown): value is AllocationType {
   );
 }
 
+// Keep core catalog and stocktake operations independent from optional
+// marketplace columns while a schema migration is being deployed.
+const inventoryCoreSelect = {
+  id: true,
+  itemId: true,
+  storageLocationId: true,
+  managementCode: true,
+  managementGroupCode: true,
+  manufacturer: true,
+  majorCategory: true,
+  minorCategory: true,
+  lotNo: true,
+  expirationDate: true,
+  unit: true,
+  quantity: true,
+  actualQuantity: true,
+  allocationType: true,
+  status: true,
+  stocktakeStatus: true,
+  stocktakeAt: true,
+  createdAt: true,
+  updatedAt: true,
+} satisfies Prisma.InventoryInstanceSelect;
+
 export async function GET(
   request: NextRequest,
   context: RouteContext
@@ -52,7 +76,8 @@ export async function GET(
     where: {
       id,
     },
-    include: {
+    select: {
+      ...inventoryCoreSelect,
       item: true,
       storageLocation: true,
       histories: {
@@ -214,7 +239,8 @@ export async function PATCH(
       where: {
         id,
       },
-      include: {
+      select: {
+        ...inventoryCoreSelect,
         item: {
           select: {
             id: true,
@@ -361,7 +387,8 @@ export async function PATCH(
           id,
         },
         data: updateData,
-        include: {
+        select: {
+          ...inventoryCoreSelect,
           item: true,
           storageLocation: true,
         },

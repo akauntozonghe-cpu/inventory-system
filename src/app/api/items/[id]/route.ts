@@ -97,9 +97,43 @@ export async function GET(
 
     const item = await prisma.item.findUnique({
       where: { id },
-      include: {
+      select: {
+        id: true,
+        name: true,
+        janCode: true,
+        systemBarcode: true,
+        managementCode: true,
+        managementGroupCode: true,
+        manufacturer: true,
+        majorCategory: true,
+        minorCategory: true,
+        defaultUnit: true,
+        isArchived: true,
+        archivedAt: true,
+        archiveReason: true,
+        createdAt: true,
+        updatedAt: true,
         inventoryInstances: {
-          include: {
+          select: {
+            id: true,
+            itemId: true,
+            storageLocationId: true,
+            managementCode: true,
+            managementGroupCode: true,
+            manufacturer: true,
+            majorCategory: true,
+            minorCategory: true,
+            lotNo: true,
+            expirationDate: true,
+            unit: true,
+            quantity: true,
+            actualQuantity: true,
+            allocationType: true,
+            status: true,
+            stocktakeStatus: true,
+            stocktakeAt: true,
+            createdAt: true,
+            updatedAt: true,
             storageLocation: true,
           },
           orderBy: {
