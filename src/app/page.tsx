@@ -60,6 +60,13 @@ const workerMenus: Menu[] = [
 
 const adminMenus: Menu[] = [
   {
+    href: "/marketplace",
+    icon: "🛍️",
+    title: "フリマ販売",
+    description: "出品、価格・送料・利益、販売先設定をまとめて管理します。",
+    color: "bg-violet-600",
+  },
+  {
     href: "/admin",
     icon: "⚙️",
     title: "管理者設定",
