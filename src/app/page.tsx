@@ -29,6 +29,7 @@ type Menu = {
   description: string;
   color: string;
   feature?: FeatureKey;
+  adminOnly?: boolean;
 };
 
 const workerMenus: Menu[] = [
@@ -39,6 +40,14 @@ const workerMenus: Menu[] = [
     description: "新しい棚卸の開始、中断している棚卸の再開を行います。",
     color: "bg-blue-500",
     feature: "STOCKTAKE",
+  },
+  {
+    href: "/marketplace",
+    icon: "🛍️",
+    title: "フリマ販売",
+    description: "出品、価格・送料・利益、販売先設定をまとめて管理します。",
+    color: "bg-violet-600",
+    adminOnly: true,
   },
   {
     href: "/items",
@@ -59,13 +68,6 @@ const workerMenus: Menu[] = [
 ];
 
 const adminMenus: Menu[] = [
-  {
-    href: "/marketplace",
-    icon: "🛍️",
-    title: "フリマ販売",
-    description: "出品、価格・送料・利益、販売先設定をまとめて管理します。",
-    color: "bg-violet-600",
-  },
   {
     href: "/admin",
     icon: "⚙️",
@@ -272,9 +274,11 @@ export default function HomePage() {
 
   const menus =
     user.role === "ADMIN"
-      ? [...adminMenus, ...workerMenus]
+      ? [...workerMenus, ...adminMenus]
       : workerMenus.filter(
-          (menu) => !menu.feature || user.featurePermissions.includes(menu.feature)
+          (menu) =>
+            !menu.adminOnly &&
+            (!menu.feature || user.featurePermissions.includes(menu.feature))
         );
 
   return (
