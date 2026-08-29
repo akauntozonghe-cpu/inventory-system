@@ -109,8 +109,34 @@ model InventoryInstance {
   stocktakeRecords StocktakeRecord[]
   stocktakeTargets StocktakeTarget[]
   inventoryEvents  InventoryEvent[]
+  marketplaceListings MarketplaceListing[]
 
   @@unique([itemId, storageLocationId, lotNo, expirationDate])
+}
+
+model MarketplaceListing {
+  id String @id @default(cuid())
+  inventoryInstanceId String
+  inventoryInstance InventoryInstance @relation(fields: [inventoryInstanceId], references: [id], onDelete: Restrict)
+  channel String @default("flea_market")
+  externalListingId String?
+  title String
+  price Int
+  listedQuantity Int @default(1)
+  soldQuantity Int @default(0)
+  fee Int?
+  shippingCost Int?
+  status MarketplaceListingStatus @default(DRAFT)
+  notes String?
+  listedAt DateTime?
+  soldAt DateTime?
+  createdByUserId String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([channel, externalListingId])
+  @@index([status, updatedAt])
+  @@index([inventoryInstanceId, status])
 }
 
 model InventoryHistory {
@@ -399,6 +425,14 @@ enum AllocationType {
   warehouse
 }
 
+enum MarketplaceListingStatus {
+  DRAFT
+  READY
+  LISTED
+  SOLD
+  CANCELLED
+}
+
 enum StocktakeScope {
   ALL
   LOCATION
@@ -447,6 +481,7 @@ enum NotificationType {
   EXPIRY_ALERT
   REGISTRATION_REQUEST
   SYSTEM_ERROR
+  MARKETPLACE_SOLD
 }
 
 enum NotificationAudience {

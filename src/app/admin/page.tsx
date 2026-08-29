@@ -90,6 +90,13 @@ const stocktakeMenus: MenuItem[] = [
 
 const inventoryMenus: MenuItem[] = [
   {
+    href: "/admin/marketplace",
+    icon: "🛍️",
+    title: "フリマ出品・販売連携",
+    description: "出品候補、出品中、売却、在庫減算、CSV連携をまとめて管理します。",
+    color: "bg-pink-600",
+  },
+  {
     href: "/admin/activity",
     icon: "📅",
     title: "作業カレンダー",
