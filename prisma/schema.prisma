@@ -71,6 +71,7 @@ model SystemOperationSetting {
   mode            String   @default("NORMAL")
   message         String?
   updatedByUserId String?
+  autoCheckIntervalMinutes Int @default(360)
   updatedAt       DateTime @updatedAt
 }
 

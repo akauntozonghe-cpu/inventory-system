@@ -11,8 +11,8 @@ export default function OperationModeBanner() {
     return () => window.clearInterval(timer);
   }, []);
   if (!status || status.mode === "NORMAL") return null;
-  const inspection = status.mode === "INSPECTION";
-  return <div className={`print:hidden px-4 py-3 text-center text-sm font-black text-white ${inspection ? "bg-amber-600" : "bg-rose-700"}`}>
-    {inspection ? "点検モード" : "メンテナンス中"}：{status.message || (inspection ? "管理者が動作確認を行っています。" : "一般操作を一時停止しています。")}
+  const testMode = status.mode === "TEST";
+  return <div className={`print:hidden px-4 py-3 text-center text-sm font-black text-white ${testMode ? "bg-violet-700" : "bg-rose-700"}`}>
+    {testMode ? "テストモード" : "メンテナンス中"}：{status.message || (testMode ? "本番データを確定せず、機能の完了直前まで動作確認します。" : "一般利用を停止し、管理者が保守・復旧を行っています。")}
   </div>;
 }

@@ -40,6 +40,10 @@ const actionLabels: Record<string, string> = {
   USER_CREATE: "利用者を追加",
   USER_UPDATE: "利用者設定を変更",
   SYSTEM_OPERATION_MODE_UPDATE: "運用モードを変更",
+  ADMIN_REAUTH_SUCCEEDED: "管理者再認証に成功",
+  ERROR_REPORT_RESOLVED: "エラー復旧を完了",
+  ERROR_REPORT_DISMISSED: "エラーを対応不要として記録",
+  ISOLATED_SYSTEM_TEST_SUCCEEDED: "隔離動作テストに成功",
 };
 
 function localDate(date = new Date()) {

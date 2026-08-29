@@ -75,6 +75,8 @@ export async function proxy(request: NextRequest) {
   const isPublicPath =
     pathname === "/login" ||
     pathname === "/setup" ||
+    pathname === "/maintenance" ||
+    pathname === "/api/system-status" ||
     pathname.startsWith("/api/auth/login") ||
     pathname.startsWith("/api/auth/setup");
 
@@ -129,6 +131,24 @@ export async function proxy(request: NextRequest) {
     select: { mode: true, message: true },
   });
   const statusPath = pathname === "/api/system-status";
+  const testMutationAllowed =
+    pathname === "/api/admin/test-mode/run" ||
+    pathname === "/api/admin/operation-mode" ||
+    pathname.startsWith("/api/auth/logout") ||
+    pathname === "/admin/re-auth";
+  if (
+    operationSetting?.mode === "TEST" &&
+    isMutation(method) &&
+    !testMutationAllowed
+  ) {
+    return NextResponse.json(
+      {
+        code: "SYSTEM_TEST_MODE_WRITE_BLOCKED",
+        message: "テストモード中は本番データを更新しません。管理者画面の隔離テストを使用してください。",
+      },
+      { status: 409 }
+    );
+  }
   if (
     operationSetting?.mode === "MAINTENANCE" &&
     liveUser.role !== "ADMIN" &&
@@ -143,6 +163,16 @@ export async function proxy(request: NextRequest) {
       },
       { status: 503, headers: { "Retry-After": "60" } }
     );
+  }
+  if (
+    operationSetting?.mode === "MAINTENANCE" &&
+    liveUser.role !== "ADMIN" &&
+    !pathname.startsWith("/api/")
+  ) {
+    const maintenanceUrl = request.nextUrl.clone();
+    maintenanceUrl.pathname = "/maintenance";
+    maintenanceUrl.search = "";
+    return NextResponse.redirect(maintenanceUrl);
   }
 
   const feature = requiredFeature(

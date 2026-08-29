@@ -470,6 +470,8 @@ export default function ErrorReportsPage() {
               </p>
             </section>
 
+            {selected.recoveryStatus === "ADMIN_REQUIRED" && <section className="mt-5 rounded-2xl border-2 border-amber-400 bg-amber-50 p-5"><h3 className="text-lg font-black text-amber-950">管理者復旧手順</h3><ol className="mt-3 list-decimal space-y-2 pl-6 font-semibold text-amber-950">{recoveryGuide(selected).steps.map((step) => <li key={step}>{step}</li>)}</ol><Link href={recoveryGuide(selected).href} className="mt-4 inline-block rounded-xl bg-amber-600 px-5 py-3 font-black text-white">復旧画面を開く</Link><p className="mt-3 text-xs font-bold text-amber-800">コードやDBを直接操作する必要はありません。復旧操作と履歴記録は管理画面内で完結します。</p></section>}
+
             <section className="mt-5">
               <p className="font-bold">技術詳細</p>
               <pre className="mt-2 max-h-48 overflow-auto rounded-xl bg-slate-950 p-4 text-xs text-slate-100">
@@ -488,7 +490,7 @@ export default function ErrorReportsPage() {
                 <div className="mt-3 space-y-3">
                   {selected.adminActionLogs.map((log) => (
                     <div key={log.id} className="rounded-xl bg-slate-100 p-3">
-                      <p className="font-bold">{log.action}</p>
+                      <p className="font-bold">{actionLabel(log.action)}</p>
                       <p className="mt-1 text-sm text-slate-600">
                         {formatDate(log.createdAt)} · {log.adminUser.displayName}
                       </p>
@@ -539,4 +541,17 @@ export default function ErrorReportsPage() {
       )}
     </main>
   );
+}
+
+function recoveryGuide(report: ErrorReport) {
+  const detail = report.detail && typeof report.detail === "object" ? report.detail as Record<string, unknown> : {};
+  const suppliedSteps = Array.isArray(detail.steps) ? detail.steps.filter((step): step is string => typeof step === "string") : [];
+  if (suppliedSteps.length) return { href: typeof detail.recoveryRoute === "string" ? detail.recoveryRoute : "/admin/system-check", steps: suppliedSteps };
+  if (report.code.includes("STOCKTAKE")) return { href: report.sessionId ? `/stocktake/${report.sessionId}` : "/admin/stocktake", steps: ["対象の棚卸を開く", "簡易保存・競合・未反映の件数を確認", "画面の再送信または競合解決を実行", "最新状態を再取得して正常を確認"] };
+  if (report.code.includes("BARCODE") || report.code.includes("ITEM")) return { href: "/items", steps: ["商品・在庫一覧を開く", "JAN・商品名・管理コードの重複候補を確認", "詳細・すべて編集から正しい情報へ統合", "再度対象操作を実行して正常を確認"] };
+  return { href: "/admin/system-check", steps: ["システム点検を開いて最新の自動点検を実行", "異常項目に表示される対応操作を実行", "同じ点検が正常になることを確認", "この画面に戻り、対応内容を記録して解決済みにする"] };
+}
+
+function actionLabel(action: string) {
+  return ({ ADMIN_REAUTH_SUCCEEDED: "管理者再認証に成功", ERROR_REPORT_RESOLVED: "エラー復旧を完了", ERROR_REPORT_DISMISSED: "対応不要として記録", ISOLATED_SYSTEM_TEST_SUCCEEDED: "隔離動作テストに成功" } as Record<string, string>)[action] ?? action;
 }
