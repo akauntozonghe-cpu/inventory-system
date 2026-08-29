@@ -127,7 +127,7 @@ const systemMenus: MenuItem[] = [
     href: "/admin/operation-mode",
     icon: "🛠️",
     title: "運用モード設定",
-    description: "通常・点検・メンテナンスを画面から切り替え、利用者へ案内を表示します。",
+    description: "通常・テスト・メンテナンスを切り替え、自動点検間隔と利用者案内を設定します。",
     color: "bg-amber-600",
   },
   {

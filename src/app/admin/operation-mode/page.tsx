@@ -7,7 +7,7 @@ import FeedbackToast from "@/components/common/FeedbackToast";
 const choices = [
   { mode: "NORMAL", title: "通常運用", description: "許可済み機能を通常どおり利用します。自動点検は裏側で継続します。", color: "bg-emerald-600" },
   { mode: "TEST", title: "テストモード", description: "隔離トランザクションで登録・更新・読取・削除まで実行し、最後に全変更を取り消します。", color: "bg-violet-700" },
-  { mode: "MAINTENANCE", title: "メンテナンス", description: "一般利用者をメンテナンス画面へ切り替え、管理者だけが保守・復旧を行います。", color: "bg-rose-700" },
+  { mode: "MAINTENANCE", title: "メンテナンス", description: "全員の通常業務を停止します。管理者は専用復旧画面だけを利用できます。", color: "bg-rose-700" },
 ] as const;
 
 type TestResult = { success: boolean; message: string; checks?: Array<{ title: string; detail: string }> };

@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import { displayActionLabel } from "@/lib/display-labels";
 
 type Severity = "INFO" | "WARNING" | "ERROR" | "CRITICAL";
 type ReportStatus = "OPEN" | "INVESTIGATING" | "RESOLVED" | "DISMISSED";
@@ -490,7 +491,7 @@ export default function ErrorReportsPage() {
                 <div className="mt-3 space-y-3">
                   {selected.adminActionLogs.map((log) => (
                     <div key={log.id} className="rounded-xl bg-slate-100 p-3">
-                      <p className="font-bold">{actionLabel(log.action)}</p>
+                      <p className="font-bold">{displayActionLabel(log.action)}</p>
                       <p className="mt-1 text-sm text-slate-600">
                         {formatDate(log.createdAt)} · {log.adminUser.displayName}
                       </p>
@@ -552,6 +553,3 @@ function recoveryGuide(report: ErrorReport) {
   return { href: "/admin/system-check", steps: ["システム点検を開いて最新の自動点検を実行", "異常項目に表示される対応操作を実行", "同じ点検が正常になることを確認", "この画面に戻り、対応内容を記録して解決済みにする"] };
 }
 
-function actionLabel(action: string) {
-  return ({ ADMIN_REAUTH_SUCCEEDED: "管理者再認証に成功", ERROR_REPORT_RESOLVED: "エラー復旧を完了", ERROR_REPORT_DISMISSED: "対応不要として記録", ISOLATED_SYSTEM_TEST_SUCCEEDED: "隔離動作テストに成功" } as Record<string, string>)[action] ?? action;
-}

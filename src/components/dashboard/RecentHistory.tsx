@@ -1,4 +1,5 @@
 import { DashboardData } from "@/types/dashboard";
+import { displayActionLabel } from "@/lib/display-labels";
 
 type Props = {
   histories: DashboardData["recentHistories"];
@@ -33,7 +34,7 @@ export default function RecentHistory({
               </div>
 
               <div className="text-sm text-gray-500">
-                {history.action}
+                {displayActionLabel(history.action)}
               </div>
             </div>
 

@@ -267,13 +267,6 @@ export default function CategoryQrScanner({
             )}
           </section>
 
-          <section className="rounded-2xl border border-slate-700 bg-slate-900 p-4 text-sm leading-6 text-slate-300">
-            <p className="font-bold text-white">対応するQRコード形式</p>
-            <p className="mt-2">大分類名</p>
-            <p>CATEGORY:大分類名</p>
-            <p>INVENTORY_OS:CATEGORY:MAJOR:大分類名</p>
-            <p>{`{"majorCategory":"大分類名"}`}</p>
-          </section>
         </main>
       </div>
     </div>

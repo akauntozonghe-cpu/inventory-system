@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import FeedbackToast from "@/components/common/FeedbackToast";
+import { displayActionLabel } from "@/lib/display-labels";
 
 type Activity = {
   date: string;
@@ -16,34 +17,6 @@ type Activity = {
   records: Array<{ id: string; countedQuantity: number; updatedAt: string; session: { id: string; title: string; operator: string | null }; inventoryInstance: { item: { name: string } } }>;
   inventoryEvents: Array<{ id: string; eventType: string; quantityChange: number; quantityAfter: number; reason: string | null; createdAt: string; performedBy: { displayName: string } | null; inventoryInstance: { item: { name: string } } }>;
   adminActions: Array<{ id: string; action: string; route: string | null; createdAt: string; adminUser: { displayName: string } }>;
-};
-
-const eventLabels: Record<string, string> = {
-  OPENING_BALANCE: "初期在庫を登録",
-  RECEIPT: "入庫",
-  ISSUE: "出庫",
-  TRANSFER_IN: "移動先へ入庫",
-  TRANSFER_OUT: "移動元から出庫",
-  STOCKTAKE: "棚卸結果を反映",
-  ADJUSTMENT: "在庫数を調整",
-  DISPOSAL: "廃棄",
-  RETURN: "返品",
-  IMPORT: "データ取込",
-};
-
-const actionLabels: Record<string, string> = {
-  ITEM_REGISTER: "商品を登録",
-  STOCKTAKE_REGISTER_UNLISTED_ITEM: "棚卸中に未登録商品を登録",
-  ITEM_UPDATE: "商品情報を変更",
-  INVENTORY_UPDATE: "在庫情報を変更",
-  STOCKTAKE_APPLY: "棚卸結果を正式反映",
-  USER_CREATE: "利用者を追加",
-  USER_UPDATE: "利用者設定を変更",
-  SYSTEM_OPERATION_MODE_UPDATE: "運用モードを変更",
-  ADMIN_REAUTH_SUCCEEDED: "管理者再認証に成功",
-  ERROR_REPORT_RESOLVED: "エラー復旧を完了",
-  ERROR_REPORT_DISMISSED: "エラーを対応不要として記録",
-  ISOLATED_SYSTEM_TEST_SUCCEEDED: "隔離動作テストに成功",
 };
 
 function localDate(date = new Date()) {
@@ -178,12 +151,12 @@ export default function ActivityCalendarPage() {
 
                 <div className="rounded-3xl bg-white p-5 shadow-sm">
                   <h3 className="text-xl font-black">棚卸・在庫作業</h3>
-                  <div className="mt-4 space-y-2">{[...activity.records.map((record) => ({ id: `r-${record.id}`, at: record.updatedAt, href: `/stocktake/${record.session.id}`, text: `棚卸「${record.session.title}」 ${record.inventoryInstance.item.name}：実数 ${record.countedQuantity}（担当：${record.session.operator || "未設定"}）` })), ...activity.inventoryEvents.map((event) => ({ id: `e-${event.id}`, at: event.createdAt, href: null, text: `${event.inventoryInstance.item.name}：${eventLabels[event.eventType] || event.eventType}（増減 ${event.quantityChange >= 0 ? "+" : ""}${event.quantityChange}、変更後 ${event.quantityAfter}）／操作：${event.performedBy?.displayName || "システム"}` }))].sort((a,b) => a.at.localeCompare(b.at)).map((entry) => entry.href ? <Link href={entry.href} key={entry.id} className="block rounded-xl bg-slate-50 p-3 text-sm font-semibold hover:bg-slate-100"><span className="mr-3 font-mono text-slate-500">{new Date(entry.at).toLocaleTimeString("ja-JP", { hour: "2-digit", minute: "2-digit" })}</span>{entry.text}<span className="ml-2 text-blue-700">確認・変更へ</span></Link> : <p key={entry.id} className="rounded-xl bg-slate-50 p-3 text-sm font-semibold"><span className="mr-3 font-mono text-slate-500">{new Date(entry.at).toLocaleTimeString("ja-JP", { hour: "2-digit", minute: "2-digit" })}</span>{entry.text}</p>)}</div>
+                  <div className="mt-4 space-y-2">{[...activity.records.map((record) => ({ id: `r-${record.id}`, at: record.updatedAt, href: `/stocktake/${record.session.id}`, text: `棚卸「${record.session.title}」 ${record.inventoryInstance.item.name}：実数 ${record.countedQuantity}（担当：${record.session.operator || "未設定"}）` })), ...activity.inventoryEvents.map((event) => ({ id: `e-${event.id}`, at: event.createdAt, href: null, text: `${event.inventoryInstance.item.name}：${displayActionLabel(event.eventType)}（増減 ${event.quantityChange >= 0 ? "+" : ""}${event.quantityChange}、変更後 ${event.quantityAfter}）／操作：${event.performedBy?.displayName || "システム"}` }))].sort((a,b) => a.at.localeCompare(b.at)).map((entry) => entry.href ? <Link href={entry.href} key={entry.id} className="block rounded-xl bg-slate-50 p-3 text-sm font-semibold hover:bg-slate-100"><span className="mr-3 font-mono text-slate-500">{new Date(entry.at).toLocaleTimeString("ja-JP", { hour: "2-digit", minute: "2-digit" })}</span>{entry.text}<span className="ml-2 text-blue-700">確認・変更へ</span></Link> : <p key={entry.id} className="rounded-xl bg-slate-50 p-3 text-sm font-semibold"><span className="mr-3 font-mono text-slate-500">{new Date(entry.at).toLocaleTimeString("ja-JP", { hour: "2-digit", minute: "2-digit" })}</span>{entry.text}</p>)}</div>
                 </div>
 
                 <div className="rounded-3xl bg-white p-5 shadow-sm">
                   <h3 className="text-xl font-black">管理操作</h3>
-                  <div className="mt-4 space-y-2">{activity.adminActions.length ? activity.adminActions.map((entry) => <p key={entry.id} className="rounded-xl bg-slate-50 p-3 text-sm font-semibold"><span className="mr-3 font-mono text-slate-500">{new Date(entry.createdAt).toLocaleTimeString("ja-JP", { hour: "2-digit", minute: "2-digit" })}</span>{entry.adminUser.displayName}：{actionLabels[entry.action] || entry.action}</p>) : <p className="text-slate-600">管理操作はありません。</p>}</div>
+                  <div className="mt-4 space-y-2">{activity.adminActions.length ? activity.adminActions.map((entry) => <p key={entry.id} className="rounded-xl bg-slate-50 p-3 text-sm font-semibold"><span className="mr-3 font-mono text-slate-500">{new Date(entry.createdAt).toLocaleTimeString("ja-JP", { hour: "2-digit", minute: "2-digit" })}</span>{entry.adminUser.displayName}：{displayActionLabel(entry.action)}</p>) : <p className="text-slate-600">管理操作はありません。</p>}</div>
                 </div>
               </>
             )}

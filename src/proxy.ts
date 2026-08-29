@@ -60,6 +60,7 @@ function isAdminOnlyMutation(
 function isSystemAdminRoute(pathname: string) {
   return (
     pathname === "/admin" ||
+    pathname.startsWith("/admin/maintenance-recovery") ||
     pathname.startsWith("/admin/users") ||
     pathname.startsWith("/admin/error-reports") ||
     pathname.startsWith("/admin/category-qr") ||
@@ -149,30 +150,35 @@ export async function proxy(request: NextRequest) {
       { status: 409 }
     );
   }
-  if (
-    operationSetting?.mode === "MAINTENANCE" &&
-    liveUser.role !== "ADMIN" &&
-    isMutation(method) &&
-    !statusPath &&
-    !pathname.startsWith("/api/auth/logout")
-  ) {
-    return NextResponse.json(
-      {
-        code: "SYSTEM_MAINTENANCE_503",
-        message: operationSetting.message || "現在メンテナンス中のため、更新操作を一時停止しています。",
-      },
-      { status: 503, headers: { "Retry-After": "60" } }
-    );
-  }
-  if (
-    operationSetting?.mode === "MAINTENANCE" &&
-    liveUser.role !== "ADMIN" &&
-    !pathname.startsWith("/api/")
-  ) {
-    const maintenanceUrl = request.nextUrl.clone();
-    maintenanceUrl.pathname = "/maintenance";
-    maintenanceUrl.search = "";
-    return NextResponse.redirect(maintenanceUrl);
+  if (operationSetting?.mode === "MAINTENANCE") {
+    const adminRecoveryPage =
+      pathname === "/admin/maintenance-recovery" ||
+      pathname.startsWith("/admin/operation-mode") ||
+      pathname.startsWith("/admin/system-check") ||
+      pathname.startsWith("/admin/error-reports") ||
+      pathname === "/admin/re-auth";
+    const adminRecoveryApi =
+      pathname === "/api/admin/operation-mode" ||
+      pathname.startsWith("/api/admin/system-check") ||
+      pathname.startsWith("/api/admin/error-reports") ||
+      pathname.startsWith("/api/error-reports") ||
+      pathname === "/admin/re-auth";
+    const sessionApi =
+      pathname.startsWith("/api/auth/logout") ||
+      pathname.startsWith("/api/auth/me");
+
+    if (pathname.startsWith("/api/") && !(sessionApi || (liveUser.role === "ADMIN" && adminRecoveryApi))) {
+      return NextResponse.json(
+        { code: "SYSTEM_MAINTENANCE_503", message: operationSetting.message || "現在メンテナンス中のため、通常機能を停止しています。" },
+        { status: 503, headers: { "Retry-After": "60" } }
+      );
+    }
+    if (!pathname.startsWith("/api/") && !(liveUser.role === "ADMIN" && adminRecoveryPage)) {
+      const maintenanceUrl = request.nextUrl.clone();
+      maintenanceUrl.pathname = liveUser.role === "ADMIN" ? "/admin/maintenance-recovery" : "/maintenance";
+      maintenanceUrl.search = "";
+      return NextResponse.redirect(maintenanceUrl);
+    }
   }
 
   const feature = requiredFeature(

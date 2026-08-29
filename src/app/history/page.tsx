@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { displayActionLabel } from "@/lib/display-labels";
 
 type History = {
   id: string;
@@ -81,7 +82,7 @@ export default function HistoryPage() {
                 </td>
 
                 <td className="p-3 border-b">
-                  {history.action}
+                  {displayActionLabel(history.action)}
                 </td>
 
                 <td className="p-3 border-b">

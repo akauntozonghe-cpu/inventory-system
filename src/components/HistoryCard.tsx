@@ -1,4 +1,5 @@
 "use client";
+import { displayActionLabel } from "@/lib/display-labels";
 
 type History = {
   id: string;
@@ -52,7 +53,7 @@ export default function HistoryCard({
 
                   <p className="font-semibold">
 
-                    {history.action}
+                    {displayActionLabel(history.action)}
 
                   </p>
 
