@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 
 type StocktakeStatus =
@@ -40,10 +40,6 @@ type CurrentUser = {
 };
 
 type SessionAction = "PAUSE" | "RESUME" | "COMPLETE";
-
-type ApiError = {
-  message?: string;
-};
 
 function getMessage(value: unknown, fallback: string) {
   if (
@@ -224,7 +220,7 @@ export default function AdminStocktakePage() {
     action: SessionAction;
   } | null>(null);
 
-  async function loadData(showLoading = true) {
+  const loadData = useCallback(async (showLoading = true) => {
     if (showLoading) {
       setLoading(true);
     }
@@ -287,11 +283,11 @@ export default function AdminStocktakePage() {
         setLoading(false);
       }
     }
-  }
+  }, [router]);
 
   useEffect(() => {
     void loadData();
-  }, []);
+  }, [loadData]);
 
   const filteredSessions = useMemo(() => {
     if (filter === "ALL") {

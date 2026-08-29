@@ -132,7 +132,6 @@ export async function proxy(request: NextRequest) {
     where: { id: "system" },
     select: { mode: true, message: true },
   });
-  const statusPath = pathname === "/api/system-status";
   const testMutationAllowed =
     pathname === "/api/admin/test-mode/run" ||
     pathname === "/api/admin/operation-mode" ||

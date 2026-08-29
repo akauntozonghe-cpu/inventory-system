@@ -10,11 +10,6 @@ type SystemBarcodeLabelProps = {
   initialSystemJan: string | null;
 };
 
-type AuthUser = {
-  id: string;
-  role: "ADMIN" | "WORKER";
-};
-
 type IssueResponse = {
   success?: boolean;
   item?: {

@@ -382,11 +382,15 @@ export default function CategoryQrPage() {
                   </label>
 
                   {qrImages[category] && (
-                    <img
-                      src={qrImages[category]}
-                      alt={`${category}の大分類QR`}
-                      className="mx-auto mt-4 h-48 w-48"
-                    />
+                    <>
+                      {/* Generated data URLs must remain unoptimized for reliable printing. */}
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={qrImages[category]}
+                        alt={`${category}の大分類QR`}
+                        className="mx-auto mt-4 h-48 w-48"
+                      />
+                    </>
                   )}
 
                   <h2 className="mt-4 text-xl font-black text-slate-900">

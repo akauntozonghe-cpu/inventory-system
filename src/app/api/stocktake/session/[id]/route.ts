@@ -2,8 +2,6 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getLoggedInUser, hasAdminAccess } from "@/lib/auth";
 
-type SessionAction = "PAUSE" | "RESUME" | "COMPLETE";
-
 function getErrorMessage(value: unknown, fallback: string) {
   if (
     value &&

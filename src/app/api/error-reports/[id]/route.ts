@@ -17,16 +17,6 @@ function getText(value: unknown, maxLength: number) {
   return typeof value === "string" ? value.trim().slice(0, maxLength) : "";
 }
 
-async function requireAdmin(request: NextRequest) {
-  const currentUser = getLoggedInUser(request);
-
-  if (!isAdmin(currentUser)) {
-    return null;
-  }
-
-  return currentUser;
-}
-
 export async function PATCH(
   request: NextRequest,
   context: { params: Promise<{ id: string }> }

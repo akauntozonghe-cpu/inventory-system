@@ -186,11 +186,6 @@ export async function POST(request: NextRequest) {
         const manufacturer = getOptionalText(body.manufacturer, 200);
         const majorCategory = getOptionalText(body.majorCategory, 100);
         const minorCategory = getOptionalText(body.minorCategory, 100);
-        const managementGroupCode = getOptionalText(
-          body.managementGroupCode,
-          100
-        );
-
         if (managementCode) {
           item = await transaction.item.findUnique({
             where: {
