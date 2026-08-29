@@ -92,6 +92,11 @@ model InventoryInstance {
   lotNo               String?
   expirationDate      String?
   unit                String?
+  acquisitionCost     Int?
+  packageWeightGrams  Int?
+  packageLengthCm     Int?
+  packageWidthCm      Int?
+  packageHeightCm     Int?
 
   quantity       Int
   actualQuantity Int?
@@ -126,6 +131,9 @@ model MarketplaceListing {
   soldQuantity Int @default(0)
   fee Int?
   shippingCost Int?
+  packagingCost Int? @default(0)
+  acquisitionCostSnapshot Int?
+  shippingMethod String?
   status MarketplaceListingStatus @default(DRAFT)
   notes String?
   listedAt DateTime?
@@ -137,6 +145,54 @@ model MarketplaceListing {
   @@unique([channel, externalListingId])
   @@index([status, updatedAt])
   @@index([inventoryInstanceId, status])
+}
+
+model SalesChannelSetting {
+  id String @id @default(cuid())
+  channel String @unique
+  displayName String
+  integrationMode String @default("MANUAL")
+  isEnabled Boolean @default(true)
+  feeRateBps Int @default(1000)
+  credentialEnvKey String?
+  lastSyncAt DateTime?
+  lastSyncStatus String?
+  lastSyncMessage String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model ShippingRate {
+  id String @id @default(cuid())
+  channel String
+  carrier String
+  methodName String
+  fee Int
+  maxWeightGrams Int?
+  maxLengthCm Int?
+  maxWidthCm Int?
+  maxHeightCm Int?
+  maxTotalDimensionsCm Int?
+  anonymous Boolean @default(false)
+  tracking Boolean @default(true)
+  compensation Boolean @default(false)
+  effectiveFrom DateTime
+  effectiveTo DateTime?
+  isActive Boolean @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([channel, isActive, effectiveFrom])
+}
+
+model SalesRecommendationSetting {
+  id String @id @default("system")
+  regionName String @default("東京都")
+  latitude Float @default(35.6762)
+  longitude Float @default(139.6503)
+  packagingCostDefault Int @default(100)
+  targetProfitRateBps Int @default(2000)
+  updatedAt DateTime @updatedAt
 }
 
 model InventoryHistory {

@@ -90,6 +90,20 @@ const stocktakeMenus: MenuItem[] = [
 
 const inventoryMenus: MenuItem[] = [
   {
+    href: "/admin/marketplace/settings",
+    icon: "🚚",
+    title: "販売・配送連携設定",
+    description: "販売手数料、送料表、地域、目標利益、公式API・CSV連携方式を画面から設定します。",
+    color: "bg-cyan-700",
+  },
+  {
+    href: "/admin/marketplace/advisor",
+    icon: "💡",
+    title: "価格・送料・季節提案",
+    description: "原価、梱包、送料、手数料、天候、季節から出品商品と見込利益を提案します。",
+    color: "bg-violet-700",
+  },
+  {
     href: "/admin/marketplace",
     icon: "🛍️",
     title: "フリマ出品・販売連携",

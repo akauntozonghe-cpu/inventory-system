@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import FeedbackToast from "@/components/common/FeedbackToast";
 
-type Inventory = { id: string; quantity: number; item: { name: string }; storageLocation: { name: string } | null };
+type Inventory = { id: string; quantity: number; fleaMarketReserved?: number; storageAvailable?: number; item: { name: string }; storageLocation: { name: string } | null };
 type Listing = { id: string; title: string; channel: string; externalListingId: string | null; price: number; listedQuantity: number; soldQuantity: number; status: string; updatedAt: string; inventoryInstance: Inventory };
 const statusLabel: Record<string,string> = { DRAFT: "出品準備中", READY: "出品可能", LISTED: "出品中", SOLD: "売却済み", CANCELLED: "取消" };
 
