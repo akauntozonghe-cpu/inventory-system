@@ -100,11 +100,33 @@ export async function GET(
       where: {
         sessionId,
       },
-      include: {
+      select: {
+        expectedQuantity: true,
         inventoryInstance: {
-          include: {
-            item: true,
-            storageLocation: true,
+          select: {
+            id: true,
+            managementCode: true,
+            lotNo: true,
+            expirationDate: true,
+            unit: true,
+            item: {
+              select: {
+                id: true,
+                name: true,
+                janCode: true,
+                systemBarcode: true,
+                managementCode: true,
+                manufacturer: true,
+                majorCategory: true,
+                minorCategory: true,
+              },
+            },
+            storageLocation: {
+              select: {
+                id: true,
+                name: true,
+              },
+            },
             stocktakeRecords: {
               where: {
                 sessionId,

@@ -206,11 +206,40 @@ export async function GET(request: NextRequest) {
 
     const targets = await prisma.stocktakeTarget.findMany({
       where,
-      include: {
+      select: {
+        inventoryInstanceId: true,
+        expectedQuantity: true,
         inventoryInstance: {
-          include: {
-            item: true,
-            storageLocation: true,
+          select: {
+            id: true,
+            managementCode: true,
+            managementGroupCode: true,
+            manufacturer: true,
+            majorCategory: true,
+            minorCategory: true,
+            lotNo: true,
+            expirationDate: true,
+            unit: true,
+            item: {
+              select: {
+                id: true,
+                name: true,
+                janCode: true,
+                systemBarcode: true,
+                managementCode: true,
+                managementGroupCode: true,
+                manufacturer: true,
+                majorCategory: true,
+                minorCategory: true,
+                defaultUnit: true,
+              },
+            },
+            storageLocation: {
+              select: {
+                id: true,
+                name: true,
+              },
+            },
           },
         },
       },
