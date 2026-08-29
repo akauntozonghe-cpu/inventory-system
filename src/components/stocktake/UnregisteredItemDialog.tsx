@@ -56,7 +56,8 @@ function getMessage(data: unknown, fallback: string) {
     "message" in data &&
     typeof data.message === "string"
   ) {
-    return data.message;
+    const code = "code" in data && typeof data.code === "string" ? data.code : "";
+    return code ? `${data.message}（エラーコード：${code}）` : data.message;
   }
 
   return fallback;

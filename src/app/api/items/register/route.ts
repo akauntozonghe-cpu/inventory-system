@@ -12,7 +12,7 @@ import {
   hasAdminAccess,
   requireLogin,
 } from "@/lib/auth";
-import { createAdminActionLog } from "@/lib/error-report";
+import { databaseErrorCode, isRetryableDatabaseError, withDatabaseRetry } from "@/lib/database-retry";
 
 type RegisterBody = {
   name?: unknown;
@@ -336,7 +336,7 @@ export async function POST(request: NextRequest) {
       ? await createUniqueSystemBarcode()
       : null;
 
-    const result = await prisma.$transaction(
+    const result = await withDatabaseRetry(() => prisma.$transaction(
       async (transaction) => {
         const item = await transaction.item.create({
           data: {
@@ -403,6 +403,23 @@ export async function POST(request: NextRequest) {
           },
         });
 
+        await transaction.adminActionLog.create({
+          data: {
+            adminUserId: currentUser.id,
+            action: "ITEM_REGISTER",
+            route: "/api/items/register",
+            detail: jsonValue({
+              itemId: item.id,
+              inventoryInstanceId: inventory.id,
+              itemName: item.name,
+              janCode: item.janCode,
+              systemBarcode: item.systemBarcode,
+              quantity: inventory.quantity,
+              storageLocationId: inventory.storageLocationId,
+            }),
+          },
+        });
+
         return {
           item,
           inventory,
@@ -412,23 +429,7 @@ export async function POST(request: NextRequest) {
         maxWait: 10_000,
         timeout: 30_000,
       }
-    );
-
-    await createAdminActionLog({
-      adminUserId: currentUser.id,
-      action: "ITEM_REGISTER",
-      route: "/api/items/register",
-      detail: jsonValue({
-        itemId: result.item.id,
-        inventoryInstanceId: result.inventory.id,
-        itemName: result.item.name,
-        janCode: result.item.janCode,
-        systemBarcode: result.item.systemBarcode,
-        quantity: result.inventory.quantity,
-        storageLocationId: result.inventory.storageLocationId,
-        generatedSystemBarcode: Boolean(systemBarcode),
-      }),
-    });
+    ));
 
     return NextResponse.json(
       {
@@ -446,6 +447,17 @@ export async function POST(request: NextRequest) {
     );
   } catch (error) {
     console.error("POST /api/items/register", error);
+
+    if (isRetryableDatabaseError(error)) {
+      return NextResponse.json(
+        {
+          code: `ITEM_REGISTER_DATABASE_UNAVAILABLE_${databaseErrorCode(error) ?? "UNKNOWN"}`,
+          message: "データベースへ接続できませんでした。自動再試行でも復旧しなかったため、少し待ってからもう一度お試しください。",
+          retryable: true,
+        },
+        { status: 503, headers: { "Retry-After": "5" } }
+      );
+    }
 
     const code =
       error instanceof Error &&

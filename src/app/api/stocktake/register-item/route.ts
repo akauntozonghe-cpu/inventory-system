@@ -2,8 +2,8 @@ import { randomUUID } from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getLoggedInUser, hasAdminAccess } from "@/lib/auth";
-import { createAdminActionLog } from "@/lib/error-report";
 import { resolveStocktakeRegistration } from "@/lib/stocktake-registration";
+import { databaseErrorCode, isRetryableDatabaseError, withDatabaseRetry } from "@/lib/database-retry";
 
 type RegisterItemBody = {
   sessionId?: unknown;
@@ -144,7 +144,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const result = await prisma.$transaction(
+    const result = await withDatabaseRetry(() => prisma.$transaction(
       async (transaction) => {
         const session =
           await transaction.stocktakeSession.findUnique({
@@ -372,6 +372,24 @@ export async function POST(request: NextRequest) {
           },
         });
 
+        await transaction.adminActionLog.create({
+          data: {
+            adminUserId: actorUser.id,
+            action: "STOCKTAKE_REGISTER_UNLISTED_ITEM",
+            route: "/api/stocktake/register-item",
+            targetSessionId: sessionId,
+            detail: {
+              itemId: item.id,
+              inventoryInstanceId: inventory.id,
+              itemName: item.name,
+              quantity: countedQuantity,
+              itemCreated,
+              inventoryCreated,
+              alreadyRegistered,
+            },
+          },
+        });
+
         return {
           session,
           itemCreated,
@@ -411,29 +429,7 @@ export async function POST(request: NextRequest) {
         maxWait: 10_000,
         timeout: 30_000,
       }
-    );
-
-    await createAdminActionLog({
-      adminUserId: actorUser.id,
-      action: "STOCKTAKE_REGISTER_UNLISTED_ITEM",
-      route: "/api/stocktake/register-item",
-      targetSessionId: sessionId,
-      detail: {
-        sessionTitle: result.session.title,
-        itemId: result.created.itemId,
-        inventoryInstanceId:
-          result.created.inventoryInstanceId,
-        itemName: result.target.item.name,
-        janCode: result.target.item.janCode ?? "",
-        systemBarcode:
-          result.target.item.systemBarcode ?? "",
-        quantity: result.target.expectedQuantity,
-        locationName: result.created.locationName,
-        itemCreated: result.itemCreated,
-        inventoryCreated: result.inventoryCreated,
-        alreadyRegistered: result.alreadyRegistered,
-      },
-    });
+    ));
 
     return NextResponse.json(
       {
@@ -461,6 +457,17 @@ export async function POST(request: NextRequest) {
       REGISTER_ITEM_LOCATION_NOT_FOUND:
         "選択した保管場所が見つかりません。",
     };
+
+    if (isRetryableDatabaseError(error)) {
+      return NextResponse.json(
+        {
+          code: `REGISTER_ITEM_DATABASE_UNAVAILABLE_${databaseErrorCode(error) ?? "UNKNOWN"}`,
+          message: "データベースへ接続できませんでした。自動再試行でも復旧しなかったため、少し待ってからもう一度お試しください。",
+          retryable: true,
+        },
+        { status: 503, headers: { "Retry-After": "5" } }
+      );
+    }
 
     return NextResponse.json(
       {
