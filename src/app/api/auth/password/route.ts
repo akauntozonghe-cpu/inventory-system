@@ -33,11 +33,15 @@ export async function PATCH(request: NextRequest) {
     const newPassword =
       typeof body.newPassword === "string" ? body.newPassword : "";
 
-    if (!currentPassword || !newPassword) {
+    const isTemporaryPasswordReset = currentUser.mustChangePassword;
+
+    if ((!isTemporaryPasswordReset && !currentPassword) || !newPassword) {
       return NextResponse.json(
         {
           code: "PASSWORD_INPUT_REQUIRED",
-          message: "現在のパスワードと新しいパスワードを入力してください。",
+          message: isTemporaryPasswordReset
+            ? "新しいパスワードを入力してください。"
+            : "現在のパスワードと新しいパスワードを入力してください。",
         },
         { status: 400 }
       );
@@ -69,10 +73,9 @@ export async function PATCH(request: NextRequest) {
       );
     }
 
-    const isCorrectPassword = await verifyPassword(
-      currentPassword,
-      user.passwordHash
-    );
+    const isCorrectPassword = isTemporaryPasswordReset
+      ? true
+      : await verifyPassword(currentPassword, user.passwordHash);
 
     if (!isCorrectPassword) {
       return NextResponse.json(

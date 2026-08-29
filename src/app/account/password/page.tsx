@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useState } from "react";
+import { FormEvent, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 
 export default function PasswordPage() {
@@ -11,6 +11,25 @@ export default function PasswordPage() {
   const [confirmPassword, setConfirmPassword] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  const [resetMode, setResetMode] = useState(false);
+  const [checkingMode, setCheckingMode] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+    const checkMode = async () => {
+      try {
+        const response = await fetch("/api/auth/me", { cache: "no-store" });
+        const data = (await response.json()) as { mustChangePassword?: boolean };
+        if (!cancelled && response.ok) setResetMode(data.mustChangePassword === true);
+      } catch {
+        // API側でも再設定モードを検証するため、表示確認の失敗だけでは処理を止めない
+      } finally {
+        if (!cancelled) setCheckingMode(false);
+      }
+    };
+    void checkMode();
+    return () => { cancelled = true; };
+  }, []);
 
   const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -68,11 +87,14 @@ export default function PasswordPage() {
           INVENTORY OS
         </p>
 
-        <h1 className="mt-2 text-3xl font-black">パスワード変更</h1>
+        <h1 className="mt-2 text-3xl font-black">
+          {resetMode ? "新しいパスワードの設定" : "パスワード変更"}
+        </h1>
 
         <p className="mt-3 text-sm leading-6 text-slate-600">
-          初期パスワードまたは再発行された仮パスワードを、
-          あなただけが知る新しいパスワードへ変更してください。
+          {resetMode
+            ? "仮パスワードでの本人確認は完了しています。新しいパスワードを設定してください。"
+            : "安全のため、現在のパスワードを確認してから新しいパスワードへ変更します。"}
         </p>
 
         {error && (
@@ -85,17 +107,19 @@ export default function PasswordPage() {
         )}
 
         <form onSubmit={submit} className="mt-6 space-y-5">
-          <label className="block font-bold">
-            現在のパスワード
-            <input
-              type="password"
-              value={currentPassword}
-              onChange={(event) => setCurrentPassword(event.target.value)}
-              className="mt-2 w-full rounded-xl border border-slate-300 p-3 font-normal"
-              autoComplete="current-password"
-              required
-            />
-          </label>
+          {!resetMode && (
+            <label className="block font-bold">
+              現在のパスワード
+              <input
+                type="password"
+                value={currentPassword}
+                onChange={(event) => setCurrentPassword(event.target.value)}
+                className="mt-2 w-full rounded-xl border border-slate-300 p-3 font-normal"
+                autoComplete="current-password"
+                required
+              />
+            </label>
+          )}
 
           <label className="block font-bold">
             新しいパスワード
@@ -126,10 +150,16 @@ export default function PasswordPage() {
 
           <button
             type="submit"
-            disabled={saving}
+            disabled={saving || checkingMode}
             className="w-full rounded-xl bg-blue-600 py-3.5 font-black text-white transition hover:bg-blue-700 disabled:bg-slate-400"
           >
-            {saving ? "変更中..." : "パスワードを変更して続ける"}
+            {checkingMode
+              ? "確認中..."
+              : saving
+                ? "設定中..."
+                : resetMode
+                  ? "新しいパスワードを設定する"
+                  : "パスワードを変更する"}
           </button>
         </form>
       </section>
