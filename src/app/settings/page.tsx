@@ -174,35 +174,12 @@ export default function SettingsPage() {
             <p className="text-2xl font-black text-slate-900">
               {user.displayName}
             </p>
-
-            <span
-              className={`rounded-full px-3 py-1 text-sm font-bold ${
-                user.role === "ADMIN"
-                  ? "bg-red-100 text-red-700"
-                  : "bg-blue-100 text-blue-700"
-              }`}
-            >
-              {user.role === "ADMIN" ? "管理者" : "作業者"}
-            </span>
           </div>
 
           <p className="mt-2 text-sm text-slate-600">
             ログインID：{user.username}
           </p>
         </section>
-
-        {user.role === "ADMIN" && (
-          <section className="mt-5 rounded-2xl border border-red-200 bg-red-50 p-5">
-            <p className="font-bold text-red-800">
-              管理者設定について
-            </p>
-
-            <p className="mt-2 text-sm leading-6 text-red-700">
-              管理者はユーザー・保管場所・エラー報告・データ初期化を操作できます。
-              他の利用者の作業へ影響する場合があるため、内容を確認してから実行してください。
-            </p>
-          </section>
-        )}
 
         <section className="mt-6 grid gap-5 sm:grid-cols-2">
           {visibleMenus.map((menu) => (
@@ -252,7 +229,7 @@ export default function SettingsPage() {
               href="/admin"
               className="inline-flex rounded-xl bg-slate-800 px-5 py-3 font-bold text-white transition hover:bg-slate-700"
             >
-              管理者モードを開く
+              システム管理を開く
             </Link>
           </div>
         )}

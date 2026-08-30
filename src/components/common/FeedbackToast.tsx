@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect } from "react";
+import Link from "next/link";
+import { extractErrorCode, getErrorGuidance } from "@/lib/error-guidance";
 
 type Props = {
   message: string;
@@ -8,6 +10,12 @@ type Props = {
   title?: string;
   onClose?: () => void;
   autoCloseMs?: number;
+  errorCode?: string;
+  action?: string;
+  recoveryStatus?: "RECOVERING" | "RECOVERED" | "ADMIN_REQUIRED";
+  reportId?: string | null;
+  onRetry?: () => void;
+  retrying?: boolean;
 };
 
 const styles = {
@@ -22,6 +30,12 @@ export default function FeedbackToast({
   title,
   onClose,
   autoCloseMs,
+  errorCode,
+  action,
+  recoveryStatus,
+  reportId,
+  onRetry,
+  retrying = false,
 }: Props) {
   useEffect(() => {
     if (!message || !onClose || !autoCloseMs) return;
@@ -30,6 +44,9 @@ export default function FeedbackToast({
   }, [autoCloseMs, message, onClose]);
 
   if (!message) return null;
+
+  const code = tone === "error" ? errorCode ?? extractErrorCode(message) : "";
+  const guidance = tone === "error" ? getErrorGuidance(code) : null;
 
   return (
     <div className="pointer-events-none fixed inset-x-0 top-3 z-[200] flex justify-center px-3 sm:top-5">
@@ -42,6 +59,19 @@ export default function FeedbackToast({
           <div className="min-w-0">
             {title && <p className="font-black">{title}</p>}
             <p className={title ? "mt-1 font-semibold" : "font-bold"}>{message}</p>
+            {tone === "error" && guidance && (
+              <div className="mt-3 space-y-2 rounded-xl bg-white/75 p-3 text-sm">
+                <p><span className="font-black">エラーコード：</span><code className="break-all">{code}</code></p>
+                <p><span className="font-black">今すぐ行うこと：</span>{action ?? guidance.action}</p>
+                <p className="font-bold">
+                  復旧状況：{recoveryStatus === "RECOVERING" ? "自動復旧中" : recoveryStatus === "RECOVERED" ? "自動復旧済み" : recoveryStatus === "ADMIN_REQUIRED" ? "自動復旧できませんでした。認証後の復旧が必要です" : "自動復旧を開始できる状態です"}
+                </p>
+                <div className="flex flex-wrap gap-2 pt-1">
+                  {onRetry && <button type="button" onClick={onRetry} disabled={retrying} className="rounded-lg bg-blue-700 px-3 py-2 font-black text-white disabled:bg-slate-400">{retrying ? "自動復旧中…" : "今すぐ自動復旧"}</button>}
+                  {(recoveryStatus === "ADMIN_REQUIRED" || !onRetry) && <Link href={`${guidance.recoveryRoute}${reportId ? `?reportId=${encodeURIComponent(reportId)}` : ""}`} className="rounded-lg bg-slate-900 px-3 py-2 font-black text-white">復旧手順を開く</Link>}
+                </div>
+              </div>
+            )}
           </div>
           {onClose && (
             <button

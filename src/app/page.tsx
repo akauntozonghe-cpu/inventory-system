@@ -29,7 +29,6 @@ type Menu = {
   description: string;
   color: string;
   feature?: FeatureKey;
-  adminOnly?: boolean;
 };
 
 const workerMenus: Menu[] = [
@@ -271,14 +270,16 @@ export default function HomePage() {
     );
   }
 
+  const visibleWorkerMenus = workerMenus.filter(
+    (menu) =>
+      user.role === "ADMIN" ||
+      !menu.feature ||
+      user.featurePermissions.includes(menu.feature)
+  );
   const menus =
     user.role === "ADMIN"
-      ? [...workerMenus, ...adminMenus]
-      : workerMenus.filter(
-          (menu) =>
-            !menu.adminOnly &&
-            (!menu.feature || user.featurePermissions.includes(menu.feature))
-        );
+      ? [...visibleWorkerMenus, ...adminMenus]
+      : visibleWorkerMenus;
 
   return (
     <main className="min-h-screen bg-slate-100 p-4 text-slate-900 sm:p-8">
@@ -319,11 +320,6 @@ export default function HomePage() {
               <p className="font-black">
                 {user.displayName}
 
-                {user.role === "ADMIN" && (
-                  <span className="ml-2 rounded-full bg-blue-100 px-2 py-1 text-xs text-blue-700">
-                    管理者
-                  </span>
-                )}
               </p>
             </div>
 
@@ -336,38 +332,6 @@ export default function HomePage() {
             </button>
           </div>
         </header>
-
-        {user.role === "ADMIN" && (
-          <section className="mt-7 rounded-3xl border border-indigo-200 bg-indigo-50 p-5">
-            <p className="text-sm font-black text-indigo-700">
-              管理者モード
-            </p>
-
-            <h2 className="mt-1 text-xl font-black text-indigo-950">
-              全体の棚卸・商品・ユーザーを管理できます
-            </h2>
-
-            <p className="mt-2 max-w-3xl text-sm leading-6 text-indigo-900">
-              日常の棚卸は通常メニューから行います。全担当者の棚卸確認、商品マスタ変更、ユーザー管理、エラー対応は管理者メニューから行ってください。
-            </p>
-
-            <div className="mt-4 flex flex-wrap gap-3">
-              <Link
-                href="/admin/stocktake"
-                className="rounded-xl bg-indigo-600 px-4 py-3 font-bold text-white"
-              >
-                全棚卸管理を開く
-              </Link>
-
-              <Link
-                href="/admin"
-                className="rounded-xl bg-white px-4 py-3 font-bold text-indigo-800 shadow-sm"
-              >
-                管理者設定を開く
-              </Link>
-            </div>
-          </section>
-        )}
 
         <section className="mt-8 grid grid-cols-1 gap-5 sm:grid-cols-2 xl:grid-cols-3">
           {menus.map((menu) => (

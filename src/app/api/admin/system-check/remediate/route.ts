@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { requireAdmin } from "@/lib/auth";
+import { getAdminElevation, requireAdmin } from "@/lib/auth";
 
 function getErrorMessage(value: unknown, fallback: string) {
   if (
@@ -58,6 +58,17 @@ export async function GET(request: NextRequest) {
         },
         { status: 401 }
       )
+    );
+  }
+
+  const elevation = getAdminElevation(request);
+  if (!elevation || elevation.authenticatedByUserId !== auth.user.id) {
+    return NextResponse.json(
+      {
+        code: "ADMIN_ELEVATION_REQUIRED",
+        message: "復旧操作の前にIDとパスワードで再認証してください。",
+      },
+      { status: 403 }
     );
   }
 

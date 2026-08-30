@@ -13,6 +13,7 @@ type Props = {
   sessionId: string;
   onClose: () => void;
   onAuthenticated: (admin: AdminUser) => void;
+  purpose?: string;
 };
 
 function getMessage(data: unknown, fallback: string) {
@@ -33,6 +34,7 @@ export default function AdminModeDialog({
   sessionId,
   onClose,
   onAuthenticated,
+  purpose = "保護された操作を行うための認証です。",
 }: Props) {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
@@ -135,22 +137,21 @@ export default function AdminModeDialog({
           aria-labelledby="admin-mode-title"
           className="w-full rounded-3xl bg-white p-5 shadow-2xl sm:p-6"
         >
-          <p className="text-sm font-bold text-violet-600">管理者モード</p>
+          <p className="text-sm font-bold text-violet-600">SECURE OPERATION</p>
 
           <h2
             id="admin-mode-title"
             className="mt-2 text-2xl font-black text-slate-950"
           >
-            管理者認証
+            操作の再認証
           </h2>
 
           <p className="mt-3 text-sm leading-6 text-slate-600">
-            商品登録・システムバーコード発行・商品情報修正など、
-            棚卸中の管理者操作を行うための認証です。
+            {purpose}
           </p>
 
           <label className="mt-5 block text-sm font-bold text-slate-800">
-            管理者ID
+            全機能利用者ID
             <input
               value={username}
               autoComplete="username"

@@ -3,10 +3,12 @@
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import FeedbackToast from "@/components/common/FeedbackToast";
+import { recoverAfterFailure } from "@/lib/client-error-recovery";
 
 type Inventory = { id: string; quantity: number; storageAvailable: number; acquisitionCost: number | null; item: { name: string; majorCategory: string | null }; storageLocation: { name: string } | null };
 type Listing = { id: string; inventoryInstanceId: string; channel: string; title: string; description: string | null; category: string | null; itemCondition: string | null; listingUrl: string | null; price: number; listedQuantity: number; soldQuantity: number; fee: number | null; shippingCost: number | null; packagingCost: number | null; acquisitionCostSnapshot: number | null; shippingMethod: string | null; shippingStatus: string; trackingNumber: string | null; status: string; notes: string | null; updatedAt: string; inventoryInstance: { item: { name: string } } };
 type Payload = { listings: Listing[]; inventories: Inventory[]; summary?: { preparing: number; listed: number; shipping: number; settledProfit: number } };
+type ErrorState = { message: string; code: string; reportId: string | null; status: "RECOVERING" | "ADMIN_REQUIRED" };
 
 const channelLabels: Record<string, string> = { mercari: "メルカリ", rakuma: "ラクマ", yahoo_furima: "Yahoo!フリマ", flea_market: "その他" };
 const statusLabels: Record<string, string> = { DRAFT: "出品準備", READY: "出品待ち", LISTED: "出品中", SOLD: "売却済み", CANCELLED: "停止・取下げ" };
@@ -16,11 +18,21 @@ function messageOf(value: unknown, fallback: string) {
   return value && typeof value === "object" && "message" in value && typeof value.message === "string" ? value.message : fallback;
 }
 
+function codeOf(value: unknown, fallback: string) {
+  return value && typeof value === "object" && "code" in value && typeof value.code === "string" ? value.code : fallback;
+}
+
+class MarketplaceRequestError extends Error {
+  constructor(message: string, readonly code: string) {
+    super(message);
+  }
+}
+
 export default function PersonalMarketplacePage() {
   const [data, setData] = useState<Payload>({ listings: [], inventories: [] });
   const [loading, setLoading] = useState(true);
   const [working, setWorking] = useState("");
-  const [error, setError] = useState("");
+  const [error, setError] = useState<ErrorState | null>(null);
   const [notice, setNotice] = useState("");
   const [inventoryId, setInventoryId] = useState("");
   const [channel, setChannel] = useState("mercari");
@@ -33,25 +45,41 @@ export default function PersonalMarketplacePage() {
   const [shippingCost, setShippingCost] = useState("");
   const selectedInventory = data.inventories.find((entry) => entry.id === inventoryId);
 
+  const fetchMarketplace = useCallback(async () => {
+    const response = await fetch("/api/admin/marketplace/listings", { cache: "no-store" });
+    const payload: unknown = await response.json().catch(() => null);
+    if (!response.ok) throw new MarketplaceRequestError(messageOf(payload, "フリマ情報を取得できませんでした。"), codeOf(payload, "MARKETPLACE_LIST_FAILED"));
+    return payload as Payload;
+  }, []);
+
   const load = useCallback(async (silent = false) => {
     if (!silent) setLoading(true);
     try {
-      const response = await fetch("/api/admin/marketplace/listings", { cache: "no-store" });
-      const payload: unknown = await response.json().catch(() => null);
-      if (!response.ok) throw new Error(messageOf(payload, "フリマ情報を取得できませんでした。"));
-      setData(payload as Payload);
+      setData(await fetchMarketplace());
+      setError(null);
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "フリマ情報を取得できませんでした。");
+      const code = caught instanceof MarketplaceRequestError ? caught.code : "MARKETPLACE_LIST_FAILED";
+      const message = caught instanceof Error ? caught.message : "フリマ情報を取得できませんでした。";
+      setError({ message, code, reportId: null, status: "RECOVERING" });
+      const recovered = await recoverAfterFailure({ code, title: "フリマ情報取得エラー", message, route: "/marketplace", detail: { operation: "LIST" }, action: fetchMarketplace });
+      if (recovered.success && recovered.value) {
+        setData(recovered.value);
+        setError(null);
+        setNotice("自動復旧してフリマ情報を再取得しました。");
+      } else {
+        setError({ message, code, reportId: recovered.reportId, status: "ADMIN_REQUIRED" });
+      }
     } finally {
       if (!silent) setLoading(false);
     }
-  }, []);
+  }, [fetchMarketplace]);
 
   useEffect(() => { void load(); }, [load]);
   useEffect(() => {
+    if (error) return;
     const timer = window.setInterval(() => void load(true), 15_000);
     return () => window.clearInterval(timer);
-  }, [load]);
+  }, [error, load]);
 
   useEffect(() => {
     if (!selectedInventory) return;
@@ -66,7 +94,7 @@ export default function PersonalMarketplacePage() {
   }, [price, selectedInventory, shippingCost]);
 
   const createDraft = async () => {
-    setWorking("create"); setError("");
+    setWorking("create"); setError(null);
     try {
       const response = await fetch("/api/admin/marketplace/listings", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ inventoryInstanceId: inventoryId, channel, title, description, itemCondition: condition, price: Number(price), listedQuantity: Number(quantity), shippingMethod, shippingCost: Number(shippingCost) }) });
       const payload: unknown = await response.json().catch(() => null);
@@ -74,18 +102,18 @@ export default function PersonalMarketplacePage() {
       setNotice(messageOf(payload, "出品準備へ追加しました。"));
       setInventoryId(""); setTitle(""); setDescription(""); setPrice(""); setShippingCost("");
       await load(true);
-    } catch (caught) { setError(caught instanceof Error ? caught.message : "出品準備を作成できませんでした。"); }
+    } catch (caught) { setError({ message: caught instanceof Error ? caught.message : "出品準備を作成できませんでした。", code: "MARKETPLACE_CREATE_FAILED", reportId: null, status: "ADMIN_REQUIRED" }); }
     finally { setWorking(""); }
   };
 
   const update = async (id: string, body: Record<string, unknown>) => {
-    setWorking(id); setError("");
+    setWorking(id); setError(null);
     try {
       const response = await fetch("/api/admin/marketplace/listings", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id, ...body }) });
       const payload: unknown = await response.json().catch(() => null);
       if (!response.ok) throw new Error(messageOf(payload, "更新できませんでした。"));
       setNotice(messageOf(payload, "更新しました。")); await load(true);
-    } catch (caught) { setError(caught instanceof Error ? caught.message : "更新できませんでした。"); }
+    } catch (caught) { setError({ message: caught instanceof Error ? caught.message : "更新できませんでした。", code: "MARKETPLACE_UPDATE_FAILED", reportId: null, status: "ADMIN_REQUIRED" }); }
     finally { setWorking(""); }
   };
 
@@ -99,7 +127,7 @@ export default function PersonalMarketplacePage() {
 
   return (
     <main className="min-h-screen bg-violet-50 p-4 text-slate-950 sm:p-8">
-      <FeedbackToast tone="error" title="フリマエラー" message={error} onClose={() => setError("")} />
+      <FeedbackToast tone="error" title="フリマエラー" message={error?.message ?? ""} errorCode={error?.code} reportId={error?.reportId} recoveryStatus={error?.status} onRetry={() => void load()} retrying={error?.status === "RECOVERING"} onClose={() => setError(null)} />
       <FeedbackToast tone="success" title="完了" message={notice} onClose={() => setNotice("")} />
       <div className="mx-auto max-w-7xl space-y-7">
         <header className="flex flex-wrap items-center justify-between gap-4"><div><p className="text-sm font-black tracking-[0.2em] text-violet-700">PERSONAL FLEA MARKET</p><h1 className="mt-1 text-3xl font-black">個人フリマ統合管理</h1><p className="mt-2 text-slate-600">出品原稿、併売、在庫、梱包、発送、利益まで一か所で管理します。</p></div><div className="flex gap-2"><a href="/api/admin/marketplace/listings?format=csv" className="rounded-xl bg-emerald-600 px-4 py-3 font-black text-white">取引CSV</a><Link href="/" className="rounded-xl bg-slate-800 px-4 py-3 font-black text-white">ホーム</Link></div></header>

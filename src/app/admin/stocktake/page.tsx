@@ -33,12 +33,6 @@ type StocktakeSession = {
   } | null;
 };
 
-type CurrentUser = {
-  id: string;
-  displayName: string;
-  role: "ADMIN" | "WORKER";
-};
-
 type SessionAction = "PAUSE" | "RESUME" | "COMPLETE";
 
 function getMessage(value: unknown, fallback: string) {
@@ -205,7 +199,6 @@ function normalizeSessions(value: unknown): StocktakeSession[] {
 export default function AdminStocktakePage() {
   const router = useRouter();
 
-  const [currentUser, setCurrentUser] = useState<CurrentUser | null>(null);
   const [sessions, setSessions] = useState<StocktakeSession[]>([]);
   const [loading, setLoading] = useState(true);
   const [updatingId, setUpdatingId] = useState<string | null>(null);
@@ -270,7 +263,6 @@ export default function AdminStocktakePage() {
         );
       }
 
-      setCurrentUser(userCandidate as CurrentUser);
       setSessions(normalizeSessions(sessionData));
     } catch (caught) {
       setError(
@@ -400,17 +392,11 @@ export default function AdminStocktakePage() {
       <header className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div>
           <p className="text-sm font-black tracking-[0.14em] text-violet-600">
-            ADMIN STOCKTAKE CONTROL
+            STOCKTAKE CONTROL
           </p>
           <h1 className="mt-1 text-3xl font-black tracking-tight text-slate-950 sm:text-4xl">
             棚卸管理
           </h1>
-          <p className="mt-2 text-slate-600">
-            管理者：
-            <span className="ml-1 font-bold text-slate-900">
-              {currentUser?.displayName ?? "-"}
-            </span>
-          </p>
         </div>
 
         <div className="flex flex-wrap gap-2">
@@ -425,7 +411,7 @@ export default function AdminStocktakePage() {
             href="/admin"
             className="inline-flex min-h-12 items-center justify-center rounded-2xl bg-slate-800 px-5 font-bold text-white hover:bg-slate-700"
           >
-            管理者設定へ
+            システム管理へ
           </Link>
         </div>
       </header>
@@ -480,7 +466,7 @@ export default function AdminStocktakePage() {
               棚卸セッション一覧
             </h2>
             <p className="mt-1 text-sm text-slate-600">
-              管理者はすべての棚卸の状態確認と状態変更を行えます。
+              すべての棚卸の状態確認と、必要な状態変更を行えます。
             </p>
           </div>
 

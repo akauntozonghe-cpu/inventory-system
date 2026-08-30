@@ -379,12 +379,23 @@ export async function POST(request: NextRequest) {
               title: "自動システム点検で異常を検出しました",
               message: summary,
               severity: "ERROR",
-              status: "OPEN",
+              status: "INVESTIGATING",
+              recoveryStatus: "ADMIN_REQUIRED",
+              recoveryAttempts: 1,
+              recoveryNote: "安全に自動修復できる一時障害を再確認しましたが、データ変更を伴うため認証後の復旧が必要です。",
               route: "/admin/system-check",
               reporterUserId: auth.user.id,
               detail: {
                 systemCheckRunId: run.id,
                 checks,
+                recoveryRoute: "/admin/system-check",
+                steps: [
+                  "パスワードで復旧操作を認証する",
+                  "異常項目の期待値・実測値・エラーコードを確認する",
+                  "項目に表示された対応操作を実行する",
+                  "同じ自動点検を再実行して正常を確認する",
+                  "エラーレポートへ対応内容を記録して解決済みにする",
+                ],
               },
             },
           }),
@@ -405,7 +416,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({
         success: true,
         code: "SYSTEM_CHECK_AUTO_COMPLETED",
-        message: "自動点検が完了しました。",
+        message: status === "PASSED" ? "自動点検が完了し、異常はありませんでした。" : "自動点検が完了しました。異常項目にエラーコード・対応方法・復旧手順を表示しています。",
         run,
       });
     }

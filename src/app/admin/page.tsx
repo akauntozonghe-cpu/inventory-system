@@ -319,11 +319,11 @@ export default function AdminPage() {
         <header className="flex flex-col gap-5 sm:flex-row sm:items-start sm:justify-between">
           <div>
             <p className="text-sm font-black tracking-[0.14em] text-violet-600">
-              ADMINISTRATOR MODE
+              SYSTEM CONTROL
             </p>
 
             <h1 className="mt-1 text-3xl font-black tracking-tight sm:text-4xl">
-              管理者メニュー
+              システム管理
             </h1>
 
             <p className="mt-2 max-w-2xl leading-6 text-slate-600">
@@ -335,7 +335,7 @@ export default function AdminPage() {
           <div className="flex flex-wrap items-center gap-3">
             <div className="rounded-2xl bg-white px-4 py-3 shadow-sm">
               <p className="text-xs font-bold text-slate-500">
-                管理者としてログイン中
+                ログイン中
               </p>
 
               <p className="font-black text-slate-950">{user.displayName}</p>
@@ -352,7 +352,7 @@ export default function AdminPage() {
 
         <section className="mt-7 rounded-3xl border border-amber-200 bg-amber-50 p-5">
           <h2 className="font-black text-amber-950">
-            管理者操作について
+            重要な変更について
           </h2>
 
           <p className="mt-2 text-sm leading-6 text-amber-900">

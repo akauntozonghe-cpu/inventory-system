@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { Prisma } from "@prisma/client";
 import { requireLogin } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { calculateMarketplaceProfit } from "@/lib/personal-marketplace";
@@ -30,7 +31,7 @@ function csvCell(value: unknown) {
   return `"${String(value ?? "").replace(/"/g, '""')}"`;
 }
 
-export async function GET(request: NextRequest) {
+async function loadMarketplace(request: NextRequest) {
   const auth = requireLogin(request);
   if (auth.response) return auth.response;
 
@@ -90,6 +91,32 @@ export async function GET(request: NextRequest) {
     recommendationSetting,
     summary,
   });
+}
+
+export async function GET(request: NextRequest) {
+  try {
+    return await loadMarketplace(request);
+  } catch (error) {
+    console.error("GET /api/admin/marketplace/listings", error);
+
+    const schemaNotReady =
+      (error instanceof Prisma.PrismaClientKnownRequestError &&
+        (error.code === "P2021" || error.code === "P2022")) ||
+      (error instanceof Error &&
+        /does not exist|unknown column|missing.*column/i.test(error.message));
+
+    return NextResponse.json(
+      {
+        code: schemaNotReady
+          ? "MARKETPLACE_SCHEMA_NOT_READY"
+          : "MARKETPLACE_LIST_FAILED",
+        message: schemaNotReady
+          ? "フリマ用データを更新しています。デプロイ完了後に再読み込みしてください。"
+          : "フリマ情報を取得できませんでした。しばらく待ってから再読み込みしてください。",
+      },
+      { status: schemaNotReady ? 503 : 500 }
+    );
+  }
 }
 
 export async function POST(request: NextRequest) {

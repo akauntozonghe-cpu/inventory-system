@@ -2,6 +2,8 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { getErrorGuidance } from "@/lib/error-guidance";
+import AdminModeDialog from "@/components/stocktake/AdminModeDialog";
 
 type CheckStatus = "PASS" | "WARNING" | "FAIL" | "NOT_RUN";
 type RunStatus = "PASSED" | "WARNING" | "FAILED";
@@ -232,6 +234,10 @@ export default function SystemCheckPage() {
   const [runningAuto, setRunningAuto] = useState(false);
   const [savingManual, setSavingManual] = useState(false);
   const [workingId, setWorkingId] = useState("");
+  const [pendingRecovery, setPendingRecovery] = useState<{
+    action: "PAUSE_SESSION" | "RESUME_SESSION" | "CANCEL_SESSION" | "ISSUE_SYSTEM_BARCODE";
+    values: { sessionId?: string; itemId?: string; reason?: string };
+  } | null>(null);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
 
@@ -340,6 +346,10 @@ export default function SystemCheckPage() {
       const payload = getErrorPayload(data);
 
       if (!response.ok) {
+        if (payload.code === "ADMIN_ELEVATION_REQUIRED") {
+          setPendingRecovery({ action, values });
+          return;
+        }
         throw new Error(
           `${payload.code ?? "SYSTEM_CHECK_AUTO_FAILED"}: ${
             payload.message ?? "自動点検を実行できませんでした。"
@@ -927,7 +937,9 @@ export default function SystemCheckPage() {
                   </summary>
 
                   <div className="mt-4 space-y-3 border-t border-slate-200 pt-4">
-                    {run.items.map((item) => (
+                    {run.items.map((item) => {
+                      const guidance = item.errorCode ? getErrorGuidance(item.errorCode) : null;
+                      return (
                       <article
                         key={item.id}
                         className="rounded-xl bg-slate-50 p-3 text-sm"
@@ -962,8 +974,18 @@ export default function SystemCheckPage() {
                             {item.actual ?? "-"}
                           </p>
                         )}
+                        {item.status !== "PASS" && guidance && (
+                          <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 p-3 text-amber-950">
+                            <p><span className="font-black">次に行うこと：</span>{guidance.action}</p>
+                            <details className="mt-2">
+                              <summary className="cursor-pointer font-black">認証後の復旧手順を表示</summary>
+                              <ol className="mt-2 list-decimal space-y-1 pl-5">{guidance.adminSteps.map((step) => <li key={step}>{step}</li>)}</ol>
+                            </details>
+                            <Link href={guidance.recoveryRoute} className="mt-3 inline-flex rounded-lg bg-slate-900 px-3 py-2 font-black text-white">対応画面を開く</Link>
+                          </div>
+                        )}
                       </article>
-                    ))}
+                    );})}
                   </div>
                 </details>
               ))}
@@ -1037,6 +1059,17 @@ export default function SystemCheckPage() {
           </section>
         </div>
       )}
+      <AdminModeDialog
+        open={Boolean(pendingRecovery)}
+        sessionId={pendingRecovery?.values.sessionId ?? ""}
+        purpose="自動復旧で解決できなかった項目を変更します。手順と対象を確認し、IDとパスワードで認証してください。認証と実行結果はレポートへ記録されます。"
+        onClose={() => setPendingRecovery(null)}
+        onAuthenticated={() => {
+          const pending = pendingRecovery;
+          setPendingRecovery(null);
+          if (pending) void remediate(pending.action, pending.values);
+        }}
+      />
     </main>
   );
 }

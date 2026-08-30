@@ -402,7 +402,7 @@ export default function UserManagementPage() {
             <h1 className="mt-1 text-3xl font-black">ユーザー管理</h1>
 
             <p className="mt-2 text-slate-600">
-              作業者の追加・停止・パスワード再設定を行います。
+              利用者の追加・停止・パスワード再設定を行います。
             </p>
           </div>
 
@@ -538,8 +538,8 @@ export default function UserManagementPage() {
                   }
                   className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
                 >
-                  <option value="WORKER">作業者</option>
-                  <option value="ADMIN">管理者</option>
+                  <option value="WORKER">標準利用</option>
+                  <option value="ADMIN">全機能</option>
                 </select>
               </div>
 
@@ -605,7 +605,7 @@ export default function UserManagementPage() {
                                   : "bg-blue-100 text-blue-700"
                               }`}
                             >
-                              {user.role === "ADMIN" ? "管理者" : "作業者"}
+                              {user.role === "ADMIN" ? "全機能" : "標準利用"}
                             </span>
 
                             <span
@@ -662,7 +662,7 @@ export default function UserManagementPage() {
                         <p className="text-sm font-black text-slate-900">利用できる機能</p>
                         {user.role === "ADMIN" ? (
                           <p className="mt-2 text-sm font-bold text-violet-700">
-                            管理者はすべての機能を利用できます。
+                            すべての機能を利用できます。
                           </p>
                         ) : (
                           <div className="mt-3 grid gap-2 sm:grid-cols-2">
