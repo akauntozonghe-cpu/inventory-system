@@ -126,6 +126,11 @@ model MarketplaceListing {
   channel String @default("flea_market")
   externalListingId String?
   title String
+  description String?
+  category String?
+  itemCondition String?
+  photoUrls Json?
+  listingUrl String?
   price Int
   listedQuantity Int @default(1)
   soldQuantity Int @default(0)
@@ -134,10 +139,15 @@ model MarketplaceListing {
   packagingCost Int? @default(0)
   acquisitionCostSnapshot Int?
   shippingMethod String?
+  shippingStatus String @default("NOT_READY")
+  trackingNumber String?
   status MarketplaceListingStatus @default(DRAFT)
   notes String?
   listedAt DateTime?
   soldAt DateTime?
+  shippedAt DateTime?
+  deliveredAt DateTime?
+  settledAt DateTime?
   createdByUserId String?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
