@@ -43,7 +43,7 @@ export async function GET(request: NextRequest) {
   try {
     const [masters, items, locations] = await Promise.all([
       prisma.classification.findMany({ orderBy: [{ kind: "asc" }, { parentName: "asc" }, { name: "asc" }] }),
-      prisma.item.findMany({ where: { isArchived: false }, select: { majorCategory: true, minorCategory: true, _count: { select: { inventoryInstances: true } } } }),
+      prisma.item.findMany({ where: { isArchived: false }, orderBy: { name: "asc" }, select: { id: true, name: true, janCode: true, systemBarcode: true, majorCategory: true, minorCategory: true, inventoryInstances: { select: { quantity: true } }, _count: { select: { inventoryInstances: true } } } }),
       prisma.storageLocation.findMany({ orderBy: { name: "asc" }, include: { _count: { select: { inventories: true, itemRegistrationRequests: true } } } }),
     ]);
     const usage = new Map<string, { itemCount: number; inventoryCount: number }>();
@@ -51,11 +51,11 @@ export async function GET(request: NextRequest) {
       if (item.majorCategory) { const key = `MAJOR::${item.majorCategory}`; const row = usage.get(key) ?? { itemCount: 0, inventoryCount: 0 }; row.itemCount += 1; row.inventoryCount += item._count.inventoryInstances; usage.set(key, row); }
       if (item.minorCategory) { const key = `MINOR:${item.majorCategory ?? ""}:${item.minorCategory}`; const row = usage.get(key) ?? { itemCount: 0, inventoryCount: 0 }; row.itemCount += 1; row.inventoryCount += item._count.inventoryInstances; usage.set(key, row); }
     }
-    const derived = Array.from(usage).map(([key, counts]) => { const [kind, parentName, ...nameParts] = key.split(":"); return { id: `derived-${key}`, kind, parentName: kind === "MAJOR" ? "" : parentName, name: kind === "MAJOR" ? parentName : nameParts.join(":"), ...counts }; });
+    const derived = Array.from(usage).map(([key, counts]) => { const [kind, parentName, ...nameParts] = key.split(":"); return { id: `derived-${key}`, kind, parentName: kind === "MAJOR" ? "" : parentName, name: nameParts.join(":"), ...counts }; });
     const rows = new Map<string, { id: string; kind: string; name: string; parentName: string; itemCount: number; inventoryCount: number }>();
     for (const row of masters) rows.set(`${row.kind}:${row.parentName}:${row.name}`, { ...row, itemCount: 0, inventoryCount: 0 });
     for (const row of derived) rows.set(`${row.kind}:${row.parentName}:${row.name}`, { ...(rows.get(`${row.kind}:${row.parentName}:${row.name}`) ?? row), itemCount: row.itemCount, inventoryCount: row.inventoryCount });
-    return NextResponse.json({ classifications: Array.from(rows.values()), locations });
+    return NextResponse.json({ classifications: Array.from(rows.values()), locations, items: items.map((item) => ({ id: item.id, name: item.name, janCode: item.janCode, systemBarcode: item.systemBarcode, majorCategory: item.majorCategory, minorCategory: item.minorCategory, inventoryCount: item._count.inventoryInstances, totalQuantity: item.inventoryInstances.reduce((sum, row) => sum + row.quantity, 0) })) });
   } catch (error) { console.error("GET classifications", error); return NextResponse.json({ code: "CLASSIFICATION_LIST_FAILED", message: "分類・保管場所を取得できませんでした。", action: "自動再読込後も解決しない場合はシステム点検を実行してください。" }, { status: 500 }); }
 }
 
@@ -87,6 +87,24 @@ export async function POST(request: NextRequest) {
         await tx.classification.deleteMany({ where: { kind: "MINOR", name: source, ...(parentName ? { parentName } : {}) } });
         await tx.classification.upsert({ where: { kind_name_parentName: { kind: "MINOR", name: target, parentName: targetParent || parentName } }, update: {}, create: { kind: "MINOR", name: target, parentName: targetParent || parentName } });
         return { items: items.count, inventories: inventories.count };
+      });
+    } else if (action === "ASSIGN_ITEMS") {
+      const itemIds = Array.isArray(body.itemIds) ? Array.from(new Set(body.itemIds.filter((value): value is string => typeof value === "string" && value.length > 0))).slice(0, 500) : [];
+      const hasMajor = Object.prototype.hasOwnProperty.call(body, "majorCategory");
+      const hasMinor = Object.prototype.hasOwnProperty.call(body, "minorCategory");
+      const majorCategory = body.majorCategory === null ? null : text(body.majorCategory);
+      const minorCategory = body.minorCategory === null ? null : text(body.minorCategory);
+      if (itemIds.length === 0 || (!hasMajor && !hasMinor)) return NextResponse.json({ code: "CLASSIFICATION_ITEMS_REQUIRED", message: "編集する商品と変更内容を選択してください。" }, { status: 400 });
+      if (hasMinor && minorCategory && !(hasMajor ? majorCategory : text(body.currentMajor))) return NextResponse.json({ code: "CLASSIFICATION_PARENT_REQUIRED", message: "小分類を設定する場合は大分類も選択してください。" }, { status: 400 });
+      result = await prisma.$transaction(async (tx) => {
+        const selected = await tx.item.findMany({ where: { id: { in: itemIds }, isArchived: false }, select: { id: true, majorCategory: true, minorCategory: true } });
+        for (const item of selected) {
+          const nextMajor = hasMajor ? majorCategory : item.majorCategory;
+          const nextMinor = hasMinor ? minorCategory : (hasMajor && majorCategory !== item.majorCategory ? null : item.minorCategory);
+          await tx.item.update({ where: { id: item.id }, data: { majorCategory: nextMajor, minorCategory: nextMinor } });
+          await tx.inventoryInstance.updateMany({ where: { itemId: item.id }, data: { majorCategory: nextMajor, minorCategory: nextMinor } });
+        }
+        return { updatedItems: selected.length, requestedItems: itemIds.length };
       });
     } else if (action === "DELETE_CLASSIFICATION") {
       const used = kind === "MAJOR" ? await prisma.item.count({ where: { majorCategory: source } }) : await prisma.item.count({ where: { minorCategory: source, ...(parentName ? { majorCategory: parentName } : {}) } });
