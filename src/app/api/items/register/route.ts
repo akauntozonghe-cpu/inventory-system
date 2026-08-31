@@ -7,6 +7,7 @@ import {
   Prisma,
 } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
+import { normalizeExpirationDate } from "@/lib/expiry-management";
 import {
   getLoggedInUser,
   hasAdminAccess,
@@ -146,7 +147,10 @@ export async function POST(request: NextRequest) {
     const unit = optionalText(body.unit, 30);
     const storageLocationId = optionalText(body.storageLocationId, 100);
     const lotNo = optionalText(body.lotNo, 100);
-    const expirationDate = optionalText(body.expirationDate, 30);
+    const expirationDate = normalizeExpirationDate(body.expirationDate);
+    if (expirationDate === undefined) {
+      return NextResponse.json({ code: "ITEM_EXPIRATION_FORMAT_INVALID", message: "使用期限は未入力、YYYY-MM、YYYY-MM-DDのいずれかで入力してください。" }, { status: 400 });
+    }
     const memo = optionalText(body.memo, 500);
     const quantity = validQuantity(body.quantity);
 

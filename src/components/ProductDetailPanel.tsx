@@ -28,6 +28,10 @@ function formatDate(value: string | null | undefined) {
   if (!value) {
     return "-";
   }
+  if (/^\d{4}-\d{2}$/.test(value)) {
+    const [year, month] = value.split("-");
+    return `${year}年${Number(month)}月`;
+  }
 
   const date = new Date(value);
 

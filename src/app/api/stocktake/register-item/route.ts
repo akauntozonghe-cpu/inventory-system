@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { normalizeExpirationDate } from "@/lib/expiry-management";
 import { getLoggedInUser, hasAdminAccess } from "@/lib/auth";
 import { resolveStocktakeRegistration } from "@/lib/stocktake-registration";
 import { databaseErrorCode, isRetryableDatabaseError, withDatabaseRetry } from "@/lib/database-retry";
@@ -259,10 +260,10 @@ export async function POST(request: NextRequest) {
         }
 
         const lotNo = getOptionalText(body.lotNo, 100);
-        const expirationDate = getOptionalText(
-          body.expirationDate,
-          30
-        );
+        const expirationDate = normalizeExpirationDate(body.expirationDate);
+        if (expirationDate === undefined) {
+          throw new Error("STOCKTAKE_EXPIRATION_FORMAT_INVALID");
+        }
         const unit =
           getOptionalText(body.unit, 30) ?? item.defaultUnit;
 
@@ -451,6 +452,8 @@ export async function POST(request: NextRequest) {
         "棚卸中ではないため、新しい商品を追加できません。",
       REGISTER_ITEM_LOCATION_NOT_FOUND:
         "選択した保管場所が見つかりません。",
+      STOCKTAKE_EXPIRATION_FORMAT_INVALID:
+        "使用期限は未入力、YYYY-MM、YYYY-MM-DDのいずれかで入力してください。",
     };
 
     if (isRetryableDatabaseError(error)) {

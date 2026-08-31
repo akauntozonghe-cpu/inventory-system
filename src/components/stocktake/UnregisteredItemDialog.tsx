@@ -476,10 +476,13 @@ export default function UnregisteredItemDialog({
           </label>
 
           <label>
-            <span className="text-sm font-bold">使用期限</span>
+            <span className="text-sm font-bold">使用期限（年月のみ・年月日）</span>
 
             <input
-              type="date"
+              type="text"
+              inputMode="numeric"
+              placeholder="例：2027-08 または 2027-08-31"
+              pattern="[0-9]{4}-[0-9]{2}(-[0-9]{2})?"
               value={form.expirationDate}
               onChange={(event) =>
                 update("expirationDate", event.target.value)

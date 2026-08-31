@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireAdmin } from "@/lib/auth";
 import { createAdminActionLog } from "@/lib/error-report";
+import { normalizeExpirationDate } from "@/lib/expiry-management";
 
 function getText(value: unknown, maxLength = 300) {
   return typeof value === "string"
@@ -98,10 +99,7 @@ export async function POST(request: NextRequest) {
       100
     );
     const lotNo = getOptionalText(body.lotNo, 100);
-    const expirationDate = getOptionalText(
-      body.expirationDate,
-      30
-    );
+    const expirationDate = normalizeExpirationDate(body.expirationDate);
     const unit = getOptionalText(body.unit, 30);
 
     if (!itemId) {
@@ -112,6 +110,10 @@ export async function POST(request: NextRequest) {
         },
         { status: 400 }
       );
+    }
+
+    if (expirationDate === undefined) {
+      return NextResponse.json({ code: "INVENTORY_EXPIRATION_FORMAT_INVALID", message: "使用期限は未入力、YYYY-MM、YYYY-MM-DDのいずれかで入力してください。" }, { status: 400 });
     }
 
     if (quantity === null || quantity < 0) {
@@ -303,6 +305,10 @@ export async function PUT(request: NextRequest) {
 
   try {
     const body = await request.json();
+    const normalizedExpirationDate = normalizeExpirationDate(body.expirationDate);
+    if (normalizedExpirationDate === undefined) {
+      return NextResponse.json({ code: "INVENTORY_EXPIRATION_FORMAT_INVALID", message: "使用期限は未入力、YYYY-MM、YYYY-MM-DDのいずれかで入力してください。" }, { status: 400 });
+    }
 
     const id = getText(body.id, 100);
     const quantity = getInteger(body.quantity);
@@ -393,10 +399,7 @@ export async function PUT(request: NextRequest) {
               actualQuantity,
               storageLocationId,
               lotNo: getOptionalText(body.lotNo, 100),
-              expirationDate: getOptionalText(
-                body.expirationDate,
-                30
-              ),
+              expirationDate: normalizedExpirationDate,
               unit: getOptionalText(body.unit, 30),
               status:
                 getText(body.status, 100) ||

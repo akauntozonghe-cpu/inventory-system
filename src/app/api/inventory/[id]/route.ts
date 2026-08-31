@@ -7,6 +7,7 @@ import {
 import { prisma } from "@/lib/prisma";
 import { requireAdmin, requireLogin } from "@/lib/auth";
 import { createAdminActionLog } from "@/lib/error-report";
+import { normalizeExpirationDate } from "@/lib/expiry-management";
 
 type RouteContext = {
   params: Promise<{
@@ -306,6 +307,13 @@ export async function PATCH(
         ? existing.actualQuantity
         : body.actualQuantity;
 
+    const normalizedExpirationDate = body.expirationDate === undefined
+      ? existing.expirationDate
+      : normalizeExpirationDate(body.expirationDate);
+    if (normalizedExpirationDate === undefined) {
+      return NextResponse.json({ code: "INVENTORY_EXPIRATION_FORMAT_INVALID", message: "使用期限は未入力、YYYY-MM、YYYY-MM-DDのいずれかで入力してください。" }, { status: 400 });
+    }
+
     const updateData: Prisma.InventoryInstanceUpdateInput = {
       storageLocation: storageLocationId
         ? {
@@ -341,9 +349,7 @@ export async function PATCH(
           ? existing.lotNo
           : emptyToNull(body.lotNo),
       expirationDate:
-        body.expirationDate === undefined
-          ? existing.expirationDate
-          : emptyToNull(body.expirationDate),
+        normalizedExpirationDate,
       unit:
         body.unit === undefined
           ? existing.unit

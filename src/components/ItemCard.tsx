@@ -121,7 +121,9 @@ export default function ItemCard({
 
           <div className="text-xl font-semibold">
             {item.expirationDate
-              ? new Date(item.expirationDate).toLocaleDateString("ja-JP")
+              ? /^\d{4}-\d{2}$/.test(item.expirationDate)
+                ? `${item.expirationDate.slice(0, 4)}年${Number(item.expirationDate.slice(5, 7))}月`
+                : new Date(item.expirationDate).toLocaleDateString("ja-JP")
               : "-"}
           </div>
         </div>

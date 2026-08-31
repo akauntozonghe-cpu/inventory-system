@@ -562,11 +562,14 @@ export default function AddPage() {
 
               <label className="sm:col-span-2">
                 <span className="font-bold text-slate-800">
-                  使用期限
+                  使用期限（年月のみ・年月日の両方に対応）
                 </span>
 
                 <input
-                  type="date"
+                  type="text"
+                  inputMode="numeric"
+                  placeholder="例：2027-08 または 2027-08-31"
+                  pattern="[0-9]{4}-[0-9]{2}(-[0-9]{2})?"
                   value={form.expirationDate}
                   onChange={(event) =>
                     change("expirationDate", event.target.value)

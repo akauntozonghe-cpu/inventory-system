@@ -91,6 +91,10 @@ function formatDate(value: string | null | undefined) {
   if (!value) {
     return "-";
   }
+  if (/^\d{4}-\d{2}$/.test(value)) {
+    const [year, month] = value.split("-");
+    return `${year}年${Number(month)}月`;
+  }
 
   const date = new Date(value);
 
@@ -1028,7 +1032,7 @@ export default function ItemDetailPage() {
 
                             <label className="block">
                               <span className="font-bold text-slate-700">
-                                使用期限
+                                使用期限（年月のみ・年月日）
                               </span>
                               <input
                                 value={inventoryForm.expirationDate}
@@ -1038,7 +1042,9 @@ export default function ItemDetailPage() {
                                     expirationDate: event.target.value,
                                   })
                                 }
-                                placeholder="例：2027-08-31"
+                                inputMode="numeric"
+                                placeholder="例：2027-08 または 2027-08-31"
+                                pattern="[0-9]{4}-[0-9]{2}(-[0-9]{2})?"
                                 className="mt-2 w-full rounded-xl border border-slate-300 px-4 py-3"
                               />
                             </label>

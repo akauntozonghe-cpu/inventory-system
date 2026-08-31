@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireAdmin } from "@/lib/auth";
 import { createAdminActionLog } from "@/lib/error-report";
+import { normalizeExpirationDate } from "@/lib/expiry-management";
 
 const MAX_IMPORT_ROWS = 1000;
 
@@ -67,6 +68,7 @@ function validateRow(
   const storageLocation = getText(row.storageLocation, 100);
   const name = getText(row.name, 200);
   const quantity = Number(row.quantity);
+  const expirationDate = normalizeExpirationDate(row.expirationDate);
 
   if (!storageLocation) {
     return {
@@ -90,6 +92,10 @@ function validateRow(
     };
   }
 
+  if (expirationDate === undefined) {
+    return { success: false, message: `${rowNumber}行目：使用期限は未入力、YYYY-MM、YYYY-MM-DDのいずれかで入力してください。` };
+  }
+
   return {
     success: true,
     data: {
@@ -111,10 +117,7 @@ function validateRow(
       quantity,
       unit: getOptionalText(row.unit, 30),
       lotNo: getOptionalText(row.lotNo, 100),
-      expirationDate: getOptionalText(
-        row.expirationDate,
-        30
-      ),
+      expirationDate,
     },
   };
 }

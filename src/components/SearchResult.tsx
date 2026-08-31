@@ -120,7 +120,9 @@ export default function SearchResult({
                 <div>
 
                   {inventory.expirationDate
-                    ? new Date(
+                    ? /^\d{4}-\d{2}$/.test(inventory.expirationDate)
+                      ? `${inventory.expirationDate.slice(0, 4)}年${Number(inventory.expirationDate.slice(5, 7))}月`
+                      : new Date(
                         inventory.expirationDate
                       ).toLocaleDateString("ja-JP")
                     : "-"}
