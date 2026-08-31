@@ -48,6 +48,14 @@ const workerMenus: Menu[] = [
     color: "bg-violet-600",
   },
   {
+    href: "/expiry",
+    icon: "⏰",
+    title: "期限管理",
+    description: "期限切れ・期限接近・確認済み・対応記録を優先順に管理します。",
+    color: "bg-orange-600",
+    feature: "CATALOG",
+  },
+  {
     href: "/items",
     icon: "🔎",
     title: "商品・在庫検索",

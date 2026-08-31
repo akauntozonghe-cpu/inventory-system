@@ -35,6 +35,9 @@ export function requiredFeature(
   if (pathname.startsWith("/inventory-search") || pathname === "/inventory") {
     return "CATALOG";
   }
+  if (pathname === "/expiry" || pathname === "/api/expiry") {
+    return "CATALOG";
+  }
   if (pathname === "/api/inventory/search") {
     return hasStocktakeSession ? "STOCKTAKE" : "CATALOG";
   }

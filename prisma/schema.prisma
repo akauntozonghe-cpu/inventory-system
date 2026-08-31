@@ -91,6 +91,10 @@ model InventoryInstance {
   minorCategory       String?
   lotNo               String?
   expirationDate      String?
+  expirationAlertDays Int      @default(30)
+  expirationManagementStatus String @default("ACTIVE")
+  expirationNote      String?
+  expirationReviewedAt DateTime?
   unit                String?
   acquisitionCost     Int?
   packageWeightGrams  Int?
@@ -117,6 +121,7 @@ model InventoryInstance {
   marketplaceListings MarketplaceListing[]
 
   @@unique([itemId, storageLocationId, lotNo, expirationDate])
+  @@index([expirationDate, expirationManagementStatus])
 }
 
 model MarketplaceListing {

@@ -346,10 +346,6 @@ export default function SystemCheckPage() {
       const payload = getErrorPayload(data);
 
       if (!response.ok) {
-        if (payload.code === "ADMIN_ELEVATION_REQUIRED") {
-          setPendingRecovery({ action, values });
-          return;
-        }
         throw new Error(
           `${payload.code ?? "SYSTEM_CHECK_AUTO_FAILED"}: ${
             payload.message ?? "自動点検を実行できませんでした。"
@@ -457,6 +453,10 @@ export default function SystemCheckPage() {
       const payload = getErrorPayload(data);
 
       if (!response.ok) {
+        if (payload.code === "ADMIN_ELEVATION_REQUIRED") {
+          setPendingRecovery({ action, values });
+          return;
+        }
         throw new Error(
           `${payload.code ?? "SYSTEM_REMEDIATION_FAILED"}: ${
             payload.message ?? "管理者操作を実行できませんでした。"
