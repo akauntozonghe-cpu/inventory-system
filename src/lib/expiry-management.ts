@@ -15,6 +15,11 @@ export function normalizeExpirationDate(value: unknown): string | null | undefin
   if (typeof value !== "string" && typeof value !== "number") return undefined;
   const source = String(value).normalize("NFKC").trim();
   if (/^(?:no\s*data|n\/a|なし|期限なし|未登録|-)$/i.test(source)) return null;
+  if (MONTH_PATTERN.test(source)) {
+    const [year, month] = source.split("-").map(Number);
+    return year >= 1900 && year <= 9999 && month >= 1 && month <= 12 ? source : undefined;
+  }
+  if (DATE_PATTERN.test(source)) return utcDay(source) === null ? undefined : source;
   const japanese = source.match(/^(\d{4})年\s*(\d{1,2})月(?:\s*(\d{1,2})日?)?$/);
   if (japanese) {
     const [, year, month, day] = japanese;
