@@ -2,6 +2,7 @@ import { ErrorSeverity, Prisma } from "@prisma/client";
 import { NextRequest, NextResponse } from "next/server";
 import { getLoggedInUser } from "@/lib/auth";
 import { createErrorReport } from "@/lib/error-report";
+import { prisma } from "@/lib/prisma";
 
 type ErrorPayload = {
   code?: unknown;
@@ -100,6 +101,25 @@ export async function POST(request: NextRequest) {
         { status: 500 }
       );
     }
+
+    // 自動復旧の成否を待たず、管理側へ受付を即時通知する。
+    await prisma.notification.create({
+      data: {
+        type: "SYSTEM_ERROR",
+        audience: "ADMIN",
+        title: `システムエラー受付：${code}`,
+        message: `${title}。自動復旧を開始しました。失敗時はエラー管理から復旧してください。`,
+        detail: {
+          errorReportId: report.id,
+          code,
+          route: getText(body.route, 500) || undefined,
+          sessionId: getText(body.sessionId, 100) || undefined,
+          recoveryRoute: "/admin/error-reports",
+        },
+      },
+    }).catch((notificationError) => {
+      console.error("エラー即時通知の作成に失敗しました。", notificationError);
+    });
 
     return NextResponse.json(
       {

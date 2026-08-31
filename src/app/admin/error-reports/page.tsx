@@ -161,9 +161,9 @@ export default function ErrorReportsPage() {
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState("");
 
-  const loadReports = async () => {
-    setLoading(true);
-    setMessage("");
+  const loadReports = async (silent = false) => {
+    if (!silent) setLoading(true);
+    if (!silent) setMessage("");
 
     try {
       const response = await fetch("/api/admin/error-reports", {
@@ -180,18 +180,25 @@ export default function ErrorReportsPage() {
 
       setReports(data as ErrorReport[]);
     } catch (error) {
-      setMessage(
+      if (!silent) setMessage(
         error instanceof Error
           ? error.message
           : "エラーレポート一覧を取得できませんでした。"
       );
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   };
 
   useEffect(() => {
     void loadReports();
+    const timer = window.setInterval(() => void loadReports(true), 5_000);
+    const refresh = () => void loadReports(true);
+    window.addEventListener("focus", refresh);
+    return () => {
+      window.clearInterval(timer);
+      window.removeEventListener("focus", refresh);
+    };
   }, []);
 
   const filteredReports = useMemo(() => {

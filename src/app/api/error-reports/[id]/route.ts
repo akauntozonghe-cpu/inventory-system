@@ -69,6 +69,18 @@ export async function PATCH(
                 },
       });
 
+      if (body.action === "ADMIN_REQUIRED") {
+        await prisma.notification.create({
+          data: {
+            type: "SYSTEM_ERROR",
+            audience: "ADMIN",
+            title: `復旧対応が必要：${report.code}`,
+            message: `${report.title}は自動復旧できませんでした。エラー管理から直ちに復旧してください。`,
+            detail: { errorReportId: report.id, code: report.code, route: report.route, sessionId: report.sessionId, recoveryRoute: "/admin/error-reports" },
+          },
+        }).catch((notificationError) => console.error("管理者復旧通知に失敗しました。", notificationError));
+      }
+
       return NextResponse.json({ success: true, report: updated });
     }
 

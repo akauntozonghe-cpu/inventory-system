@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { getLoggedInUser, hasAdminAccess } from "@/lib/auth";
+import { withDatabaseRetry } from "@/lib/database-retry";
 
 type FilterType = "UNRECORDED" | "RECORDED" | "DIFFERENCE" | "ALL";
 
@@ -50,14 +51,16 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    const session = await prisma.stocktakeSession.findUnique({
+    const session = await withDatabaseRetry(() => prisma.stocktakeSession.findUnique({
       where: { id: sessionId },
       select: {
         id: true,
         operatorUserId: true,
         status: true,
+        scopeType: true,
+        scopeValue: true,
       },
-    });
+    }));
 
     if (!session) {
       return NextResponse.json(
@@ -85,6 +88,31 @@ export async function GET(request: NextRequest) {
     }
 
     const inventoryFilters: Prisma.InventoryInstanceWhereInput[] = [];
+    const normalizedKeyword = normalizeCode(keyword);
+
+    if (exact && normalizedKeyword) {
+      // 棚卸開始後に登録・変更された商品も、読取時点の最新DBから対象へ反映する。
+      const currentInventories = await withDatabaseRetry(() => prisma.inventoryInstance.findMany({
+        where: { status: { not: "廃止" } },
+        select: {
+          id: true, quantity: true, managementCode: true, managementGroupCode: true, majorCategory: true, minorCategory: true,
+          storageLocation: { select: { name: true } },
+          item: { select: { janCode: true, systemBarcode: true, managementCode: true, managementGroupCode: true, majorCategory: true, minorCategory: true } },
+        },
+        take: 5000,
+      }));
+      const currentMatches = currentInventories.filter((inventory) => {
+        const codes = [inventory.item.janCode, inventory.item.systemBarcode, inventory.item.managementCode, inventory.item.managementGroupCode, inventory.managementCode, inventory.managementGroupCode].map(normalizeCode);
+        return codes.includes(normalizedKeyword) && matchesSessionScope(inventory, session);
+      });
+      if (currentMatches.length > 0) {
+        await withDatabaseRetry(() => prisma.$transaction(currentMatches.map((inventory) => prisma.stocktakeTarget.upsert({
+          where: { sessionId_inventoryInstanceId: { sessionId, inventoryInstanceId: inventory.id } },
+          update: {},
+          create: { sessionId, inventoryInstanceId: inventory.id, expectedQuantity: inventory.quantity },
+        }))));
+      }
+    }
 
     if (majorCategory) {
       inventoryFilters.push({
@@ -96,7 +124,7 @@ export async function GET(request: NextRequest) {
       });
     }
 
-    if (keyword) {
+    if (keyword && !exact) {
       const textCondition = exact
         ? keyword
         : {
@@ -204,7 +232,7 @@ export async function GET(request: NextRequest) {
         : {}),
     };
 
-    const targets = await prisma.stocktakeTarget.findMany({
+    const targets = await withDatabaseRetry(() => prisma.stocktakeTarget.findMany({
       where,
       select: {
         inventoryInstanceId: true,
@@ -247,9 +275,9 @@ export async function GET(request: NextRequest) {
         createdAt: "asc",
       },
       take: 1000,
-    });
+    }));
 
-    const records = await prisma.stocktakeRecord.findMany({
+    const records = await withDatabaseRetry(() => prisma.stocktakeRecord.findMany({
       where: {
         sessionId,
         inventoryInstanceId: {
@@ -262,7 +290,7 @@ export async function GET(request: NextRequest) {
         memo: true,
         updatedAt: true,
       },
-    });
+    }));
 
     const recordMap = new Map(
       records.map((record) => [record.inventoryInstanceId, record])
@@ -319,6 +347,10 @@ export async function GET(request: NextRequest) {
         };
       })
       .filter((inventory) => {
+        if (!exact || !normalizedKeyword) return true;
+        return [inventory.item.janCode, inventory.item.systemBarcode, inventory.item.managementCode, inventory.item.managementGroupCode].map(normalizeCode).includes(normalizedKeyword);
+      })
+      .filter((inventory) => {
         if (filter === "ALL") {
           return true;
         }
@@ -341,9 +373,26 @@ export async function GET(request: NextRequest) {
     return NextResponse.json(
       {
         code: "INVENTORY_SEARCH_FAILED",
-        message: "棚卸対象の検索に失敗しました。",
+        message: "最新の商品情報による棚卸検索に失敗しました。自動復旧後も解決しない場合は管理者へお問い合わせください。",
+        action: "入力内容を変えずに『今すぐ自動復旧』を実行してください。",
+        recoveryRoute: "/admin/error-reports",
       },
       { status: 500 }
     );
   }
+}
+
+function normalizeCode(value: string | null | undefined) {
+  return (value ?? "").normalize("NFKC").replace(/[\s\-‐‑‒–—―ー]/g, "").toLowerCase();
+}
+
+function matchesSessionScope(
+  inventory: { majorCategory: string | null; minorCategory: string | null; storageLocation: { name: string } | null; item: { majorCategory: string | null; minorCategory: string | null } },
+  session: { scopeType: "ALL" | "LOCATION" | "MAJOR_CATEGORY" | "MINOR_CATEGORY"; scopeValue: string | null }
+) {
+  if (session.scopeType === "ALL") return true;
+  if (!session.scopeValue) return false;
+  if (session.scopeType === "LOCATION") return inventory.storageLocation?.name === session.scopeValue;
+  if (session.scopeType === "MAJOR_CATEGORY") return (inventory.majorCategory ?? inventory.item.majorCategory) === session.scopeValue;
+  return (inventory.minorCategory ?? inventory.item.minorCategory) === session.scopeValue;
 }

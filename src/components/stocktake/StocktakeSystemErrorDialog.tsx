@@ -10,6 +10,7 @@ type Props = {
   provisional: boolean;
   isAdmin: boolean;
   onClose: () => void;
+  onRetry: () => Promise<void> | void;
 };
 
 export default function StocktakeSystemErrorDialog({
@@ -19,6 +20,7 @@ export default function StocktakeSystemErrorDialog({
   provisional,
   isAdmin,
   onClose,
+  onRetry,
 }: Props) {
   useEffect(() => {
     const timer = window.setTimeout(onClose, 8000);
@@ -50,10 +52,16 @@ export default function StocktakeSystemErrorDialog({
             今回の棚卸は端末内へ簡易保存しました。作業は続けられます。管理者が復旧完了にすると、この端末から正式登録されます。
           </p>
         )}
+        <p className="mt-4 rounded-2xl border border-blue-200 bg-blue-50 p-4 text-sm font-bold leading-6 text-blue-950">
+          管理側へ即時通知しました。まず「今すぐ自動復旧」を実行してください。改善しない場合は受付番号を伝えて管理者へお問い合わせください。
+        </p>
         <p className="mt-3 text-center text-xs font-bold text-slate-600">
           この表示は8秒後に自動で閉じます。未解決の間は画面左下に状態を表示します。
         </p>
         <div className="mt-6 grid gap-3 sm:grid-cols-2">
+          <button type="button" onClick={() => void onRetry()} className="rounded-xl bg-blue-700 px-5 py-3 font-black text-white hover:bg-blue-800">
+            今すぐ自動復旧
+          </button>
           {isAdmin && (
             <Link
               href="/admin/error-reports"

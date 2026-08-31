@@ -166,6 +166,7 @@ export default function StocktakePage() {
     message: string;
     reportId: string | null;
     provisional: boolean;
+    retry?: () => Promise<void>;
   } | null>(null);
 
   const initializedRef = useRef(false);
@@ -310,7 +311,7 @@ export default function StocktakePage() {
         // 一時的な通信断では操作を止めず、次回同期で自動復旧する。
       });
     };
-    const timer = window.setInterval(sync, 8_000);
+    const timer = window.setInterval(sync, 3_000);
     window.addEventListener("focus", sync);
     window.addEventListener("online", sync);
     return () => {
@@ -411,6 +412,17 @@ export default function StocktakePage() {
     }, 100);
   }, []);
 
+  const requestBarcode = useCallback(async (barcode: string) => {
+    const query = new URLSearchParams({ sessionId, q: barcode, filter: "ALL", exact: "true" });
+    const response = await fetch(`/api/inventory/search?${query.toString()}`, { cache: "no-store" });
+    const data: unknown = await response.json().catch(() => null);
+    if (!response.ok) {
+      throw new StocktakeRequestError(readErrorMessage(data, "バーコード検索に失敗しました。"), readErrorCode(data, `STOCKTAKE_LOOKUP_HTTP_${response.status}`));
+    }
+    if (!Array.isArray(data)) throw new StocktakeRequestError("検索結果の形式が正しくありません。", "STOCKTAKE_LOOKUP_RESPONSE_INVALID");
+    return data as InventoryItem[];
+  }, [sessionId]);
+
   const findBarcode = useCallback(
     async (barcode: string) => {
       const trimmed = barcode.trim();
@@ -424,38 +436,16 @@ export default function StocktakePage() {
       setMessage(`読み取りました：${trimmed}`);
 
       try {
-        const query = new URLSearchParams({
-          sessionId,
-          q: trimmed,
-          filter: "ALL",
-          exact: "true",
-        });
+        const foundItems = await requestBarcode(trimmed);
 
-        const response = await fetch(
-          `/api/inventory/search?${query.toString()}`,
-          {
-            cache: "no-store",
-          }
-        );
-
-        const data: unknown = await response.json().catch(() => null);
-
-        if (!response.ok) {
-          throw new Error(
-            readErrorMessage(data, "バーコード検索に失敗しました。")
-          );
-        }
-
-        if (!Array.isArray(data) || data.length === 0) {
+        if (foundItems.length === 0) {
           setKeyword(trimmed);
           setFilter("ALL");
           setError(
-            "該当する棚卸対象がありません。商品名・JAN・システムバーコードを確認してください。"
+            "最新の商品DBを再確認しましたが、この棚卸範囲には該当商品がありません。JAN・棚卸範囲を確認し、登録済みなら管理者へお問い合わせください。"
           );
           return;
         }
-
-        const foundItems = data as InventoryItem[];
 
         if (foundItems.length === 1) {
           selectItem(foundItems[0]);
@@ -469,18 +459,31 @@ export default function StocktakePage() {
           `${foundItems.length}件の商品が見つかりました。該当する商品を選択してください。`
         );
       } catch (lookupError) {
-        setError(
-          lookupError instanceof Error
-            ? lookupError.message
-            : "バーコード検索に失敗しました。"
-        );
+        const code = lookupError instanceof StocktakeRequestError ? lookupError.code : "STOCKTAKE_LOOKUP_NETWORK_ERROR";
+        const detail = lookupError instanceof Error ? lookupError.message : "バーコード検索に失敗しました。";
+        const recovery = await recoverAfterFailure({ code, title: "棚卸の商品検索エラー", message: detail, route: `/stocktake/${sessionId}`, sessionId, detail: { barcode: trimmed, operation: "REALTIME_LOOKUP" }, action: () => requestBarcode(trimmed) });
+        if (recovery.success && recovery.value) {
+          const recoveredItems = recovery.value;
+          setMessage("自動復旧して最新の商品情報を取得しました。");
+          setSystemError(null);
+          if (recoveredItems.length === 1) selectItem(recoveredItems[0]);
+          else if (recoveredItems.length > 1) { setItems(recoveredItems); setFilter("ALL"); setKeyword(trimmed); }
+          else setError("自動復旧後も該当商品がありません。棚卸範囲を確認し、登録済みの場合は管理者へお問い合わせください。");
+        } else {
+          setSystemError({ code, message: `${detail} 管理者へ即時通知しました。管理者にお問い合わせください。`, reportId: recovery.reportId, provisional: false, retry: async () => {
+            const retryItems = await requestBarcode(trimmed);
+            if (retryItems.length === 1) selectItem(retryItems[0]);
+            else { setItems(retryItems); setFilter("ALL"); setKeyword(trimmed); }
+            setSystemError(null); setMessage("最新DBから商品情報を再取得しました。");
+          } });
+        }
       } finally {
         window.setTimeout(() => {
           barcodeBusyRef.current = false;
         }, 1000);
       }
     },
-    [selectItem, sessionId]
+    [requestBarcode, selectItem, sessionId]
   );
 
   const saveRecord = async () => {
@@ -1248,8 +1251,12 @@ export default function StocktakePage() {
 
       {systemError && (
         <StocktakeSystemErrorDialog
-          {...systemError}
+          code={systemError.code}
+          message={systemError.message}
+          reportId={systemError.reportId}
+          provisional={systemError.provisional}
           isAdmin={isAdmin}
+          onRetry={systemError.retry ?? refresh}
           onClose={() => setSystemError(null)}
         />
       )}
