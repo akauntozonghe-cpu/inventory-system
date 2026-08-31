@@ -1034,19 +1034,12 @@ export default function ItemDetailPage() {
                               <span className="font-bold text-slate-700">
                                 使用期限（年月のみ・年月日）
                               </span>
-                              <input
-                                value={inventoryForm.expirationDate}
-                                onChange={(event) =>
-                                  setInventoryForm({
-                                    ...inventoryForm,
-                                    expirationDate: event.target.value,
-                                  })
-                                }
-                                inputMode="numeric"
-                                placeholder="例：2027-08 または 2027-08-31"
-                                pattern="[0-9]{4}-[0-9]{2}(-[0-9]{2})?"
-                                className="mt-2 w-full rounded-xl border border-slate-300 px-4 py-3"
-                              />
+                              <span className="mt-1 block text-sm font-semibold text-slate-600">年月までなら左、日付まであれば右を使用してください。</span>
+                              <span className="mt-2 grid gap-2 sm:grid-cols-2">
+                                <span><span className="text-xs font-bold">年月まで</span><input type="month" value={inventoryForm.expirationDate.length === 7 ? inventoryForm.expirationDate : ""} onChange={(event) => setInventoryForm({ ...inventoryForm, expirationDate: event.target.value })} className="mt-1 w-full rounded-xl border border-slate-300 px-4 py-3" /></span>
+                                <span><span className="text-xs font-bold">日付まで</span><input type="date" value={inventoryForm.expirationDate.length === 10 ? inventoryForm.expirationDate : ""} onChange={(event) => setInventoryForm({ ...inventoryForm, expirationDate: event.target.value })} className="mt-1 w-full rounded-xl border border-slate-300 px-4 py-3" /></span>
+                              </span>
+                              <span className="mt-2 block text-xs font-bold text-blue-800">保存値：{inventoryForm.expirationDate || "期限なし"}</span>
                             </label>
 
                             <label className="block">

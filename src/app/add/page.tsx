@@ -565,17 +565,12 @@ export default function AddPage() {
                   使用期限（年月のみ・年月日の両方に対応）
                 </span>
 
-                <input
-                  type="text"
-                  inputMode="numeric"
-                  placeholder="例：2027-08 または 2027-08-31"
-                  pattern="[0-9]{4}-[0-9]{2}(-[0-9]{2})?"
-                  value={form.expirationDate}
-                  onChange={(event) =>
-                    change("expirationDate", event.target.value)
-                  }
-                  className="mt-2 w-full rounded-xl border border-slate-300 px-4 py-3 outline-none transition focus:border-blue-600 focus:ring-2 focus:ring-blue-100"
-                />
+                <span className="mt-1 block text-sm font-semibold text-slate-600">印字が年月までなら左、日付まであれば右を使用してください。</span>
+                <span className="mt-2 grid gap-3 sm:grid-cols-2">
+                  <span><span className="text-sm font-bold">年月まで</span><input type="month" value={form.expirationDate.length === 7 ? form.expirationDate : ""} onChange={(event) => change("expirationDate", event.target.value)} className="mt-1 w-full rounded-xl border border-slate-300 px-4 py-3" /></span>
+                  <span><span className="text-sm font-bold">日付まで</span><input type="date" value={form.expirationDate.length === 10 ? form.expirationDate : ""} onChange={(event) => change("expirationDate", event.target.value)} className="mt-1 w-full rounded-xl border border-slate-300 px-4 py-3" /></span>
+                </span>
+                <span className="mt-2 block text-sm font-bold text-blue-800">登録値：{form.expirationDate || "期限なし"}</span>
               </label>
 
               <label className="sm:col-span-2">

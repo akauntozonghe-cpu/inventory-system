@@ -478,17 +478,12 @@ export default function UnregisteredItemDialog({
           <label>
             <span className="text-sm font-bold">使用期限（年月のみ・年月日）</span>
 
-            <input
-              type="text"
-              inputMode="numeric"
-              placeholder="例：2027-08 または 2027-08-31"
-              pattern="[0-9]{4}-[0-9]{2}(-[0-9]{2})?"
-              value={form.expirationDate}
-              onChange={(event) =>
-                update("expirationDate", event.target.value)
-              }
-              className="mt-2 w-full rounded-xl border border-slate-300 px-4 py-3 outline-none focus:border-blue-600"
-            />
+            <span className="mt-1 block text-xs font-semibold text-slate-600">印字が年月までなら左、日付まであれば右を使用してください。</span>
+            <span className="mt-2 grid gap-2 sm:grid-cols-2">
+              <span><span className="text-xs font-bold">年月まで</span><input type="month" value={form.expirationDate.length === 7 ? form.expirationDate : ""} onChange={(event) => update("expirationDate", event.target.value)} className="mt-1 w-full rounded-xl border border-slate-300 px-4 py-3" /></span>
+              <span><span className="text-xs font-bold">日付まで</span><input type="date" value={form.expirationDate.length === 10 ? form.expirationDate : ""} onChange={(event) => update("expirationDate", event.target.value)} className="mt-1 w-full rounded-xl border border-slate-300 px-4 py-3" /></span>
+            </span>
+            <span className="mt-2 block text-xs font-bold text-blue-800">登録値：{form.expirationDate || "期限なし"}</span>
           </label>
         </div>
 
