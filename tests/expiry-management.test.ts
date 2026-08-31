@@ -37,4 +37,12 @@ describe("expiry management", () => {
     expect(normalizeExpirationDate("")).toBeNull();
     expect(normalizeExpirationDate("2027-13")).toBeUndefined();
   });
+
+  it("Excel由来の連続数字、日本語日付、NoDataを柔軟に解釈する", () => {
+    expect(normalizeExpirationDate(20260831)).toBe("2026-08-31");
+    expect(normalizeExpirationDate("202600901")).toBe("2026-09-01");
+    expect(normalizeExpirationDate("2026年8月31日")).toBe("2026-08-31");
+    expect(normalizeExpirationDate("2026年8月")).toBe("2026-08");
+    expect(normalizeExpirationDate("NoData")).toBeNull();
+  });
 });

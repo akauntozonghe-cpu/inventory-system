@@ -107,7 +107,7 @@ export default function AddPage() {
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [generateSystemBarcode, setGenerateSystemBarcode] = useState(false);
+  const [generateSystemBarcode, setGenerateSystemBarcode] = useState(false);\n  const [expirationHasDay, setExpirationHasDay] = useState(false);
 
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
@@ -565,12 +565,9 @@ export default function AddPage() {
                   使用期限（年月のみ・年月日の両方に対応）
                 </span>
 
-                <span className="mt-1 block text-sm font-semibold text-slate-600">印字が年月までなら左、日付まであれば右を使用してください。</span>
-                <span className="mt-2 grid gap-3 sm:grid-cols-2">
-                  <span><span className="text-sm font-bold">年月まで</span><input type="month" value={form.expirationDate.length === 7 ? form.expirationDate : ""} onChange={(event) => change("expirationDate", event.target.value)} className="mt-1 w-full rounded-xl border border-slate-300 px-4 py-3" /></span>
-                  <span><span className="text-sm font-bold">日付まで</span><input type="date" value={form.expirationDate.length === 10 ? form.expirationDate : ""} onChange={(event) => change("expirationDate", event.target.value)} className="mt-1 w-full rounded-xl border border-slate-300 px-4 py-3" /></span>
-                </span>
-                <span className="mt-2 block text-sm font-bold text-blue-800">登録値：{form.expirationDate || "期限なし"}</span>
+                <label className="mt-2 flex items-center gap-2 font-bold"><input type="checkbox" checked={expirationHasDay} onChange={(event) => { setExpirationHasDay(event.target.checked); change("expirationDate", ""); }} className="h-5 w-5" />日付まで記載されている</label>
+                <input type={expirationHasDay ? "date" : "month"} value={form.expirationDate} onChange={(event) => change("expirationDate", event.target.value)} className="mt-2 w-full rounded-xl border border-slate-300 px-4 py-3" />
+                <span className="mt-2 block text-sm font-bold text-blue-800">登録値：{form.expirationDate || "未入力（期限データなしエラーになります）"}</span>
               </label>
 
               <label className="sm:col-span-2">
@@ -607,3 +604,5 @@ export default function AddPage() {
     </main>
   );
 }
+
+

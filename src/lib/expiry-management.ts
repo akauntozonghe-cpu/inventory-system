@@ -12,8 +12,26 @@ const MONTH_PATTERN = /^\d{4}-\d{2}$/;
 
 export function normalizeExpirationDate(value: unknown): string | null | undefined {
   if (value === null || value === undefined || value === "") return null;
-  if (typeof value !== "string") return undefined;
-  const normalized = value.normalize("NFKC").trim().replace(/[/.]/g, "-");
+  if (typeof value !== "string" && typeof value !== "number") return undefined;
+  const source = String(value).normalize("NFKC").trim();
+  if (/^(?:no\s*data|n\/a|なし|期限なし|未登録|-)$/i.test(source)) return null;
+  const japanese = source.match(/^(\d{4})年\s*(\d{1,2})月(?:\s*(\d{1,2})日?)?$/);
+  if (japanese) {
+    const [, year, month, day] = japanese;
+    return normalizeExpirationDate(`${year}-${month.padStart(2, "0")}${day ? `-${day.padStart(2, "0")}` : ""}`);
+  }
+  const separated = source.match(/^(\d{4})[/.\-](\d{1,2})(?:[/.\-](\d{1,2}))?$/);
+  if (separated) {
+    const [, year, month, day] = separated;
+    return normalizeExpirationDate(`${year}-${month.padStart(2, "0")}${day ? `-${day.padStart(2, "0")}` : ""}`);
+  }
+  const digits = source.replace(/\s/g, "");
+  if (/^\d{6}$/.test(digits)) return normalizeExpirationDate(`${digits.slice(0, 4)}-${digits.slice(4, 6)}`);
+  if (/^\d{8,9}$/.test(digits)) {
+    const monthDay = digits.slice(-4);
+    return normalizeExpirationDate(`${digits.slice(0, 4)}-${monthDay.slice(0, 2)}-${monthDay.slice(2, 4)}`);
+  }
+  const normalized = source;
   if (MONTH_PATTERN.test(normalized)) {
     const [year, month] = normalized.split("-").map(Number);
     return year >= 1900 && year <= 9999 && month >= 1 && month <= 12 ? normalized : undefined;

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireLogin } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { assessExpiry, dateKeyInJapan } from "@/lib/expiry-management";
+import { assessExpiry, dateKeyInJapan, expirationEffectiveDate } from "@/lib/expiry-management";
 
 const MANAGEMENT_STATUSES = ["ACTIVE", "ACKNOWLEDGED", "RESOLVED"] as const;
 
@@ -15,7 +15,7 @@ export async function GET(request: NextRequest) {
 
   try {
     const today = dateKeyInJapan();
-    const inventories = await prisma.inventoryInstance.findMany({
+    const [inventories, noExpiration, missingMajor, missingMinor, missingLocation] = await Promise.all([prisma.inventoryInstance.findMany({
       where: { expirationDate: { not: null }, status: { not: "廃止" } },
       select: {
         id: true, expirationDate: true, expirationAlertDays: true,
@@ -25,10 +25,14 @@ export async function GET(request: NextRequest) {
         storageLocation: { select: { id: true, name: true } },
       },
       take: 2000,
-    });
+    }), prisma.inventoryInstance.count({ where: { OR: [{ expirationDate: null }, { expirationDate: "" }], status: { not: "廃止" } } }),
+      prisma.item.count({ where: { isArchived: false, OR: [{ majorCategory: null }, { majorCategory: "" }] } }),
+      prisma.item.count({ where: { isArchived: false, OR: [{ minorCategory: null }, { minorCategory: "" }] } }),
+      prisma.inventoryInstance.count({ where: { storageLocationId: null, status: { not: "廃止" } } })]);
 
     const entries = inventories.map((inventory) => ({
       ...inventory,
+      effectiveDate: expirationEffectiveDate(inventory.expirationDate),
       assessment: assessExpiry(inventory.expirationDate, inventory.expirationAlertDays, today),
     })).sort((a, b) => {
       const left = a.assessment.daysRemaining ?? Number.MAX_SAFE_INTEGER;
@@ -45,6 +49,10 @@ export async function GET(request: NextRequest) {
         warning: count(["WARNING"]), upcoming: count(["UPCOMING"]), invalid: count(["INVALID"]),
         acknowledged: entries.filter((entry) => entry.expirationManagementStatus === "ACKNOWLEDGED").length,
         resolved: entries.filter((entry) => entry.expirationManagementStatus === "RESOLVED").length,
+        missingExpiry: noExpiration,
+        missingMajor,
+        missingMinor,
+        missingLocation,
       },
       entries,
     });

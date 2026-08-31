@@ -76,7 +76,7 @@ export default function UnregisteredItemDialog({
 }: UnregisteredItemDialogProps) {
   const [locations, setLocations] = useState<Location[]>([]);
   const [loadingLocations, setLoadingLocations] = useState(false);
-  const [saving, setSaving] = useState(false);
+  const [saving, setSaving] = useState(false);\n  const [expirationHasDay, setExpirationHasDay] = useState(false);
   const [message, setMessage] = useState("");
   const [duplicateCandidates, setDuplicateCandidates] = useState<DuplicateCandidate[]>([]);
   const [checkingDuplicates, setCheckingDuplicates] = useState(false);
@@ -478,12 +478,9 @@ export default function UnregisteredItemDialog({
           <label>
             <span className="text-sm font-bold">使用期限（年月のみ・年月日）</span>
 
-            <span className="mt-1 block text-xs font-semibold text-slate-600">印字が年月までなら左、日付まであれば右を使用してください。</span>
-            <span className="mt-2 grid gap-2 sm:grid-cols-2">
-              <span><span className="text-xs font-bold">年月まで</span><input type="month" value={form.expirationDate.length === 7 ? form.expirationDate : ""} onChange={(event) => update("expirationDate", event.target.value)} className="mt-1 w-full rounded-xl border border-slate-300 px-4 py-3" /></span>
-              <span><span className="text-xs font-bold">日付まで</span><input type="date" value={form.expirationDate.length === 10 ? form.expirationDate : ""} onChange={(event) => update("expirationDate", event.target.value)} className="mt-1 w-full rounded-xl border border-slate-300 px-4 py-3" /></span>
-            </span>
-            <span className="mt-2 block text-xs font-bold text-blue-800">登録値：{form.expirationDate || "期限なし"}</span>
+            <label className="mt-2 flex items-center gap-2 text-sm font-bold"><input type="checkbox" checked={expirationHasDay} onChange={(event) => { setExpirationHasDay(event.target.checked); update("expirationDate", ""); }} className="h-5 w-5" />日付まで記載されている</label>
+            <input type={expirationHasDay ? "date" : "month"} value={form.expirationDate} onChange={(event) => update("expirationDate", event.target.value)} className="mt-2 w-full rounded-xl border border-slate-300 px-4 py-3" />
+            <span className="mt-2 block text-xs font-bold text-blue-800">登録値：{form.expirationDate || "未入力（期限データなしエラーになります）"}</span>
           </label>
         </div>
 
@@ -549,3 +546,5 @@ export default function UnregisteredItemDialog({
     </div>
   );
 }
+
+
