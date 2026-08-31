@@ -1,3 +1,5 @@
+import { assessExpiry, formatExpirationDate } from "@/lib/expiry-management";
+
 type Props = {
   item: {
     id: string;
@@ -43,11 +45,7 @@ export default function ProductCard({
   const difference =
     quantity - item.quantity;
 
-  const isExpired =
-    item.expirationDate
-      ? new Date(item.expirationDate) <
-        new Date()
-      : false;
+  const isExpired = assessExpiry(item.expirationDate).level === "EXPIRED";
 
   return (
     <div className="space-y-5 rounded-xl border bg-white p-6 shadow">
@@ -105,7 +103,7 @@ export default function ProductCard({
                 : ""
             }
           >
-            {item.expirationDate ?? "-"}
+            {formatExpirationDate(item.expirationDate)}
           </span>
 
         </p>

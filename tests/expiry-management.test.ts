@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { assessExpiry, normalizeExpirationDate } from "../src/lib/expiry-management";
+import { assessExpiry, expirationEffectiveDate, normalizeExpirationDate } from "../src/lib/expiry-management";
 
 describe("expiry management", () => {
   const today = "2026-08-31";
@@ -25,7 +25,10 @@ describe("expiry management", () => {
 
   it("年月のみを受け付け、月末を期限として判定する", () => {
     expect(normalizeExpirationDate("2026/09")).toBe("2026-09");
+    expect(expirationEffectiveDate("2026-09")).toBe("2026-09-30");
+    expect(expirationEffectiveDate("2028-02")).toBe("2028-02-29");
     expect(assessExpiry("2026-09", 30, "2026-09-30").level).toBe("TODAY");
+    expect(assessExpiry("2026-09", 30, "2026-09-01").level).not.toBe("EXPIRED");
     expect(assessExpiry("2026-02", 30, "2026-03-01").level).toBe("EXPIRED");
   });
 

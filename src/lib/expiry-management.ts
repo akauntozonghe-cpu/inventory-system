@@ -33,6 +33,15 @@ export function formatExpirationDate(value: string | null | undefined) {
   return `${year}年${Number(month)}月${Number(day)}日`;
 }
 
+export function expirationEffectiveDate(value: string | null | undefined): string | null {
+  const normalized = normalizeExpirationDate(value);
+  if (!normalized) return null;
+  if (!MONTH_PATTERN.test(normalized)) return normalized;
+  const [year, month] = normalized.split("-").map(Number);
+  const lastDay = new Date(Date.UTC(year, month, 0)).getUTCDate();
+  return `${year}-${String(month).padStart(2, "0")}-${String(lastDay).padStart(2, "0")}`;
+}
+
 export function dateKeyInJapan(date = new Date()) {
   return new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Tokyo", year: "numeric", month: "2-digit", day: "2-digit" }).format(date);
 }
@@ -48,10 +57,7 @@ function utcDay(value: string) {
 
 export function assessExpiry(expirationDate: string | null | undefined, alertDays = 30, today = dateKeyInJapan()): ExpiryAssessment {
   if (!expirationDate) return { level: "NONE", daysRemaining: null, label: "期限未設定", action: "期限がある商品は使用期限を登録してください。" };
-  const normalized = normalizeExpirationDate(expirationDate);
-  const effectiveDate = normalized && MONTH_PATTERN.test(normalized)
-    ? (() => { const [year, month] = normalized.split("-").map(Number); return `${year}-${String(month).padStart(2, "0")}-${String(new Date(Date.UTC(year, month, 0)).getUTCDate()).padStart(2, "0")}`; })()
-    : normalized;
+  const effectiveDate = expirationEffectiveDate(expirationDate);
   const expiry = effectiveDate ? utcDay(effectiveDate) : null;
   const base = utcDay(today);
   if (expiry === null || base === null) return { level: "INVALID", daysRemaining: null, label: "日付形式異常", action: "商品詳細で期限を正しい日付へ修正してください。" };

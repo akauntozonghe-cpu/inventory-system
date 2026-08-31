@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { assessExpiry } from "@/lib/expiry-management";
 
 export async function GET() {
   try {
@@ -58,10 +59,7 @@ export async function GET() {
       inventoryInstances.filter((i) => {
         if (!i.expirationDate) return false;
 
-        return (
-          new Date(i.expirationDate) <
-          new Date()
-        );
+        return assessExpiry(i.expirationDate).level === "EXPIRED";
       }).length;
 
     const shortageCount =

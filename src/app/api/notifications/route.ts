@@ -42,13 +42,9 @@ export async function GET(request: NextRequest) {
       const today = new Intl.DateTimeFormat("en-CA", {
         timeZone: "Asia/Tokyo", year: "numeric", month: "2-digit", day: "2-digit",
       }).format(now);
-      const alertLimit = new Date(now.getTime() + 30 * 86_400_000);
-      const limitDate = new Intl.DateTimeFormat("en-CA", {
-        timeZone: "Asia/Tokyo", year: "numeric", month: "2-digit", day: "2-digit",
-      }).format(alertLimit);
       const [expiring, existing] = await Promise.all([
         prisma.inventoryInstance.findMany({
-          where: { expirationDate: { not: null, lte: limitDate }, expirationManagementStatus: { not: "RESOLVED" }, status: { not: "廃止" } },
+          where: { expirationDate: { not: null }, expirationManagementStatus: { not: "RESOLVED" }, status: { not: "廃止" } },
           select: { id: true, expirationDate: true, expirationAlertDays: true, expirationManagementStatus: true, item: { select: { name: true } } },
           orderBy: { expirationDate: "asc" },
           take: 100,
@@ -58,8 +54,10 @@ export async function GET(request: NextRequest) {
           select: { id: true },
         }),
       ]);
-      if (expiring.length > 0 && !existing) {
-        const assessed = expiring.map((entry) => ({ entry, assessment: assessExpiry(entry.expirationDate, entry.expirationAlertDays, today) }));
+      const assessed = expiring
+        .map((entry) => ({ entry, assessment: assessExpiry(entry.expirationDate, entry.expirationAlertDays, today) }))
+        .filter(({ assessment }) => ["EXPIRED", "TODAY", "CRITICAL", "WARNING"].includes(assessment.level));
+      if (assessed.length > 0 && !existing) {
         const expiredCount = assessed.filter(({ assessment }) => assessment.level === "EXPIRED").length;
         const todayCount = assessed.filter(({ assessment }) => assessment.level === "TODAY").length;
         const criticalCount = assessed.filter(({ assessment }) => assessment.level === "CRITICAL").length;
@@ -70,7 +68,7 @@ export async function GET(request: NextRequest) {
             audience: "ADMIN",
             title: `期限確認 ${today}`,
             message: `期限切れ ${expiredCount}件、本日期限 ${todayCount}件、7日以内 ${criticalCount}件、通知期間内 ${warningCount}件です。期限管理を開き、優先順に対応を記録してください。`,
-            detail: { generatedAt: now.toISOString(), action: "期限管理を開いて、現物確認と対応結果を記録してください。", route: "/expiry", inventoryIds: expiring.map((entry) => entry.id), sampleNames: expiring.slice(0, 10).map((entry) => entry.item.name) },
+            detail: { generatedAt: now.toISOString(), action: "期限管理を開いて、現物確認と対応結果を記録してください。", route: "/expiry", inventoryIds: assessed.map(({ entry }) => entry.id), sampleNames: assessed.slice(0, 10).map(({ entry }) => entry.item.name) },
           },
         });
       }
