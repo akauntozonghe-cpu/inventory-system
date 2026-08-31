@@ -76,7 +76,8 @@ export default function UnregisteredItemDialog({
 }: UnregisteredItemDialogProps) {
   const [locations, setLocations] = useState<Location[]>([]);
   const [loadingLocations, setLoadingLocations] = useState(false);
-  const [saving, setSaving] = useState(false);\n  const [expirationHasDay, setExpirationHasDay] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [expirationHasDay, setExpirationHasDay] = useState(false);
   const [message, setMessage] = useState("");
   const [duplicateCandidates, setDuplicateCandidates] = useState<DuplicateCandidate[]>([]);
   const [checkingDuplicates, setCheckingDuplicates] = useState(false);
@@ -546,5 +547,4 @@ export default function UnregisteredItemDialog({
     </div>
   );
 }
-
 

@@ -107,7 +107,8 @@ export default function AddPage() {
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [generateSystemBarcode, setGenerateSystemBarcode] = useState(false);\n  const [expirationHasDay, setExpirationHasDay] = useState(false);
+  const [generateSystemBarcode, setGenerateSystemBarcode] = useState(false);
+  const [expirationHasDay, setExpirationHasDay] = useState(false);
 
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
@@ -604,5 +605,4 @@ export default function AddPage() {
     </main>
   );
 }
-
 
