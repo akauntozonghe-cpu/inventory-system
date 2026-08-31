@@ -73,6 +73,7 @@ function isSystemAdminRoute(pathname: string) {
     pathname.startsWith("/admin/users") ||
     pathname.startsWith("/admin/error-reports") ||
     pathname.startsWith("/admin/category-qr") ||
+    pathname.startsWith("/admin/classifications") ||
     pathname.startsWith("/api/users") ||
     pathname.startsWith("/api/admin/")
   );

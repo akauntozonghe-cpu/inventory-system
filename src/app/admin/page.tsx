@@ -141,6 +141,13 @@ const inventoryMenus: MenuItem[] = [
       "倉庫、棚、引き出しなどの保管場所を登録・編集します。",
     color: "bg-indigo-600",
   },
+  {
+    href: "/admin/classifications",
+    icon: "🗂️",
+    title: "分類・保管場所の整理",
+    description: "大分類・小分類・保管場所の追加、名称変更、統合、在庫移動を一括管理します。",
+    color: "bg-indigo-700",
+  },
 ];
 
 const systemMenus: MenuItem[] = [
