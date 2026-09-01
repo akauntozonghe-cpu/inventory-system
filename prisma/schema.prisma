@@ -126,14 +126,25 @@ model InventoryInstance {
 
 model Classification {
   id         String   @id @default(cuid())
+  labelCode  String   @unique @default(cuid())
   kind       String
   name       String
   parentName String   @default("")
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
+  labelAliases ClassificationLabelAlias[]
 
   @@unique([kind, name, parentName])
   @@index([kind, parentName, name])
+}
+
+model ClassificationLabelAlias {
+  labelCode       String @id
+  classificationId String
+  classification Classification @relation(fields: [classificationId], references: [id], onDelete: Cascade)
+  createdAt       DateTime @default(now())
+
+  @@index([classificationId])
 }
 
 model MarketplaceListing {

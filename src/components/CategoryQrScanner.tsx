@@ -71,6 +71,17 @@ function normalizeCategory(value: string) {
   return text;
 }
 
+function classificationLabelCode(value: string) {
+  try {
+    const json: unknown = JSON.parse(value);
+    return json && typeof json === "object" && "classificationLabelCode" in json && typeof json.classificationLabelCode === "string"
+      ? json.classificationLabelCode.trim()
+      : "";
+  } catch {
+    return "";
+  }
+}
+
 export default function CategoryQrScanner({
   onDetected,
   onClose,
@@ -128,7 +139,9 @@ export default function CategoryQrScanner({
             }
 
             if (result) {
-              const category = normalizeCategory(result.getText());
+              const rawValue = result.getText();
+              const category = normalizeCategory(rawValue);
+              const labelCode = classificationLabelCode(rawValue);
 
               if (!category) {
                 setError(
@@ -138,7 +151,7 @@ export default function CategoryQrScanner({
               }
 
               detectedRef.current = true;
-              setStatus(`読み取りました：${category}`);
+              setStatus(labelCode ? "分類マスターと照合しています…" : `読み取りました：${category}`);
 
               try {
                 controlsRef.current?.stop();
@@ -147,9 +160,16 @@ export default function CategoryQrScanner({
               }
 
               window.setTimeout(() => {
-                if (active) {
-                  onDetectedRef.current(category);
-                }
+                if (!active) return;
+                if (!labelCode) { onDetectedRef.current(category); return; }
+                void fetch(`/api/classifications/resolve?labelCode=${encodeURIComponent(labelCode)}`, { cache: "no-store" })
+                  .then(async (response) => {
+                    const payload = await response.json().catch(() => null) as { classification?: { name?: string }; message?: string } | null;
+                    const currentName = payload?.classification?.name?.trim();
+                    if (!response.ok || !currentName) throw new Error(payload?.message ?? "分類ラベルを確認できませんでした。");
+                    if (active) onDetectedRef.current(currentName);
+                  })
+                  .catch((resolveError) => { if (active) { detectedRef.current = false; setError(resolveError instanceof Error ? resolveError.message : "分類ラベルを確認できませんでした。"); } });
               }, 350);
 
               return;

@@ -4,10 +4,12 @@ import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import QRCode from "qrcode";
 
-type ClassificationPayload = { classifications?: Array<{ kind: string; name: string }> };
+type ClassificationPayload = { classifications?: Array<{ kind: string; name: string; labelCode?: string }> };
 
-function createQrValue(category: string) {
-  return `INVENTORY_OS:CATEGORY:MAJOR:${encodeURIComponent(category)}`;
+function createQrValue(category: string, labelCode?: string) {
+  return labelCode
+    ? JSON.stringify({ type: "INVENTORY_CLASSIFICATION_LABEL", classificationLabelCode: labelCode, majorCategory: category })
+    : `INVENTORY_OS:CATEGORY:MAJOR:${encodeURIComponent(category)}`;
 }
 
 function escapeHtml(value: string) {
@@ -94,10 +96,10 @@ export default function CategoryQrPage() {
         }
 
         const classificationRows = (classificationData as ClassificationPayload).classifications;
+        const majorRows = (Array.isArray(classificationRows) ? classificationRows : []).filter((row) => row.kind === "MAJOR" && row.name?.trim());
         const uniqueCategories = Array.from(
           new Set(
-            (Array.isArray(classificationRows) ? classificationRows : [])
-              .filter((row) => row.kind === "MAJOR")
+            majorRows
               .map((row) => row.name?.trim() ?? "")
               .filter((category) => category.length > 0)
           )
@@ -105,10 +107,11 @@ export default function CategoryQrPage() {
 
         setCategories(uniqueCategories);
         setSelectedCategories(uniqueCategories);
+        const codes = Object.fromEntries(majorRows.filter((row) => row.labelCode).map((row) => [row.name.trim(), row.labelCode as string]));
 
         const imageEntries = await Promise.all(
           uniqueCategories.map(async (category) => {
-            const image = await QRCode.toDataURL(createQrValue(category), {
+            const image = await QRCode.toDataURL(createQrValue(category, codes[category]), {
               errorCorrectionLevel: "M",
               width: 320,
               margin: 2,

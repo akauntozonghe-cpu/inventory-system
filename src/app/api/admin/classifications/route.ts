@@ -52,7 +52,7 @@ export async function GET(request: NextRequest) {
       if (item.minorCategory) { const key = `MINOR:${item.majorCategory ?? ""}:${item.minorCategory}`; const row = usage.get(key) ?? { itemCount: 0, inventoryCount: 0 }; row.itemCount += 1; row.inventoryCount += item._count.inventoryInstances; usage.set(key, row); }
     }
     const derived = Array.from(usage).map(([key, counts]) => { const [kind, parentName, ...nameParts] = key.split(":"); return { id: `derived-${key}`, kind, parentName: kind === "MAJOR" ? "" : parentName, name: nameParts.join(":"), ...counts }; });
-    const rows = new Map<string, { id: string; kind: string; name: string; parentName: string; itemCount: number; inventoryCount: number }>();
+    const rows = new Map<string, { id: string; labelCode?: string; kind: string; name: string; parentName: string; itemCount: number; inventoryCount: number }>();
     for (const row of masters) rows.set(`${row.kind}:${row.parentName}:${row.name}`, { ...row, itemCount: 0, inventoryCount: 0 });
     for (const row of derived) rows.set(`${row.kind}:${row.parentName}:${row.name}`, { ...(rows.get(`${row.kind}:${row.parentName}:${row.name}`) ?? row), itemCount: row.itemCount, inventoryCount: row.inventoryCount });
     return NextResponse.json({ classifications: Array.from(rows.values()), locations, items: items.map((item) => ({ id: item.id, name: item.name, janCode: item.janCode, systemBarcode: item.systemBarcode, majorCategory: item.majorCategory, minorCategory: item.minorCategory, inventoryCount: item._count.inventoryInstances, totalQuantity: item.inventoryInstances.reduce((sum, row) => sum + row.quantity, 0) })) });
@@ -72,12 +72,23 @@ export async function POST(request: NextRequest) {
       if (!["MAJOR", "MINOR"].includes(kind) || !source || !target) return NextResponse.json({ code: "CLASSIFICATION_INPUT_INVALID", message: "変更元と変更先を指定してください。" }, { status: 400 });
       result = await prisma.$transaction(async (tx) => {
         if (kind === "MAJOR") {
+          const [sourceMaster, targetMaster] = await Promise.all([
+            tx.classification.findFirst({ where: { kind: "MAJOR", name: source, parentName: "" } }),
+            tx.classification.findFirst({ where: { kind: "MAJOR", name: target, parentName: "" } }),
+          ]);
           const items = await tx.item.updateMany({ where: { majorCategory: source }, data: { majorCategory: target } });
           const inventories = await tx.inventoryInstance.updateMany({ where: { majorCategory: source }, data: { majorCategory: target } });
           await tx.stocktakeSession.updateMany({ where: { scopeType: "MAJOR_CATEGORY", scopeValue: source, status: { in: ["IN_PROGRESS", "PAUSED", "REVIEW", "CONFLICT"] } }, data: { scopeValue: target, scopeLabel: target } });
           await tx.classification.updateMany({ where: { kind: "MINOR", parentName: source }, data: { parentName: target } });
-          await tx.classification.deleteMany({ where: { kind: "MAJOR", name: source } });
-          await tx.classification.upsert({ where: { kind_name_parentName: { kind: "MAJOR", name: target, parentName: "" } }, update: {}, create: { kind: "MAJOR", name: target } });
+          if (sourceMaster && targetMaster && sourceMaster.id !== targetMaster.id) {
+            await tx.classificationLabelAlias.updateMany({ where: { classificationId: sourceMaster.id }, data: { classificationId: targetMaster.id } });
+            await tx.classificationLabelAlias.upsert({ where: { labelCode: sourceMaster.labelCode }, update: { classificationId: targetMaster.id }, create: { labelCode: sourceMaster.labelCode, classificationId: targetMaster.id } });
+            await tx.classification.delete({ where: { id: sourceMaster.id } });
+          } else if (sourceMaster) {
+            await tx.classification.update({ where: { id: sourceMaster.id }, data: { name: target } });
+          } else {
+            await tx.classification.upsert({ where: { kind_name_parentName: { kind: "MAJOR", name: target, parentName: "" } }, update: {}, create: { kind: "MAJOR", name: target } });
+          }
           return { items: items.count, inventories: inventories.count };
         }
         const where = { minorCategory: source, ...(parentName ? { majorCategory: parentName } : {}) };
