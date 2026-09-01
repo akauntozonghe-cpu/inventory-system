@@ -23,6 +23,12 @@ type SettingMenu = {
 
 const settingMenus: SettingMenu[] = [
   {
+    href: "/install",
+    icon: "◆",
+    title: "アプリとして使う",
+    description: "ホーム画面へ追加し、Inventory OSを全画面ですぐ起動します。",
+  },
+  {
     href: "/account/password",
     icon: "🔐",
     title: "パスワード変更",
