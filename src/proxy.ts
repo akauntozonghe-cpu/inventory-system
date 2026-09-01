@@ -87,6 +87,11 @@ export async function proxy(request: NextRequest) {
     pathname === "/login" ||
     pathname === "/setup" ||
     pathname === "/maintenance" ||
+    pathname === "/offline" ||
+    pathname === "/manifest.webmanifest" ||
+    pathname === "/sw.js" ||
+    pathname === "/pwa-icon.svg" ||
+    pathname === "/pwa-maskable.svg" ||
     pathname === "/api/system-status" ||
     pathname.startsWith("/api/auth/login") ||
     pathname.startsWith("/api/auth/setup");
