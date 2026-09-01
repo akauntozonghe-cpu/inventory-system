@@ -1,5 +1,5 @@
-const CACHE_NAME = "inventory-os-shell-v2";
-const SHELL = ["/offline", "/pwa-icon.svg", "/pwa-maskable.svg"];
+const CACHE_NAME = "inventory-os-shell-v3";
+const SHELL = ["/offline", "/pwa/icon-192?v=3", "/pwa/icon-512?v=3"];
 
 self.addEventListener("install", (event) => { event.waitUntil(caches.open(CACHE_NAME).then((cache) => cache.addAll(SHELL))); });
 self.addEventListener("activate", (event) => { event.waitUntil(caches.keys().then((keys) => Promise.all(keys.filter((key) => key !== CACHE_NAME).map((key) => caches.delete(key)))).then(() => self.clients.claim())); });

@@ -92,6 +92,7 @@ export async function proxy(request: NextRequest) {
     pathname === "/sw.js" ||
     pathname === "/pwa-icon.svg" ||
     pathname === "/pwa-maskable.svg" ||
+    pathname.startsWith("/pwa/icon-") ||
     pathname === "/api/system-status" ||
     pathname.startsWith("/api/auth/login") ||
     pathname.startsWith("/api/auth/setup");

@@ -2,10 +2,12 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
+import { usePathname } from "next/navigation";
 
 type InstallPromptEvent = Event & { prompt: () => Promise<void>; userChoice: Promise<{ outcome: "accepted" | "dismissed" }> };
 
 export default function PwaManager() {
+  const pathname = usePathname();
   const [online, setOnline] = useState(true);
   const [installPrompt, setInstallPrompt] = useState<InstallPromptEvent | null>(null);
   const [waitingWorker, setWaitingWorker] = useState<ServiceWorker | null>(null);
@@ -17,7 +19,7 @@ export default function PwaManager() {
     const standalone = window.matchMedia("(display-mode: standalone)").matches || Boolean((navigator as Navigator & { standalone?: boolean }).standalone);
     const ios = /iphone|ipad|ipod/i.test(navigator.userAgent);
     setIosInstallGuide(ios && !standalone);
-    setDismissed(sessionStorage.getItem("pwa-guide-dismissed") === "yes");
+    setDismissed(localStorage.getItem("pwa-guide-dismissed") === "yes");
     const onlineHandler = () => setOnline(true);
     const offlineHandler = () => setOnline(false);
     const installHandler = (event: Event) => { event.preventDefault(); setInstallPrompt(event as InstallPromptEvent); setDismissed(false); };
@@ -39,9 +41,9 @@ export default function PwaManager() {
 
   const install = async () => { if (!installPrompt) return; await installPrompt.prompt(); const choice = await installPrompt.userChoice; if (choice.outcome === "accepted") setDismissed(true); setInstallPrompt(null); };
   const update = () => { if (!waitingWorker) return; waitingWorker.postMessage({ type: "SKIP_WAITING" }); navigator.serviceWorker.addEventListener("controllerchange", () => window.location.reload(), { once: true }); };
-  const dismiss = () => { sessionStorage.setItem("pwa-guide-dismissed", "yes"); setDismissed(true); };
+  const dismiss = () => { localStorage.setItem("pwa-guide-dismissed", "yes"); setDismissed(true); };
 
-  const showInstall = online && !waitingWorker && !dismissed && (Boolean(installPrompt) || iosInstallGuide);
+  const showInstall = pathname === "/install" && online && !waitingWorker && !dismissed && (Boolean(installPrompt) || iosInstallGuide);
   if (online && !waitingWorker && !showInstall) return null;
 
   const tone = !online ? "from-rose-600 to-orange-500" : waitingWorker ? "from-blue-600 to-cyan-500" : "from-violet-600 to-fuchsia-500";
@@ -59,4 +61,3 @@ export default function PwaManager() {
     </div>
   </aside>;
 }
-

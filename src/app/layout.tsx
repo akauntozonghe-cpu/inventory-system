@@ -12,6 +12,7 @@ export const metadata: Metadata = {
   manifest: "/manifest.webmanifest",
   appleWebApp: { capable: true, statusBarStyle: "black-translucent", title: "Inventory OS" },
   formatDetection: { telephone: false },
+  icons: { icon: [{ url: "/pwa/icon-192?v=3", type: "image/png", sizes: "192x192" }], apple: [{ url: "/pwa/icon-192?v=3", type: "image/png", sizes: "192x192" }] },
 };
 
 export const viewport = { themeColor: "#0f172a", colorScheme: "light" };
