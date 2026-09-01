@@ -7,7 +7,9 @@ export default function manifest(): MetadataRoute.Manifest {
     description: "保管在庫・棚卸・期限・フリマをまとめて管理します。",
     start_url: "/",
     scope: "/",
-    id: "/inventory-os",
+    // Existing installs previously used start_url as their identity.
+    // Keep the same identity so an update is not offered as a second app.
+    id: "/",
     display: "standalone",
     background_color: "#f1f5f9",
     theme_color: "#0f172a",
