@@ -38,11 +38,11 @@ const settingMenus: SettingMenu[] = [
     adminOnly: true,
   },
   {
-    href: "/locations",
+    href: "/admin/classifications?section=locations",
     icon: "📍",
-    title: "保管場所管理",
+    title: "分類・保管場所管理",
     description:
-      "棚・倉庫・引き出しなどの保管場所を登録・整理します。",
+      "大分類・小分類・保管場所と所属商品をまとめて整理します。",
     adminOnly: true,
   },
   {

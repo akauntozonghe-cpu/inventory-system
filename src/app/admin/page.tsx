@@ -134,14 +134,6 @@ const inventoryMenus: MenuItem[] = [
     color: "bg-orange-500",
   },
   {
-    href: "/locations",
-    icon: "📍",
-    title: "保管場所管理",
-    description:
-      "倉庫、棚、引き出しなどの保管場所を登録・編集します。",
-    color: "bg-indigo-600",
-  },
-  {
     href: "/admin/classifications",
     icon: "🗂️",
     title: "分類・保管場所の整理",

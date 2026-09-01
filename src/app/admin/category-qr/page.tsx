@@ -4,10 +4,7 @@ import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import QRCode from "qrcode";
 
-type Item = {
-  id: string;
-  majorCategory: string | null;
-};
+type ClassificationPayload = { classifications?: Array<{ kind: string; name: string }> };
 
 function createQrValue(category: string) {
   return `INVENTORY_OS:CATEGORY:MAJOR:${encodeURIComponent(category)}`;
@@ -48,22 +45,22 @@ export default function CategoryQrPage() {
         setLoading(true);
         setMessage("");
 
-        const [userResponse, itemResponse] = await Promise.all([
+        const [userResponse, classificationResponse] = await Promise.all([
           fetch("/api/auth/me", {
             cache: "no-store",
           }),
-          fetch("/api/items", {
+          fetch("/api/admin/classifications", {
             cache: "no-store",
           }),
         ]);
 
-        const [userText, itemText] = await Promise.all([
+        const [userText, classificationText] = await Promise.all([
           userResponse.text(),
-          itemResponse.text(),
+          classificationResponse.text(),
         ]);
 
         let userData: unknown = null;
-        let itemData: unknown = null;
+        let classificationData: unknown = null;
 
         try {
           userData = userText ? JSON.parse(userText) : null;
@@ -72,7 +69,7 @@ export default function CategoryQrPage() {
         }
 
         try {
-          itemData = itemText ? JSON.parse(itemText) : null;
+          classificationData = classificationText ? JSON.parse(classificationText) : null;
         } catch {
           throw new Error("商品一覧を確認できませんでした。");
         }
@@ -90,16 +87,18 @@ export default function CategoryQrPage() {
 
         setIsAdmin(true);
 
-        if (!itemResponse.ok || !Array.isArray(itemData)) {
+        if (!classificationResponse.ok || !classificationData || typeof classificationData !== "object") {
           throw new Error(
-            readMessage(itemData, "商品一覧を取得できませんでした。")
+            readMessage(classificationData, "分類マスターを取得できませんでした。")
           );
         }
 
+        const classificationRows = (classificationData as ClassificationPayload).classifications;
         const uniqueCategories = Array.from(
           new Set(
-            (itemData as Item[])
-              .map((item) => item.majorCategory?.trim() ?? "")
+            (Array.isArray(classificationRows) ? classificationRows : [])
+              .filter((row) => row.kind === "MAJOR")
+              .map((row) => row.name?.trim() ?? "")
               .filter((category) => category.length > 0)
           )
         ).sort((a, b) => a.localeCompare(b, "ja"));

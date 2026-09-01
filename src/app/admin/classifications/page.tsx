@@ -9,6 +9,15 @@ type Location = { id: string; name: string; description: string | null; _count: 
 type ItemRow = { id: string; name: string; janCode: string | null; systemBarcode: string | null; majorCategory: string | null; minorCategory: string | null; inventoryCount: number; totalQuantity: number };
 type Payload = { classifications: Classification[]; locations: Location[]; items: ItemRow[] };
 
+function normalizePayload(value: unknown): Payload {
+  const source = value && typeof value === "object" ? value as Partial<Payload> : {};
+  return {
+    classifications: Array.isArray(source.classifications) ? source.classifications : [],
+    locations: Array.isArray(source.locations) ? source.locations : [],
+    items: Array.isArray(source.items) ? source.items : [],
+  };
+}
+
 export default function ClassificationsPage() {
   const [data, setData] = useState<Payload>({ classifications: [], locations: [], items: [] });
   const [error, setError] = useState(""); const [notice, setNotice] = useState(""); const [busy, setBusy] = useState(false);
@@ -19,7 +28,7 @@ export default function ClassificationsPage() {
   const [itemSearch, setItemSearch] = useState(""); const [itemMajorFilter, setItemMajorFilter] = useState("ALL");
   const [selectedItemIds, setSelectedItemIds] = useState<string[]>([]); const [assignMajor, setAssignMajor] = useState(""); const [assignMinor, setAssignMinor] = useState("");
 
-  const load = useCallback(async () => { const response = await fetch("/api/admin/classifications", { cache: "no-store" }); const payload = await response.json(); if (!response.ok) throw new Error(payload.message ?? "分類を取得できませんでした。"); setData(payload); }, []);
+  const load = useCallback(async () => { const response = await fetch("/api/admin/classifications", { cache: "no-store" }); const payload: unknown = await response.json().catch(() => null); if (!response.ok) { const message = payload && typeof payload === "object" && "message" in payload && typeof payload.message === "string" ? payload.message : "分類を取得できませんでした。"; throw new Error(message); } setData(normalizePayload(payload)); }, []);
   useEffect(() => { void load().catch((e) => setError(e instanceof Error ? e.message : "分類を取得できませんでした。")); }, [load]);
   const majors = useMemo(() => data.classifications.filter((row) => row.kind === "MAJOR"), [data.classifications]);
   const minors = useMemo(() => data.classifications.filter((row) => row.kind === "MINOR"), [data.classifications]);
@@ -52,5 +61,4 @@ export default function ClassificationsPage() {
     {edit&&<div className="fixed inset-0 z-50 grid place-items-center bg-slate-950/60 p-4"><section className="w-full max-w-lg rounded-3xl bg-white p-6 shadow-2xl"><p className="text-sm font-black text-indigo-700">変更元</p><h2 className="mt-1 text-2xl font-black">{edit.source}</h2><p className="mt-2 text-sm text-slate-600">名称変更は新しい名前を入力します。既存名を指定すると統合になります。在庫・棚卸範囲・履歴の参照も更新されます。</p>{edit.type==="LOCATION"?<select value={target} onChange={(e)=>setTarget(e.target.value)} className="mt-5 w-full rounded-xl border p-3"><option value="">統合先を選択（新名称なら下へ入力）</option>{data.locations.filter(row=>row.id!==edit.sourceId).map(row=><option key={row.id} value={row.id}>{row.name}</option>)}</select>:<input value={target} onChange={(e)=>setTarget(e.target.value)} placeholder="変更・統合先の分類名" className="mt-5 w-full rounded-xl border p-3"/>}{edit.type==="MINOR"&&<select value={targetParent} onChange={(e)=>setTargetParent(e.target.value)} className="mt-3 w-full rounded-xl border p-3">{majors.map(row=><option key={row.id}>{row.name}</option>)}</select>}{edit.type==="LOCATION"&&<input value={target.startsWith("new:")?target.slice(4):""} onChange={(e)=>setTarget(`new:${e.target.value}`)} placeholder="または新しい保管場所名" className="mt-3 w-full rounded-xl border p-3"/>}<div className="mt-5 grid gap-2 sm:grid-cols-3"><button disabled={busy||!target} onClick={()=>{if(edit.type==="LOCATION"){if(target.startsWith("new:"))void execute({action:"RENAME_LOCATION",sourceId:edit.sourceId,target:target.slice(4)});else void execute({action:"MERGE_LOCATION",sourceId:edit.sourceId,targetId:target});}else void execute({action:"RENAME_OR_MERGE_CLASSIFICATION",kind:edit.type,source:edit.source,target,parentName:edit.parentName,targetParent});}} className="rounded-xl bg-indigo-600 p-3 font-black text-white disabled:opacity-40">変更・統合</button>{edit.type!=="LOCATION"&&<button disabled={busy} onClick={()=>void execute({action:"DELETE_CLASSIFICATION",kind:edit.type,source:edit.source,parentName:edit.parentName})} className="rounded-xl bg-red-600 p-3 font-black text-white">未使用なら削除</button>}<button onClick={()=>setEdit(null)} className="rounded-xl bg-slate-200 p-3 font-black">戻る</button></div></section></div>}
   </main>;
 }
-
 

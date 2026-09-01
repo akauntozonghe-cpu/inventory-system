@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 
 export default function GlobalError({
   error,
@@ -9,8 +9,24 @@ export default function GlobalError({
   error: Error & { digest?: string };
   reset: () => void;
 }) {
+  const [reportId, setReportId] = useState<string | null>(null);
+
   useEffect(() => {
     console.error("Application screen error", error);
+    const code = error.name === "ChunkLoadError" || /loading chunk|dynamically imported module/i.test(error.message)
+      ? "SCREEN_ASSET_VERSION_MISMATCH"
+      : "SCREEN_RENDER_FAILED";
+    const reloadKey = `screen-recovery:${code}`;
+    if (code === "SCREEN_ASSET_VERSION_MISMATCH" && sessionStorage.getItem(reloadKey) !== "done") {
+      sessionStorage.setItem(reloadKey, "done");
+      window.location.reload();
+      return;
+    }
+    void fetch("/api/error-reports", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ code, title: "画面表示エラー", message: error.message || "画面の描画中にエラーが発生しました。", route: window.location.pathname, detail: { digest: error.digest ?? null } }),
+    }).then(async (response) => { const payload = await response.json().catch(() => null) as { reportId?: string } | null; if (response.ok && payload?.reportId) setReportId(payload.reportId); }).catch(() => undefined);
   }, [error]);
 
   return (
@@ -31,6 +47,7 @@ export default function GlobalError({
             問い合わせ番号: {error.digest}
           </p>
         )}
+        <p className="mt-2 text-xs font-bold text-slate-600">エラーコード: SCREEN_RENDER_FAILED{reportId ? ` ／ レポート: ${reportId}` : ""}</p>
         <div className="mt-6 grid gap-3 sm:grid-cols-2">
           <button
             type="button"
