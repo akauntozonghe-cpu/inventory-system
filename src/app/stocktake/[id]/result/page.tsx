@@ -306,13 +306,14 @@ export default function StocktakeResultPage() {
           <section className="rounded-3xl border border-indigo-200 bg-indigo-50 p-6">
             <p className="text-sm font-bold text-indigo-600">確認待ち</p>
             <h2 className="mt-1 text-2xl font-black text-indigo-950">
-              内容を確認して正式確定してください
+              {data.summary.recordedCount === 0 ? "入力を再開してください" : "内容を確認して正式確定してください"}
             </h2>
             <p className="mt-3 leading-7 text-indigo-900">
               正式確定すると、保存済みの棚卸数量が在庫数へ反映され、棚卸履歴が作成されます。
               確定後も履歴から確認できます。
             </p>
 
+            {data.summary.recordedCount === 0 && <p role="status" className="mt-4 rounded-xl bg-amber-100 p-4 font-bold text-amber-950">保存済みの棚卸数量がないため、このまま正式確定はできません。{data.permissions.isAdmin ? "上の「管理者として途中から再開」から入力を再開してください。" : "管理者に再開を依頼してください。"}</p>}
             {data.permissions.canApply && (
               <button
                 type="button"

@@ -2,6 +2,7 @@
 import { fetchFresh } from "@/lib/fetch-fresh";
 
 import Link from "next/link";
+import ReopenStocktakeButton from "@/components/stocktake/ReopenStocktakeButton";
 import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useLiveRefresh } from "@/hooks/useLiveRefresh";
@@ -447,6 +448,7 @@ export default function StocktakeStartPage() {
                       </p>
                     </div>
 
+                    {session.isAdminView && <ReopenStocktakeButton sessionId={session.id} status={session.status} />}
                     {session.status === "REVIEW" ||
                     session.status === "CONFLICT" ? (
                       <Link

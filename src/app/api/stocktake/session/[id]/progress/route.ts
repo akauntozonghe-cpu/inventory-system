@@ -152,8 +152,8 @@ export async function GET(
         isOperator,
         isAdmin,
 
-        // 作業者だけが、作業中の棚卸へ入力できます。
-        canOperate: isOperator && session.status === "IN_PROGRESS",
+        // 管理者は担当者を変えずに、再開した棚卸の続きも入力できます。
+        canOperate: (isOperator || isAdmin) && session.status === "IN_PROGRESS",
 
         // 管理者は他人の棚卸を含め、状態確認・中断・再開・終了を管理できます。
         canManage: isAdmin,

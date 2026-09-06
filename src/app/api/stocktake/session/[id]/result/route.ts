@@ -203,7 +203,7 @@ export async function GET(
         isOperator,
         isAdmin,
         canApply:
-          (isOperator || isAdmin) && session.status === "REVIEW",
+          (isOperator || isAdmin) && session.status === "REVIEW" && recordedCount > 0,
       },
 
       summary: {

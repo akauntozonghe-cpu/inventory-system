@@ -2,6 +2,7 @@
 import { fetchFresh } from "@/lib/fetch-fresh";
 
 import Link from "next/link";
+import ReopenStocktakeButton from "@/components/stocktake/ReopenStocktakeButton";
 import ProductEditDialog from "@/components/ProductEditDialog";
 import { displayUnit } from "@/lib/unit";
 import {
@@ -864,7 +865,18 @@ export default function StocktakePage() {
       </header>
 
       <div className="mx-auto max-w-7xl space-y-6 p-5 sm:p-8">
-        {!canOperate && progress.session.status !== "COMPLETED" && (
+        {progress.session.status === "REVIEW" && (
+          <section className="rounded-2xl border-2 border-blue-300 bg-blue-50 p-5 text-blue-950">
+            <h2 className="text-xl font-black">入力終了・確認待ち</h2>
+            <p className="mt-2">入力済みの数量は保存されています。誤って終了した場合は、管理者が途中から再開できます。</p>
+            <div className="mt-4 flex flex-wrap gap-3">
+              {isAdmin && <ReopenStocktakeButton sessionId={sessionId} status={progress.session.status} onReopened={() => { void refresh().catch(() => setError("再開は完了しました。画面更新に失敗したため、再読み込みしてください。")); }} />}
+              <Link href={`/stocktake/${sessionId}/result`} className="rounded-xl bg-indigo-700 px-4 py-3 font-bold text-white">結果を確認して正式確定へ</Link>
+            </div>
+            {!isAdmin && <p className="mt-3 text-sm">入力を続ける場合は管理者に再開を依頼してください。再開後は同じ棚卸の続きを入力できます。</p>}
+          </section>
+        )}
+        {!canOperate && progress.session.status !== "COMPLETED" && progress.session.status !== "REVIEW" && (
           <div className="rounded-2xl border border-amber-200 bg-amber-50 px-5 py-4 text-amber-900">
             <p className="font-bold">
               {progress.session.status === "PAUSED"
