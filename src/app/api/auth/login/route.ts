@@ -16,7 +16,7 @@ export async function POST(request: NextRequest) {
     console.log("LOGIN BODY RECEIVED");
 
     const username =
-      typeof body.username === "string" ? body.username.trim() : "";
+      typeof body.username === "string" ? body.username.normalize("NFKC").trim() : "";
 
     const password =
       typeof body.password === "string" ? body.password : "";
@@ -29,6 +29,10 @@ export async function POST(request: NextRequest) {
         },
         { status: 400 }
       );
+    }
+
+    if (!/^[A-Za-z0-9]+$/.test(username)) {
+      return NextResponse.json({ code: "AUTH_LOGIN_USERNAME_FORMAT", message: "ログインIDは半角英数字で入力してください。" }, { status: 400 });
     }
 
     console.log("LOGIN USERNAME:", username);

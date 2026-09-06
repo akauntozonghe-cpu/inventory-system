@@ -4,7 +4,7 @@ import { ItemService } from "@/services/ItemService";
 export async function GET(req: NextRequest) {
   try {
     const keyword =
-      req.nextUrl.searchParams.get("q")?.trim() ?? "";
+      req.nextUrl.searchParams.get("q")?.normalize("NFKC").trim() ?? "";
 
     const items = await ItemService.search(keyword);
 

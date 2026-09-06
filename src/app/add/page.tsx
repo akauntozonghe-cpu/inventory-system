@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { type FormEvent, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { normalizeAsciiCodeInput, normalizeJanInput } from "@/lib/input-normalization";
+import { normalizeAsciiCodeInput, normalizeDisplayText, normalizeJanInput } from "@/lib/input-normalization";
 import FeedbackToast from "@/components/common/FeedbackToast";
 
 type Location = {
@@ -488,7 +488,7 @@ export default function AddPage() {
                   className="mt-2 w-full rounded-xl border border-slate-300 bg-white px-4 py-3 outline-none transition focus:border-blue-600 focus:ring-2 focus:ring-blue-100">
                   <option value="">大分類を選択</option>{majorCategories.map((category)=><option key={category} value={category}>{category}</option>)}<option value="__NEW__">＋ 新しい大分類を追加</option>
                 </select>
-                {newMajor&&<input value={form.majorCategory} onChange={(event)=>change("majorCategory",normalizeAsciiCodeInput(event.target.value,60))} inputMode="text" lang="en" autoCapitalize="none" autoCorrect="off" spellCheck={false} placeholder="新しい大分類（半角のみ）" className="mt-2 w-full rounded-xl border border-indigo-400 px-4 py-3"/>}
+                {newMajor&&<input value={form.majorCategory} onChange={(event)=>change("majorCategory",normalizeDisplayText(event.target.value,60))} inputMode="text" placeholder="新しい大分類" className="mt-2 w-full rounded-xl border border-indigo-400 px-4 py-3"/>}
               </label>
 
               <label>
@@ -502,7 +502,7 @@ export default function AddPage() {
                   className="mt-2 w-full rounded-xl border border-slate-300 bg-white px-4 py-3 outline-none transition focus:border-blue-600 focus:ring-2 focus:ring-blue-100">
                   <option value="">小分類を選択</option>{minorCategories.map((category)=><option key={category} value={category}>{category}</option>)}<option value="__NEW__">＋ 新しい小分類を追加</option>
                 </select>
-                {newMinor&&<input value={form.minorCategory} onChange={(event)=>change("minorCategory",normalizeAsciiCodeInput(event.target.value,60))} inputMode="text" lang="en" autoCapitalize="none" autoCorrect="off" spellCheck={false} placeholder="新しい小分類（半角のみ）" className="mt-2 w-full rounded-xl border border-indigo-400 px-4 py-3"/>}
+                {newMinor&&<input value={form.minorCategory} onChange={(event)=>change("minorCategory",normalizeDisplayText(event.target.value,60))} inputMode="text" placeholder="新しい小分類" className="mt-2 w-full rounded-xl border border-indigo-400 px-4 py-3"/>}
               </label>
             </div>
           </section>

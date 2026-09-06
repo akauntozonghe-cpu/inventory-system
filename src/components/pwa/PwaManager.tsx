@@ -2,12 +2,10 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { usePathname } from "next/navigation";
 
 type InstallPromptEvent = Event & { prompt: () => Promise<void>; userChoice: Promise<{ outcome: "accepted" | "dismissed" }> };
 
 export default function PwaManager() {
-  const pathname = usePathname();
   const [online, setOnline] = useState(true);
   const [installPrompt, setInstallPrompt] = useState<InstallPromptEvent | null>(null);
   const [waitingWorker, setWaitingWorker] = useState<ServiceWorker | null>(null);
@@ -47,7 +45,7 @@ export default function PwaManager() {
   const dismissUpdate = () => { sessionStorage.setItem("pwa-update-dismissed", "yes"); setUpdateDismissed(true); };
 
   const showUpdate = online && Boolean(waitingWorker) && !updateDismissed;
-  const showInstall = pathname === "/install" && online && !showUpdate && (Boolean(installPrompt) || iosInstallGuide);
+  const showInstall = online && !showUpdate && (Boolean(installPrompt) || iosInstallGuide);
   if (online && !showUpdate && !showInstall) return null;
 
   return <aside className="fixed bottom-4 right-4 z-[100] w-[calc(100%-2rem)] max-w-md rounded-2xl border border-slate-200 bg-white p-4 text-slate-950 shadow-[0_18px_55px_rgba(15,23,42,.18)]" role="status">

@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { expiryPolicy, expiryPolicyLabels } from "@/lib/expiry-policy";
 import { FormEvent, useCallback, useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import SystemBarcodeLabel from "@/components/SystemBarcodeLabel";
@@ -28,6 +29,7 @@ type InventoryInstance = {
   minorCategory: string | null;
   lotNo: string | null;
   expirationDate: string | null;
+  expirationManagementStatus: string;
   unit: string | null;
   allocationType: "home" | "flea_market" | "warehouse";
   status: string;
@@ -866,12 +868,7 @@ export default function ItemDetailPage() {
                 </div>
 
                 <div>
-                  <dt className="text-sm font-bold text-slate-500">分類</dt>
-                  <dd className="mt-1 text-lg font-black text-slate-900">
-                    {[item.majorCategory, item.minorCategory]
-                      .filter(Boolean)
-                      .join(" / ") || "-"}
-                  </dd>
+                  <dt className="text-sm font-bold text-slate-500">大分類</dt><dd className="mt-1 text-lg font-black text-slate-900">{item.majorCategory || "未設定"}</dd></div><div><dt className="text-sm font-bold text-slate-500">小分類</dt><dd className="mt-1 text-lg font-black text-slate-900">{item.minorCategory || "未設定"}</dd>
                 </div>
 
                 <div>
@@ -1039,7 +1036,7 @@ export default function ItemDetailPage() {
                                 <span><span className="text-xs font-bold">年月まで</span><input type="month" value={inventoryForm.expirationDate.length === 7 ? inventoryForm.expirationDate : ""} onChange={(event) => setInventoryForm({ ...inventoryForm, expirationDate: event.target.value })} className="mt-1 w-full rounded-xl border border-slate-300 px-4 py-3" /></span>
                                 <span><span className="text-xs font-bold">日付まで</span><input type="date" value={inventoryForm.expirationDate.length === 10 ? inventoryForm.expirationDate : ""} onChange={(event) => setInventoryForm({ ...inventoryForm, expirationDate: event.target.value })} className="mt-1 w-full rounded-xl border border-slate-300 px-4 py-3" /></span>
                               </span>
-                              <span className="mt-2 block text-xs font-bold text-blue-800">保存値：{inventoryForm.expirationDate || "期限なし"}</span>
+                              <span className="mt-2 block text-xs font-bold text-blue-800">保存値：{inventoryForm.expirationDate || "日付未登録（期限管理の設定は別途確認）"}</span>
                             </label>
 
                             <label className="block">
@@ -1204,7 +1201,7 @@ export default function ItemDetailPage() {
                                   使用期限
                                 </dt>
                                 <dd className="mt-1 text-slate-800">
-                                  {formatDate(inventory.expirationDate)}
+                                  {formatDate(inventory.expirationDate)}<span className="mt-1 block font-bold">期限管理：{expiryPolicyLabels[expiryPolicy(inventory.expirationDate, inventory.expirationManagementStatus)]}</span><Link href={`/expiry?itemId=${item.id}`} className="underline">期限管理を設定</Link>
                                 </dd>
                               </div>
 

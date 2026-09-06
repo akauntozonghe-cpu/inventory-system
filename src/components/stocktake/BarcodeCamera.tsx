@@ -38,11 +38,15 @@ export default function BarcodeCamera({
   const [lastBarcode, setLastBarcode] = useState("");
   const [cameraError, setCameraError] = useState("");
   const [scanConfirmed, setScanConfirmed] = useState(false);
-  const [soundEnabled, setSoundEnabled] = useState(false);
+  const [soundEnabled, setSoundEnabled] = useState(true);
+
+  useEffect(() => {
+    setSoundEnabled(localStorage.getItem("barcode-sound-enabled") !== "off");
+  }, []);
 
   const playTone = () => {
     const context = audioContextRef.current;
-    if (!context || context.state !== "running") return;
+    if (!soundEnabled || !context || context.state !== "running") return;
     const oscillator = context.createOscillator();
     const gain = context.createGain();
     oscillator.type = "sine";
@@ -61,8 +65,18 @@ export default function BarcodeCamera({
     const context = audioContextRef.current ?? new AudioContextClass();
     audioContextRef.current = context;
     await context.resume();
+    localStorage.setItem("barcode-sound-enabled", "on");
     setSoundEnabled(true);
     window.setTimeout(playTone, 0);
+  };
+
+  const toggleSound = async () => {
+    if (soundEnabled) {
+      localStorage.setItem("barcode-sound-enabled", "off");
+      setSoundEnabled(false);
+      return;
+    }
+    await enableSound();
   };
 
   const confirmScan = () => {
@@ -275,8 +289,8 @@ export default function BarcodeCamera({
 
         <main className="space-y-5 p-5 sm:p-7">
           <div className="sticky top-2 z-30 flex justify-end">
-            <button type="button" onClick={() => void enableSound()} className={`rounded-full px-4 py-2 text-sm font-black shadow-lg ${soundEnabled ? "bg-emerald-500 text-white" : "bg-white text-slate-900"}`}>
-              {soundEnabled ? "読取音 ON" : "読取音を有効化"}
+            <button type="button" onClick={() => void toggleSound()} className={`rounded-full px-4 py-2 text-sm font-black shadow-lg ${soundEnabled ? "bg-emerald-500 text-white" : "bg-white text-slate-900"}`}>
+              {soundEnabled ? "読取音 ON（OFFにする）" : "読取音 OFF（ONにする）"}
             </button>
           </div>
           <section className="rounded-3xl bg-black p-3 shadow-2xl">

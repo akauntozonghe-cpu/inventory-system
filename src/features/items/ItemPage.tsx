@@ -10,6 +10,7 @@ import {
   useState,
 } from "react";
 import CategoryQrScanner from "@/components/CategoryQrScanner";
+import BarcodeCamera from "@/components/stocktake/BarcodeCamera";
 import FeedbackToast from "@/components/common/FeedbackToast";
 import ItemTable from "./ItemTable";
 import type { Item } from "./types";
@@ -71,6 +72,7 @@ export default function ItemPage() {
   const [showArchived, setShowArchived] = useState(false);
   const [loading, setLoading] = useState(true);
   const [scannerOpen, setScannerOpen] = useState(false);
+  const [janScannerOpen, setJanScannerOpen] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
 
@@ -495,7 +497,7 @@ export default function ItemPage() {
           <div className="grid gap-3 lg:grid-cols-[1fr_auto_auto]">
             <input
               value={search}
-              onChange={(event) => setSearch(event.target.value)}
+              onChange={(event) => setSearch(event.target.value.normalize("NFKC"))}
               placeholder="商品名・JAN・システムバーコード・管理番号・メーカー・分類で検索"
               className="w-full rounded-xl border border-slate-300 px-4 py-3 outline-none focus:border-blue-600"
             />
@@ -506,6 +508,9 @@ export default function ItemPage() {
               className="rounded-xl bg-indigo-600 px-4 py-3 font-bold text-white transition hover:bg-indigo-700"
             >
               QRで大分類を読む
+            </button>
+            <button type="button" onClick={() => setJanScannerOpen(true)} className="rounded-xl bg-emerald-600 px-4 py-3 font-bold text-white transition hover:bg-emerald-700">
+              JANを読み取って検索
             </button>
 
             <select
@@ -614,6 +619,7 @@ export default function ItemPage() {
           onClose={() => setScannerOpen(false)}
         />
       )}
+      {janScannerOpen && <BarcodeCamera title="JANコードを読み取る" notice="読み取ったJANコードで商品を検索します。" onClose={() => setJanScannerOpen(false)} onDetected={(barcode) => { setSearch(barcode); setMajorCategory(""); setJanScannerOpen(false); }} />}
     </main>
   );
 }

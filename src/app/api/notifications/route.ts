@@ -44,7 +44,7 @@ export async function GET(request: NextRequest) {
       }).format(now);
       const [expiring, existing] = await Promise.all([
         prisma.inventoryInstance.findMany({
-          where: { expirationDate: { not: null }, expirationManagementStatus: { not: "RESOLVED" }, status: { not: "廃止" } },
+          where: { expirationDate: { not: null }, expirationManagementStatus: { notIn: ["RESOLVED", "NO_EXPIRY", "UNSET"] }, status: { not: "廃止" } },
           select: { id: true, expirationDate: true, expirationAlertDays: true, expirationManagementStatus: true, item: { select: { name: true } } },
           orderBy: { expirationDate: "asc" },
           take: 100,

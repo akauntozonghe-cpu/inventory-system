@@ -19,7 +19,7 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
 
     const username =
-      typeof body.username === "string" ? body.username.trim() : "";
+      typeof body.username === "string" ? body.username.normalize("NFKC").trim() : "";
 
     const displayName =
       typeof body.displayName === "string" ? body.displayName.trim() : "";
@@ -39,6 +39,9 @@ export async function POST(request: NextRequest) {
         { message: "ログインIDは3文字以上で入力してください。" },
         { status: 400 }
       );
+    }
+    if (!/^[A-Za-z0-9]+$/.test(username)) {
+      return NextResponse.json({ code: "AUTH_SETUP_USERNAME_FORMAT", message: "ログインIDは半角英数字で入力してください。" }, { status: 400 });
     }
 
     if (password.length < 10) {

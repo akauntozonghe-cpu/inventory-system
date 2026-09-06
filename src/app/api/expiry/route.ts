@@ -3,7 +3,9 @@ import { requireLogin } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { assessExpiry, dateKeyInJapan, expirationEffectiveDate } from "@/lib/expiry-management";
 
-const MANAGEMENT_STATUSES = ["ACTIVE", "ACKNOWLEDGED", "RESOLVED"] as const;
+import { expiryPolicy, matchesExpiryFilter } from "@/lib/expiry-policy";
+
+const MANAGEMENT_STATUSES = ["ACTIVE", "MANAGED", "UNSET", "NO_EXPIRY", "ACKNOWLEDGED", "RESOLVED"] as const;
 
 function text(value: unknown, max: number) {
   return typeof value === "string" ? value.trim().slice(0, max) : "";
@@ -39,7 +41,7 @@ export async function GET(request: NextRequest) {
       return left - right || a.item.name.localeCompare(b.item.name, "ja");
     });
 
-    const count = (levels: string[]) => entries.filter((entry) => levels.includes(entry.assessment.level) && entry.expirationManagementStatus !== "RESOLVED").length;
+    const count = (levels: string[]) => entries.filter((entry) => levels.includes(entry.assessment.level) && expiryPolicy(entry.expirationDate, entry.expirationManagementStatus) === "MANAGED" && entry.expirationManagementStatus !== "RESOLVED").length;
     return NextResponse.json({
       code: "EXPIRY_LIST_OK",
       today,
@@ -48,8 +50,8 @@ export async function GET(request: NextRequest) {
         warning: count(["WARNING"]), upcoming: count(["UPCOMING"]), invalid: count(["INVALID"]),
         acknowledged: entries.filter((entry) => entry.expirationManagementStatus === "ACKNOWLEDGED").length,
         resolved: entries.filter((entry) => entry.expirationManagementStatus === "RESOLVED").length,
-        noExpiry: entries.filter((entry) => entry.assessment.level === "NONE" && entry.expirationManagementStatus === "NO_EXPIRY").length,
-        missingExpiry: entries.filter((entry) => entry.assessment.level === "NONE" && entry.expirationManagementStatus !== "NO_EXPIRY").length,
+        noExpiry: entries.filter((entry) => matchesExpiryFilter(entry, "NO_EXPIRY")).length,
+        missingExpiry: entries.filter((entry) => matchesExpiryFilter(entry, "UNSET")).length,
         missingMajor,
         missingMinor,
         missingLocation,
@@ -84,9 +86,12 @@ export async function PATCH(request: NextRequest) {
       return NextResponse.json({ code: "EXPIRY_ALERT_DAYS_INVALID", message: "通知日数は1～365日の整数で指定してください。", action: "通知日数を修正してください。" }, { status: 400 });
     }
 
-    const existing = await prisma.inventoryInstance.findUnique({ where: { id }, select: { id: true, quantity: true, expirationManagementStatus: true, expirationNote: true, expirationAlertDays: true } });
+    const existing = await prisma.inventoryInstance.findUnique({ where: { id }, select: { id: true, quantity: true, expirationDate: true, expirationManagementStatus: true, expirationNote: true, expirationAlertDays: true } });
     if (!existing) return NextResponse.json({ code: "EXPIRY_INVENTORY_NOT_FOUND", message: "対象在庫が見つかりません。", action: "一覧を再読み込みして対象を選び直してください。" }, { status: 404 });
 
+    if ((managementStatus === "UNSET" && existing.expirationDate) || (["ACKNOWLEDGED", "RESOLVED"].includes(managementStatus) && expiryPolicy(existing.expirationDate, existing.expirationManagementStatus) !== "MANAGED")) {
+      return NextResponse.json({ code: "EXPIRY_POLICY_CONFLICT", message: "まず期限管理の設定を確認してください。期限登録済みの商品を未設定には戻せません。" }, { status: 400 });
+    }
     const updated = await prisma.$transaction(async (tx) => {
       const inventory = await tx.inventoryInstance.update({
         where: { id },

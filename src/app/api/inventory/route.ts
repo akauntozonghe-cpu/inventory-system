@@ -400,6 +400,7 @@ export async function PUT(request: NextRequest) {
               storageLocationId,
               lotNo: getOptionalText(body.lotNo, 100),
               expirationDate: normalizedExpirationDate,
+              ...(normalizedExpirationDate && normalizedExpirationDate !== before.expirationDate ? { expirationManagementStatus: "ACTIVE" } : {}),
               unit: getOptionalText(body.unit, 30),
               status:
                 getText(body.status, 100) ||

@@ -82,11 +82,14 @@ export default function SetupPage() {
             ログインID
             <input
               value={username}
-              onChange={(event) => setUsername(event.target.value)}
+              onChange={(event) => setUsername(event.target.value.normalize("NFKC").replace(/[^A-Za-z0-9]/g, "").slice(0, 64))}
               className="mt-2 w-full rounded-xl border border-slate-300 p-3 font-normal"
               placeholder="例：admin001"
               autoComplete="username"
               minLength={3}
+              pattern="[A-Za-z0-9]+"
+              inputMode="text"
+              lang="en"
               required
             />
           </label>
