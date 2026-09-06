@@ -47,7 +47,7 @@ export default function PwaManager() {
   const dismissUpdate = () => { sessionStorage.setItem("pwa-update-dismissed", "yes"); setUpdateDismissed(true); };
 
   const showUpdate = online && Boolean(waitingWorker) && !updateDismissed;
-  const showInstall = pathname === "/install" && online && !showUpdate && !dismissed && (Boolean(installPrompt) || iosInstallGuide);
+  const showInstall = pathname === "/install" && online && !showUpdate && (Boolean(installPrompt) || iosInstallGuide);
   if (online && !showUpdate && !showInstall) return null;
 
   return <aside className="fixed bottom-4 right-4 z-[100] w-[calc(100%-2rem)] max-w-md rounded-2xl border border-slate-200 bg-white p-4 text-slate-950 shadow-[0_18px_55px_rgba(15,23,42,.18)]" role="status">

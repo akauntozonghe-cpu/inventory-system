@@ -64,10 +64,10 @@ export default function StocktakeSystemErrorDialog({
           </button>
           {isAdmin && (
             <Link
-              href="/admin/error-reports"
+              href={`/admin/error-reports${reportId ? `?reportId=${encodeURIComponent(reportId)}` : ""}`}
               className="rounded-xl bg-red-700 px-5 py-3 text-center font-black text-white hover:bg-red-800"
             >
-              管理者復旧を開く
+              このエラーを管理者復旧
             </Link>
           )}
           <button

@@ -3,6 +3,8 @@
 import { type FormEvent, useState } from "react";
 import { useRouter } from "next/navigation";
 
+const asciiOnly = (value: string) => value.normalize("NFKC").replace(/[^\x21-\x7E]/g, "");
+
 type LoggedInUser = {
   id: string;
   username: string;
@@ -146,9 +148,14 @@ export default function LoginPage() {
 
             <input
               value={username}
-              onChange={(event) => setUsername(event.target.value)}
+              onChange={(event) => setUsername(asciiOnly(event.target.value))}
               className="mt-2 w-full rounded-xl border border-slate-300 p-3 font-normal outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
               autoComplete="username"
+              inputMode="text"
+              lang="en"
+              autoCapitalize="none"
+              autoCorrect="off"
+              spellCheck={false}
               disabled={loading}
               required
             />
@@ -160,9 +167,14 @@ export default function LoginPage() {
             <input
               type="password"
               value={password}
-              onChange={(event) => setPassword(event.target.value)}
+              onChange={(event) => setPassword(asciiOnly(event.target.value))}
               className="mt-2 w-full rounded-xl border border-slate-300 p-3 font-normal outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
               autoComplete="current-password"
+              inputMode="text"
+              lang="en"
+              autoCapitalize="none"
+              autoCorrect="off"
+              spellCheck={false}
               disabled={loading}
               required
             />

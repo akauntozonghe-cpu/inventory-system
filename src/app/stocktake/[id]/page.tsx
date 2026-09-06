@@ -467,6 +467,7 @@ export default function StocktakePage() {
       barcodeBusyRef.current = true;
       setError("");
       setMessage(`読み取りました：${trimmed}`);
+      window.setTimeout(() => setMessage((current) => current === `読み取りました：${trimmed}` ? "" : current), 1600);
 
       try {
         const foundItems = await requestBarcode(trimmed);

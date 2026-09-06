@@ -179,6 +179,11 @@ export default function ErrorReportsPage() {
       }
 
       setReports(data as ErrorReport[]);
+      const requestedReportId = new URLSearchParams(window.location.search).get("reportId");
+      if (requestedReportId) {
+        const requested = (data as ErrorReport[]).find((report) => report.id === requestedReportId);
+        if (requested) setSelected(requested);
+      }
     } catch (error) {
       if (!silent) setMessage(
         error instanceof Error
