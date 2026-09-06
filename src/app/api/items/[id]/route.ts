@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireAdmin } from "@/lib/auth";
 import { createAdminActionLog } from "@/lib/error-report";
+import { janCodeValidationMessage, normalizeDisplayText, normalizeIdentifier, normalizeJanCode, normalizeOptionalText } from "@/lib/input-normalization";
 
 type Params = {
   params: Promise<{
@@ -35,26 +36,20 @@ type NormalizedItemData = {
 };
 
 function optionalText(value: unknown, maxLength: number) {
-  if (typeof value !== "string") {
-    return null;
-  }
-
-  const text = value.trim().slice(0, maxLength);
-
-  return text || null;
+  return normalizeOptionalText(value, maxLength);
 }
 
 function requiredText(value: unknown, maxLength: number) {
-  return optionalText(value, maxLength) ?? "";
+  return normalizeDisplayText(value, maxLength);
 }
 
 function toItemData(body: ItemInput): NormalizedItemData {
   return {
     name: requiredText(body.name, 200),
-    janCode: optionalText(body.janCode, 30),
-    systemBarcode: optionalText(body.systemBarcode, 30),
-    managementCode: optionalText(body.managementCode, 100),
-    managementGroupCode: optionalText(body.managementGroupCode, 100),
+    janCode: normalizeJanCode(body.janCode),
+    systemBarcode: normalizeIdentifier(body.systemBarcode, 30),
+    managementCode: normalizeIdentifier(body.managementCode, 100),
+    managementGroupCode: normalizeIdentifier(body.managementGroupCode, 100),
     manufacturer: optionalText(body.manufacturer, 200),
     majorCategory: optionalText(body.majorCategory, 100),
     minorCategory: optionalText(body.minorCategory, 100),
@@ -221,6 +216,11 @@ export async function PUT(
       );
     }
 
+    const janError = janCodeValidationMessage(data.janCode);
+    if (janError) {
+      return NextResponse.json({ code: "ITEM_UPDATE_JAN_INVALID", message: janError }, { status: 400 });
+    }
+
     if (!reason) {
       return NextResponse.json(
         {
@@ -306,7 +306,7 @@ export async function PUT(
     if (data.managementCode) {
       const duplicateManagementCode = await prisma.item.findFirst({
         where: {
-          managementCode: data.managementCode,
+          managementCode: { equals: data.managementCode, mode: "insensitive" },
           NOT: { id },
         },
         select: {

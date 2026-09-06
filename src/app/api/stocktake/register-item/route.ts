@@ -5,6 +5,7 @@ import { normalizeExpirationDate } from "@/lib/expiry-management";
 import { getLoggedInUser, hasAdminAccess } from "@/lib/auth";
 import { resolveStocktakeRegistration } from "@/lib/stocktake-registration";
 import { databaseErrorCode, isRetryableDatabaseError, withDatabaseRetry } from "@/lib/database-retry";
+import { janCodeValidationMessage, normalizeDisplayText, normalizeIdentifier, normalizeJanCode, normalizeOptionalText } from "@/lib/input-normalization";
 
 type RegisterItemBody = {
   sessionId?: unknown;
@@ -24,9 +25,7 @@ type RegisterItemBody = {
 };
 
 function getText(value: unknown, maxLength = 500) {
-  return typeof value === "string"
-    ? value.trim().slice(0, maxLength)
-    : "";
+  return normalizeDisplayText(value, maxLength);
 }
 
 function getOptionalText(value: unknown, maxLength = 500) {
@@ -90,15 +89,9 @@ export async function POST(request: NextRequest) {
 
     const sessionId = getText(body.sessionId, 100);
     const name = getText(body.name, 200);
-    const janCode = getOptionalText(body.janCode, 30);
-    const systemBarcode = getOptionalText(
-      body.systemBarcode,
-      100
-    );
-    const managementCode = getOptionalText(
-      body.managementCode,
-      100
-    );
+    const janCode = normalizeJanCode(body.janCode);
+    const systemBarcode = normalizeIdentifier(body.systemBarcode, 100);
+    const managementCode = normalizeIdentifier(body.managementCode, 100);
     const storageLocationId = getText(
       body.storageLocationId,
       100
@@ -123,6 +116,11 @@ export async function POST(request: NextRequest) {
         },
         { status: 400 }
       );
+    }
+
+    const janError = janCodeValidationMessage(janCode);
+    if (janError) {
+      return NextResponse.json({ code: "REGISTER_ITEM_JAN_400", message: janError }, { status: 400 });
     }
 
     if (!storageLocationId) {
@@ -184,9 +182,9 @@ export async function POST(request: NextRequest) {
 
         let item = null;
         let itemCreated = false;
-        const manufacturer = getOptionalText(body.manufacturer, 200);
-        const majorCategory = getOptionalText(body.majorCategory, 100);
-        const minorCategory = getOptionalText(body.minorCategory, 100);
+        const manufacturer = normalizeOptionalText(body.manufacturer, 200);
+        const majorCategory = normalizeOptionalText(body.majorCategory, 100);
+        const minorCategory = normalizeOptionalText(body.minorCategory, 100);
         if (managementCode) {
           item = await transaction.item.findUnique({
             where: {
@@ -236,36 +234,24 @@ export async function POST(request: NextRequest) {
                 systemBarcode ??
                 (!janCode ? createSystemBarcode() : null),
               managementCode,
-              managementGroupCode: getOptionalText(
-                body.managementGroupCode,
-                100
-              ),
-              manufacturer: getOptionalText(
-                body.manufacturer,
-                200
-              ),
-              majorCategory: getOptionalText(
-                body.majorCategory,
-                100
-              ),
-              minorCategory: getOptionalText(
-                body.minorCategory,
-                100
-              ),
-              defaultUnit: getOptionalText(body.unit, 30),
+              managementGroupCode: normalizeIdentifier(body.managementGroupCode, 100),
+              manufacturer: normalizeOptionalText(body.manufacturer, 200),
+              majorCategory: normalizeOptionalText(body.majorCategory, 100),
+              minorCategory: normalizeOptionalText(body.minorCategory, 100),
+              defaultUnit: normalizeOptionalText(body.unit, 30),
             },
           });
 
           itemCreated = true;
         }
 
-        const lotNo = getOptionalText(body.lotNo, 100);
+        const lotNo = normalizeIdentifier(body.lotNo, 100);
         const expirationDate = normalizeExpirationDate(body.expirationDate);
         if (expirationDate === undefined) {
           throw new Error("STOCKTAKE_EXPIRATION_FORMAT_INVALID");
         }
         const unit =
-          getOptionalText(body.unit, 30) ?? item.defaultUnit;
+          normalizeOptionalText(body.unit, 30) ?? item.defaultUnit;
 
         let inventory =
           await transaction.inventoryInstance.findFirst({

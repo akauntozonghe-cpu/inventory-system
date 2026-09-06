@@ -98,6 +98,7 @@ export default function StocktakeInputPanel({
     : null;
 
   const unit = selected.unit ?? selected.item.defaultUnit ?? "";
+  const alreadyRecorded = selected.countedQuantity !== null;
 
   const category = [
     selected.item.majorCategory,
@@ -117,9 +118,12 @@ export default function StocktakeInputPanel({
     <section className="rounded-3xl bg-white p-5 shadow-sm sm:p-6">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <p className="text-sm font-black text-blue-600">
-            {continuous ? "連続スキャン・棚卸入力" : "棚卸入力"}
-          </p>
+          <div className="flex flex-wrap items-center gap-2">
+            <p className="text-sm font-black text-blue-600">{continuous ? "連続スキャン・棚卸入力" : "棚卸入力"}</p>
+            <span className={`rounded-full px-3 py-1 text-xs font-black ${alreadyRecorded ? "bg-emerald-100 text-emerald-800" : "bg-amber-100 text-amber-900"}`}>
+              {alreadyRecorded ? "棚卸済" : "未棚卸"}
+            </span>
+          </div>
 
           <h2 className="mt-1 break-words text-xl font-black text-slate-950 sm:text-2xl">
             {selected.item.name}
@@ -129,6 +133,7 @@ export default function StocktakeInputPanel({
             現在庫：{selected.expectedQuantity}
             {unit}
           </p>
+          {alreadyRecorded && <p className="mt-2 text-sm font-bold text-emerald-700">前回入力：{selected.countedQuantity}{unit}（再保存すると上書きされます）</p>}
         </div>
 
         <button

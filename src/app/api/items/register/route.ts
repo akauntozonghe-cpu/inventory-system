@@ -14,6 +14,7 @@ import {
   requireLogin,
 } from "@/lib/auth";
 import { databaseErrorCode, isRetryableDatabaseError, withDatabaseRetry } from "@/lib/database-retry";
+import { janCodeValidationMessage, normalizeDisplayText, normalizeIdentifier, normalizeJanCode, normalizeOptionalText } from "@/lib/input-normalization";
 
 type RegisterBody = {
   name?: unknown;
@@ -33,11 +34,7 @@ type RegisterBody = {
 };
 
 function requiredText(value: unknown, maxLength: number) {
-  if (typeof value !== "string") {
-    return "";
-  }
-
-  return value.trim().slice(0, maxLength);
+  return normalizeDisplayText(value, maxLength);
 }
 
 function optionalText(value: unknown, maxLength: number) {
@@ -135,18 +132,15 @@ export async function POST(request: NextRequest) {
     const canRegisterImmediately = hasAdminAccess(request);
 
     const name = requiredText(body.name, 200);
-    const janCode = optionalText(body.janCode, 30);
-    const managementCode = optionalText(body.managementCode, 100);
-    const managementGroupCode = optionalText(
-      body.managementGroupCode,
-      100
-    );
-    const manufacturer = optionalText(body.manufacturer, 200);
-    const majorCategory = optionalText(body.majorCategory, 100);
-    const minorCategory = optionalText(body.minorCategory, 100);
-    const unit = optionalText(body.unit, 30);
+    const janCode = normalizeJanCode(body.janCode);
+    const managementCode = normalizeIdentifier(body.managementCode, 100);
+    const managementGroupCode = normalizeIdentifier(body.managementGroupCode, 100);
+    const manufacturer = normalizeOptionalText(body.manufacturer, 200);
+    const majorCategory = normalizeOptionalText(body.majorCategory, 100);
+    const minorCategory = normalizeOptionalText(body.minorCategory, 100);
+    const unit = normalizeOptionalText(body.unit, 30);
     const storageLocationId = optionalText(body.storageLocationId, 100);
-    const lotNo = optionalText(body.lotNo, 100);
+    const lotNo = normalizeIdentifier(body.lotNo, 100);
     const expirationDate = normalizeExpirationDate(body.expirationDate);
     if (expirationDate === undefined) {
       return NextResponse.json({ code: "ITEM_EXPIRATION_FORMAT_INVALID", message: "使用期限は未入力、YYYY-MM、YYYY-MM-DDのいずれかで入力してください。" }, { status: 400 });
@@ -167,6 +161,11 @@ export async function POST(request: NextRequest) {
           status: 400,
         }
       );
+    }
+
+    const janError = janCodeValidationMessage(janCode);
+    if (janError) {
+      return NextResponse.json({ code: "ITEM_REGISTER_JAN_INVALID", message: janError }, { status: 400 });
     }
 
     if (quantity === null) {
@@ -257,9 +256,9 @@ export async function POST(request: NextRequest) {
     }
 
     if (managementCode) {
-      const existingManagementCode = await prisma.item.findUnique({
+      const existingManagementCode = await prisma.item.findFirst({
         where: {
-          managementCode,
+          managementCode: { equals: managementCode, mode: "insensitive" },
         },
         select: {
           id: true,
@@ -279,6 +278,18 @@ export async function POST(request: NextRequest) {
           }
         );
       }
+    }
+
+    const existingName = await prisma.item.findFirst({
+      where: { name: { equals: name, mode: "insensitive" }, isArchived: false },
+      select: { id: true, name: true, janCode: true },
+    });
+    if (existingName) {
+      return NextResponse.json({
+        code: "ITEM_REGISTER_POSSIBLE_DUPLICATE",
+        message: `「${existingName.name}」は登録済みの可能性があります。既存商品の詳細を確認してください。`,
+        item: existingName,
+      }, { status: 409 });
     }
 
     // 一般ユーザーは、商品マスタや在庫を直接変更せず申請を作成する。

@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { type FormEvent, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import { normalizeJanInput } from "@/lib/input-normalization";
 import FeedbackToast from "@/components/common/FeedbackToast";
 
 type Location = {
@@ -348,10 +349,11 @@ export default function AddPage() {
                 <input
                   value={form.janCode}
                   onChange={(event) =>
-                    change("janCode", event.target.value)
+                    change("janCode", normalizeJanInput(event.target.value))
                   }
                   disabled={generateSystemBarcode}
                   inputMode="numeric"
+                  maxLength={13}
                   placeholder="例：4901234567890"
                   className="mt-2 w-full rounded-xl border border-slate-300 px-4 py-3 outline-none transition focus:border-blue-600 focus:ring-2 focus:ring-blue-100 disabled:bg-slate-100"
                 />
@@ -605,4 +607,3 @@ export default function AddPage() {
     </main>
   );
 }
-

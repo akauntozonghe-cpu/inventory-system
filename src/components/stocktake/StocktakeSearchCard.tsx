@@ -65,16 +65,16 @@ export default function StocktakeSearchCard({
 
   const status = !item.isRecorded
     ? {
-        label: "未棚卸",
+          label: "未",
         className: "bg-amber-100 text-amber-800",
       }
     : difference === 0
       ? {
-          label: "一致",
+          label: "済・一致",
           className: "bg-emerald-100 text-emerald-800",
         }
       : {
-          label: "差異あり",
+          label: "済・差異あり",
           className: "bg-red-100 text-red-800",
         };
 

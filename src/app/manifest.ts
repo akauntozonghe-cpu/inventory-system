@@ -17,14 +17,14 @@ export default function manifest(): MetadataRoute.Manifest {
     orientation: "any",
     categories: ["business", "productivity", "utilities"],
     icons: [
-      { src: "/pwa/icon-192?v=3", sizes: "192x192", type: "image/png", purpose: "any" },
-      { src: "/pwa/icon-512?v=3", sizes: "512x512", type: "image/png", purpose: "any" },
-      { src: "/pwa/icon-512?v=3", sizes: "512x512", type: "image/png", purpose: "maskable" },
+      { src: "/pwa/icon-192?v=4", sizes: "192x192", type: "image/png", purpose: "any" },
+      { src: "/pwa/icon-512?v=4", sizes: "512x512", type: "image/png", purpose: "any" },
+      { src: "/pwa/icon-512?v=4", sizes: "512x512", type: "image/png", purpose: "maskable" },
     ],
     shortcuts: [
-      { name: "棚卸を開始", short_name: "棚卸", url: "/stocktake", icons: [{ src: "/pwa/icon-192?v=3", sizes: "192x192", type: "image/png" }] },
-      { name: "商品を検索", short_name: "商品検索", url: "/items", icons: [{ src: "/pwa/icon-192?v=3", sizes: "192x192", type: "image/png" }] },
-      { name: "期限管理", short_name: "期限", url: "/expiry", icons: [{ src: "/pwa/icon-192?v=3", sizes: "192x192", type: "image/png" }] },
+      { name: "棚卸を開始", short_name: "棚卸", url: "/stocktake", icons: [{ src: "/pwa/icon-192?v=4", sizes: "192x192", type: "image/png" }] },
+      { name: "商品を検索", short_name: "商品検索", url: "/items", icons: [{ src: "/pwa/icon-192?v=4", sizes: "192x192", type: "image/png" }] },
+      { name: "期限管理", short_name: "期限", url: "/expiry", icons: [{ src: "/pwa/icon-192?v=4", sizes: "192x192", type: "image/png" }] },
     ],
   };
 }

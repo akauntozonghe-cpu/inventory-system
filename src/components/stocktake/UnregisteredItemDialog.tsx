@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { normalizeJanInput } from "@/lib/input-normalization";
 import Link from "next/link";
 import FeedbackToast from "@/components/common/FeedbackToast";
 
@@ -336,8 +337,9 @@ export default function UnregisteredItemDialog({
 
             <input
               value={form.janCode}
-              onChange={(event) => update("janCode", event.target.value)}
+              onChange={(event) => update("janCode", normalizeJanInput(event.target.value))}
               inputMode="numeric"
+              maxLength={13}
               placeholder="JANがあれば入力"
               className="mt-2 w-full rounded-xl border border-slate-300 px-4 py-3 outline-none focus:border-blue-600"
             />
@@ -547,4 +549,3 @@ export default function UnregisteredItemDialog({
     </div>
   );
 }
-
