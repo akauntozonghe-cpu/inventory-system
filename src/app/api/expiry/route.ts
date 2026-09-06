@@ -15,18 +15,17 @@ export async function GET(request: NextRequest) {
 
   try {
     const today = dateKeyInJapan();
-    const [inventories, noExpiration, missingMajor, missingMinor, missingLocation] = await Promise.all([prisma.inventoryInstance.findMany({
-      where: { expirationDate: { not: null }, status: { not: "廃止" } },
+    const [inventories, missingMajor, missingMinor, missingLocation] = await Promise.all([prisma.inventoryInstance.findMany({
+      where: { status: { not: "廃止" } },
       select: {
         id: true, expirationDate: true, expirationAlertDays: true,
         expirationManagementStatus: true, expirationNote: true, expirationReviewedAt: true,
         quantity: true, unit: true, lotNo: true, allocationType: true,
-        item: { select: { id: true, name: true, janCode: true, systemBarcode: true, majorCategory: true } },
+        item: { select: { id: true, name: true, janCode: true, systemBarcode: true, majorCategory: true, minorCategory: true } },
         storageLocation: { select: { id: true, name: true } },
       },
       take: 2000,
-    }), prisma.inventoryInstance.count({ where: { OR: [{ expirationDate: null }, { expirationDate: "" }], status: { not: "廃止" } } }),
-      prisma.item.count({ where: { isArchived: false, OR: [{ majorCategory: null }, { majorCategory: "" }] } }),
+    }), prisma.item.count({ where: { isArchived: false, OR: [{ majorCategory: null }, { majorCategory: "" }] } }),
       prisma.item.count({ where: { isArchived: false, OR: [{ minorCategory: null }, { minorCategory: "" }] } }),
       prisma.inventoryInstance.count({ where: { storageLocationId: null, status: { not: "廃止" } } })]);
 
@@ -49,7 +48,7 @@ export async function GET(request: NextRequest) {
         warning: count(["WARNING"]), upcoming: count(["UPCOMING"]), invalid: count(["INVALID"]),
         acknowledged: entries.filter((entry) => entry.expirationManagementStatus === "ACKNOWLEDGED").length,
         resolved: entries.filter((entry) => entry.expirationManagementStatus === "RESOLVED").length,
-        missingExpiry: noExpiration,
+        noExpiry: entries.filter((entry) => entry.assessment.level === "NONE").length,
         missingMajor,
         missingMinor,
         missingLocation,
