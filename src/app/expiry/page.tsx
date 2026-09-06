@@ -24,6 +24,9 @@ const levelStyle: Record<string, string> = {
 };
 
 function ExpiryCalendar({ month, entries, onEdit }: { month: string; entries: Entry[]; onEdit: (entry: Entry) => void }) {
+  if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(month)) {
+    return <section className="mt-5 rounded-2xl bg-white p-8 text-center font-bold text-slate-500 shadow-sm">カレンダーを準備しています…</section>;
+  }
   const [year, monthNumber] = month.split("-").map(Number);
   const firstWeekday = new Date(Date.UTC(year, monthNumber - 1, 1)).getUTCDay();
   const lastDay = new Date(Date.UTC(year, monthNumber, 0)).getUTCDate();
@@ -61,13 +64,23 @@ export default function ExpiryPage() {
   const request = useCallback(async () => readPayload(await fetch("/api/expiry", { cache: "no-store" })), []);
   const load = useCallback(async () => {
     setLoading(true);
-    try { setData(await request()); setError(null); }
+    try {
+      const payload = await request();
+      setData(payload);
+      setCalendarMonth((current) => current || payload.today.slice(0, 7));
+      setError(null);
+    }
     catch (caught) {
       const code = caught instanceof Error && "code" in caught && typeof caught.code === "string" ? caught.code : "EXPIRY_LIST_FAILED";
       const message = caught instanceof Error ? caught.message : "期限情報を取得できませんでした。";
       setError({ code, message, reportId: null, status: "RECOVERING" });
       const recovery = await recoverAfterFailure({ code, title: "期限情報取得エラー", message, route: "/expiry", detail: { operation: "LIST" }, action: request });
-      if (recovery.success && recovery.value) { setData(recovery.value); setError(null); setNotice("自動復旧して期限情報を取得しました。"); }
+      if (recovery.success && recovery.value) {
+        setData(recovery.value);
+        setCalendarMonth((current) => current || recovery.value!.today.slice(0, 7));
+        setError(null);
+        setNotice("自動復旧して期限情報を取得しました。");
+      }
       else setError({ code, message, reportId: recovery.reportId, status: "ADMIN_REQUIRED" });
     } finally { setLoading(false); }
   }, [request]);
@@ -110,5 +123,4 @@ export default function ExpiryPage() {
     {editing&&<div className="fixed inset-0 z-50 grid place-items-center bg-slate-950/60 p-4"><section className="w-full max-w-lg rounded-3xl bg-white p-6 shadow-2xl"><h2 className="text-2xl font-black">期限対応を記録</h2><p className="mt-2 font-bold">{editing.item.name}／期限 {editing.expirationDate}</p><label className="mt-5 block font-bold">通知開始日数<input type="number" min="1" max="365" value={alertDays} onChange={(e)=>setAlertDays(e.target.value)} className="mt-2 w-full rounded-xl border p-3"/></label><label className="mt-4 block font-bold">確認内容・判断理由<textarea rows={4} value={note} onChange={(e)=>setNote(e.target.value)} placeholder="現物状態、優先使用、値下げ、返品、廃棄予定など" className="mt-2 w-full rounded-xl border p-3"/></label><div className="mt-5 grid gap-2 sm:grid-cols-3"><button disabled={saving} onClick={()=>void save("ACKNOWLEDGED")} className="rounded-xl bg-blue-600 px-3 py-3 font-black text-white">確認済み</button><button disabled={saving} onClick={()=>void save("RESOLVED")} className="rounded-xl bg-emerald-600 px-3 py-3 font-black text-white">対応完了</button><button disabled={saving} onClick={()=>setEditing(null)} className="rounded-xl bg-slate-200 px-3 py-3 font-black">戻る</button></div><p className="mt-3 text-xs font-bold text-slate-500">更新者・時刻・変更前後の内容は在庫イベント履歴へ記録されます。</p></section></div>}
   </main>;
 }
-
 
