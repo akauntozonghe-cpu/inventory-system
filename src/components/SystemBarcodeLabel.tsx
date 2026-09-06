@@ -118,11 +118,11 @@ export default function SystemBarcodeLabel({
     try {
       JsBarcode(svgRef.current, barcode, {
         format: barcodeFormat(barcode),
-        width: 2,
-        height: 76,
+        width: 1.7,
+        height: 64,
         displayValue: true,
         fontSize: 15,
-        margin: 8,
+        margin: 12,
         background: "#ffffff",
         lineColor: "#111827",
       });
@@ -221,7 +221,7 @@ export default function SystemBarcodeLabel({
           <title>${escapeHtml(itemName)} ラベル</title>
           <style>
             @page {
-              size: ${printLayout === "A4" ? "A4 portrait" : "62mm 32mm"};
+              size: ${printLayout === "A4" ? "A4 portrait" : "48mm 28mm"};
               margin: ${printLayout === "A4" ? "8mm" : "0"};
             }
 
@@ -231,20 +231,20 @@ export default function SystemBarcodeLabel({
               margin: 0;
               color: #111827;
               font-family: Arial, "Noto Sans JP", sans-serif;
-              ${printLayout === "A4" ? "display:grid;grid-template-columns:repeat(3,62mm);grid-auto-rows:32mm;gap:2mm;" : ""}
+              ${printLayout === "A4" ? "display:grid;grid-template-columns:repeat(4,48mm);grid-auto-rows:28mm;gap:1.5mm;" : ""}
             }
 
             .label {
-              width: 62mm;
-              height: 32mm;
+              width: 48mm;
+              height: 28mm;
               overflow: hidden;
               border: 0.25mm dashed #94a3b8;
-              padding: 2mm;
+              padding: 1.5mm;
               break-inside: avoid;
               page-break-inside: avoid;
             }
 
-            ${printLayout === "A4" ? ".label:nth-child(24n){break-after:page;page-break-after:always;}" : ".label{break-after:page;page-break-after:always;}.label:last-child{break-after:auto;page-break-after:auto;}"}
+            ${printLayout === "A4" ? ".label:nth-child(40n){break-after:page;page-break-after:always;}" : ".label{break-after:page;page-break-after:always;}.label:last-child{break-after:auto;page-break-after:auto;}"}
 
             .system {
               margin: 0;
@@ -254,16 +254,16 @@ export default function SystemBarcodeLabel({
             }
 
             .name {
-              margin: 1mm 0;
-              max-height: 6mm;
+              margin: .5mm 0;
+              max-height: 4mm;
               overflow: hidden;
-              font-size: 8.5pt;
+              font-size: 7.5pt;
               font-weight: 800;
               word-break: break-word;
             }
 
             .code {
-              margin: 0 0 2mm;
+              margin: 0;
               font-family: monospace;
               font-size: 7pt;
               font-weight: 700;
@@ -271,8 +271,9 @@ export default function SystemBarcodeLabel({
 
             svg {
               display: block;
-              width: 100%;
-              height: 15mm;
+              width: 38mm;
+              height: 16mm;
+              margin: 0 auto;
             }
 
             @media print {

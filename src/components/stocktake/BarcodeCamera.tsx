@@ -82,8 +82,8 @@ export default function BarcodeCamera({
         ]);
 
         const reader = new BrowserMultiFormatReader(hints, {
-          delayBetweenScanAttempts: 120,
-          delayBetweenScanSuccess: 700,
+          delayBetweenScanAttempts: 60,
+          delayBetweenScanSuccess: 500,
         });
 
         readerRef.current = reader;
@@ -96,6 +96,7 @@ export default function BarcodeCamera({
           facingMode: { ideal: "environment" },
           width: { ideal: 2560, min: 1280 },
           height: { ideal: 1440, min: 720 },
+          aspectRatio: { ideal: 16 / 9 },
         };
 
         const controls = await reader.decodeFromConstraints(
@@ -163,12 +164,14 @@ export default function BarcodeCamera({
         if (track) {
           const capabilities = track.getCapabilities?.() as MediaTrackCapabilities & {
             focusMode?: string[];
+            exposureMode?: string[];
+            zoom?: { min: number; max: number; step?: number };
           };
-          if (capabilities?.focusMode?.includes("continuous")) {
-            await track.applyConstraints({
-              advanced: [{ focusMode: "continuous" } as MediaTrackConstraintSet],
-            });
-          }
+          const advanced: MediaTrackConstraintSet[] = [];
+          if (capabilities?.focusMode?.includes("continuous")) advanced.push({ focusMode: "continuous" } as MediaTrackConstraintSet);
+          if (capabilities?.exposureMode?.includes("continuous")) advanced.push({ exposureMode: "continuous" } as MediaTrackConstraintSet);
+          if (capabilities?.zoom && capabilities.zoom.max > capabilities.zoom.min) advanced.push({ zoom: Math.min(capabilities.zoom.max, Math.max(capabilities.zoom.min, 1.5)) } as MediaTrackConstraintSet);
+          if (advanced.length > 0) await track.applyConstraints({ advanced });
         }
 
         if (mounted) {
