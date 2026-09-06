@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { janCodeValidationMessage, normalizeDisplayText, normalizeIdentifier, normalizeJanCode, normalizeJanInput } from "../src/lib/input-normalization";
+import { janCodeValidationMessage, normalizeAsciiCodeInput, normalizeDisplayText, normalizeIdentifier, normalizeJanCode, normalizeJanInput } from "../src/lib/input-normalization";
 
 describe("input normalization", () => {
   it("normalizes full-width text and repeated whitespace", () => {
@@ -20,5 +20,9 @@ describe("input normalization", () => {
     expect(janCodeValidationMessage("4901234567890")).toBeNull();
     expect(janCodeValidationMessage("1234")).toContain("8桁または13桁");
     expect(janCodeValidationMessage("1234567A")).toContain("数字だけ");
+  });
+
+  it("converts full-width codes and removes non-ASCII characters", () => {
+    expect(normalizeAsciiCodeInput("ａｂ-１２ 商品")).toBe("AB-12");
   });
 });

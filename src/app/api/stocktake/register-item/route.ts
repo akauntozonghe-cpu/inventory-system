@@ -22,6 +22,7 @@ type RegisterItemBody = {
   quantity?: unknown;
   lotNo?: unknown;
   expirationDate?: unknown;
+  expirationNotApplicable?: unknown;
 };
 
 function getText(value: unknown, maxLength = 500) {
@@ -250,6 +251,10 @@ export async function POST(request: NextRequest) {
         if (expirationDate === undefined) {
           throw new Error("STOCKTAKE_EXPIRATION_FORMAT_INVALID");
         }
+        const expirationNotApplicable = body.expirationNotApplicable === true;
+        if (!expirationNotApplicable && expirationDate === null) {
+          throw new Error("STOCKTAKE_EXPIRATION_REQUIRED");
+        }
         const unit =
           normalizeOptionalText(body.unit, 30) ?? item.defaultUnit;
 
@@ -287,6 +292,7 @@ export async function POST(request: NextRequest) {
                 allocationType: "home",
                 status: "保管中",
                 stocktakeStatus: "棚卸済",
+                expirationManagementStatus: expirationNotApplicable ? "NO_EXPIRY" : "ACTIVE",
                 stocktakeAt: new Date(),
               },
             });

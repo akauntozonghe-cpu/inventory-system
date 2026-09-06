@@ -31,6 +31,7 @@ type RegisterBody = {
   expirationDate?: unknown;
   memo?: unknown;
   generateSystemBarcode?: unknown;
+  expirationNotApplicable?: unknown;
 };
 
 function requiredText(value: unknown, maxLength: number) {
@@ -147,6 +148,10 @@ export async function POST(request: NextRequest) {
     }
     const memo = optionalText(body.memo, 500);
     const quantity = validQuantity(body.quantity);
+    const expirationNotApplicable = body.expirationNotApplicable === true;
+    if (!expirationNotApplicable && expirationDate === null) {
+      return NextResponse.json({ code: "ITEM_EXPIRATION_REQUIRED", message: "使用期限を入力するか、期限なしを選択してください。" }, { status: 400 });
+    }
 
     const generateSystemBarcode =
       body.generateSystemBarcode === true && canRegisterImmediately;
@@ -384,6 +389,7 @@ export async function POST(request: NextRequest) {
             allocationType: "home",
             status: "在庫中",
             stocktakeStatus: "未棚卸",
+            expirationManagementStatus: expirationNotApplicable ? "NO_EXPIRY" : "ACTIVE",
           },
           include: {
             item: true,

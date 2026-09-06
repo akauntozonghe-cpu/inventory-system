@@ -79,6 +79,18 @@ export default function UnregisteredItemDialog({
   const [loadingLocations, setLoadingLocations] = useState(false);
   const [saving, setSaving] = useState(false);
   const [expirationHasDay, setExpirationHasDay] = useState(false);
+  const [noExpiration, setNoExpiration] = useState(false);
+  const [majorCategories, setMajorCategories] = useState<string[]>([]);
+  const [minorCategories, setMinorCategories] = useState<string[]>([]);
+
+  useEffect(() => {
+    if (!open) return;
+    void fetch("/api/stocktake/options", { cache: "no-store" }).then((response) => response.ok ? response.json() : null).then((data) => {
+      if (!data || typeof data !== "object") return;
+      setMajorCategories(Array.isArray(data.majorCategories) ? data.majorCategories : []);
+      setMinorCategories(Array.isArray(data.minorCategories) ? data.minorCategories : []);
+    }).catch(() => undefined);
+  }, [open]);
   const [message, setMessage] = useState("");
   const [duplicateCandidates, setDuplicateCandidates] = useState<DuplicateCandidate[]>([]);
   const [checkingDuplicates, setCheckingDuplicates] = useState(false);
@@ -219,6 +231,10 @@ export default function UnregisteredItemDialog({
       window.requestAnimationFrame(() => locationRef.current?.focus());
       return;
     }
+    if (!noExpiration && !form.expirationDate) {
+      setMessage("使用期限を入力するか、「期限なし」を選択してください。");
+      return;
+    }
 
     const quantity = Number(form.quantity);
 
@@ -241,6 +257,7 @@ export default function UnregisteredItemDialog({
           sessionId,
           ...form,
           quantity,
+          expirationNotApplicable: noExpiration,
         }),
       });
 
@@ -389,27 +406,23 @@ export default function UnregisteredItemDialog({
           <label>
             <span className="text-sm font-bold">大分類</span>
 
-            <input
+            <select
               value={form.majorCategory}
-              onChange={(event) =>
-                update("majorCategory", event.target.value)
-              }
-              placeholder="任意"
-              className="mt-2 w-full rounded-xl border border-slate-300 px-4 py-3 outline-none focus:border-blue-600"
-            />
+              onChange={(event) => { update("majorCategory", event.target.value); update("minorCategory", ""); }}
+              className="mt-2 w-full rounded-xl border border-slate-300 bg-white px-4 py-3 outline-none focus:border-blue-600">
+              <option value="">大分類を選択</option>{majorCategories.map((category)=><option key={category} value={category}>{category}</option>)}
+            </select>
           </label>
 
           <label>
             <span className="text-sm font-bold">小分類</span>
 
-            <input
+            <select
               value={form.minorCategory}
-              onChange={(event) =>
-                update("minorCategory", event.target.value)
-              }
-              placeholder="任意"
-              className="mt-2 w-full rounded-xl border border-slate-300 px-4 py-3 outline-none focus:border-blue-600"
-            />
+              onChange={(event) => update("minorCategory", event.target.value)}
+              className="mt-2 w-full rounded-xl border border-slate-300 bg-white px-4 py-3 outline-none focus:border-blue-600">
+              <option value="">小分類を選択</option>{minorCategories.map((category)=><option key={category} value={category}>{category}</option>)}
+            </select>
           </label>
 
           <label>
@@ -481,8 +494,8 @@ export default function UnregisteredItemDialog({
           <label>
             <span className="text-sm font-bold">使用期限（年月のみ・年月日）</span>
 
-            <label className="mt-2 flex items-center gap-2 text-sm font-bold"><input type="checkbox" checked={expirationHasDay} onChange={(event) => { setExpirationHasDay(event.target.checked); update("expirationDate", ""); }} className="h-5 w-5" />日付まで記載されている</label>
-            <input type={expirationHasDay ? "date" : "month"} value={form.expirationDate} onChange={(event) => update("expirationDate", event.target.value)} className="mt-2 w-full rounded-xl border border-slate-300 px-4 py-3" />
+            <label className="mt-2 flex items-center gap-2 text-sm font-bold"><input type="checkbox" checked={noExpiration} onChange={(event) => { setNoExpiration(event.target.checked); update("expirationDate", ""); }} className="h-5 w-5" />この商品に使用期限はない</label>
+            {!noExpiration&&<><label className="mt-2 flex items-center gap-2 text-sm font-bold"><input type="checkbox" checked={expirationHasDay} onChange={(event) => { setExpirationHasDay(event.target.checked); update("expirationDate", ""); }} className="h-5 w-5" />日付まで記載されている</label><input type={expirationHasDay ? "date" : "month"} value={form.expirationDate} onChange={(event) => update("expirationDate", event.target.value)} className="mt-2 w-full rounded-xl border border-slate-300 px-4 py-3" /></>}
             <span className="mt-2 block text-xs font-bold text-blue-800">登録値：{form.expirationDate || "未入力（期限データなしエラーになります）"}</span>
           </label>
         </div>

@@ -3,13 +3,14 @@
 import Link from "next/link";
 import { type FormEvent, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { normalizeJanInput } from "@/lib/input-normalization";
+import { normalizeAsciiCodeInput, normalizeJanInput } from "@/lib/input-normalization";
 import FeedbackToast from "@/components/common/FeedbackToast";
 
 type Location = {
   id: string;
   name: string;
 };
+type OptionPayload = { majorCategories: string[]; minorCategories: string[] };
 
 type CurrentUser = {
   id: string;
@@ -104,12 +105,15 @@ export default function AddPage() {
 
   const [form, setForm] = useState<FormState>(initialForm);
   const [locations, setLocations] = useState<Location[]>([]);
+  const [majorCategories, setMajorCategories] = useState<string[]>([]);
+  const [minorCategories, setMinorCategories] = useState<string[]>([]);
   const [currentUser, setCurrentUser] = useState<CurrentUser | null>(null);
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [generateSystemBarcode, setGenerateSystemBarcode] = useState(false);
   const [expirationHasDay, setExpirationHasDay] = useState(false);
+  const [noExpiration, setNoExpiration] = useState(false);
 
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
@@ -131,14 +135,16 @@ export default function AddPage() {
   useEffect(() => {
     const loadInitialData = async () => {
       try {
-        const [locationResponse, userResponse] = await Promise.all([
+        const [locationResponse, userResponse, optionResponse] = await Promise.all([
           fetch("/api/storage-locations", { cache: "no-store" }),
           fetch("/api/auth/me", { cache: "no-store" }),
+          fetch("/api/stocktake/options", { cache: "no-store" }),
         ]);
 
-        const [locationData, userData] = await Promise.all([
+        const [locationData, userData, optionData] = await Promise.all([
           readJson(locationResponse),
           readJson(userResponse),
+          readJson(optionResponse),
         ]);
 
         if (!locationResponse.ok || !Array.isArray(locationData)) {
@@ -160,6 +166,11 @@ export default function AddPage() {
         }
 
         setLocations(locationData as Location[]);
+        if (optionResponse.ok && optionData && typeof optionData === "object") {
+          const options = optionData as OptionPayload;
+          setMajorCategories(Array.isArray(options.majorCategories) ? options.majorCategories : []);
+          setMinorCategories(Array.isArray(options.minorCategories) ? options.minorCategories : []);
+        }
         setCurrentUser(userData);
       } catch (loadError) {
         setError(
@@ -207,6 +218,10 @@ export default function AddPage() {
       );
       return;
     }
+    if (!noExpiration && !form.expirationDate) {
+      setError("使用期限を入力するか、「期限なし」を選択してください。");
+      return;
+    }
 
     if (generateSystemBarcode && !isAdmin) {
       setError("システムバーコードの発行は管理者のみ実行できます。");
@@ -225,6 +240,7 @@ export default function AddPage() {
           ...form,
           quantity,
           generateSystemBarcode,
+          expirationNotApplicable: noExpiration,
         }),
       });
 
@@ -245,6 +261,7 @@ export default function AddPage() {
       setMessage(getMessage(data, fallbackMessage));
       setForm(initialForm);
       setGenerateSystemBarcode(false);
+      setNoExpiration(false);
 
       window.setTimeout(() => {
         router.push(isAdmin ? "/items" : "/");
@@ -413,7 +430,7 @@ export default function AddPage() {
                 <input
                   value={form.managementCode}
                   onChange={(event) =>
-                    change("managementCode", event.target.value)
+                    change("managementCode", normalizeAsciiCodeInput(event.target.value))
                   }
                   placeholder="任意"
                   className="mt-2 w-full rounded-xl border border-slate-300 px-4 py-3 outline-none transition focus:border-blue-600 focus:ring-2 focus:ring-blue-100"
@@ -428,7 +445,7 @@ export default function AddPage() {
                 <input
                   value={form.managementGroupCode}
                   onChange={(event) =>
-                    change("managementGroupCode", event.target.value)
+                    change("managementGroupCode", normalizeAsciiCodeInput(event.target.value))
                   }
                   placeholder="任意"
                   className="mt-2 w-full rounded-xl border border-slate-300 px-4 py-3 outline-none transition focus:border-blue-600 focus:ring-2 focus:ring-blue-100"
@@ -463,14 +480,12 @@ export default function AddPage() {
                   大分類
                 </span>
 
-                <input
+                <select
                   value={form.majorCategory}
-                  onChange={(event) =>
-                    change("majorCategory", event.target.value)
-                  }
-                  placeholder="例：衛生用品"
-                  className="mt-2 w-full rounded-xl border border-slate-300 px-4 py-3 outline-none transition focus:border-blue-600 focus:ring-2 focus:ring-blue-100"
-                />
+                  onChange={(event) => { change("majorCategory", event.target.value); change("minorCategory", ""); }}
+                  className="mt-2 w-full rounded-xl border border-slate-300 bg-white px-4 py-3 outline-none transition focus:border-blue-600 focus:ring-2 focus:ring-blue-100">
+                  <option value="">大分類を選択</option>{majorCategories.map((category)=><option key={category} value={category}>{category}</option>)}
+                </select>
               </label>
 
               <label>
@@ -478,14 +493,12 @@ export default function AddPage() {
                   小分類
                 </span>
 
-                <input
+                <select
                   value={form.minorCategory}
-                  onChange={(event) =>
-                    change("minorCategory", event.target.value)
-                  }
-                  placeholder="例：絆創膏"
-                  className="mt-2 w-full rounded-xl border border-slate-300 px-4 py-3 outline-none transition focus:border-blue-600 focus:ring-2 focus:ring-blue-100"
-                />
+                  onChange={(event) => change("minorCategory", event.target.value)}
+                  className="mt-2 w-full rounded-xl border border-slate-300 bg-white px-4 py-3 outline-none transition focus:border-blue-600 focus:ring-2 focus:ring-blue-100">
+                  <option value="">小分類を選択</option>{minorCategories.map((category)=><option key={category} value={category}>{category}</option>)}
+                </select>
               </label>
             </div>
           </section>
@@ -557,7 +570,7 @@ export default function AddPage() {
 
                 <input
                   value={form.lotNo}
-                  onChange={(event) => change("lotNo", event.target.value)}
+                  onChange={(event) => change("lotNo", normalizeAsciiCodeInput(event.target.value))}
                   placeholder="任意"
                   className="mt-2 w-full rounded-xl border border-slate-300 px-4 py-3 outline-none transition focus:border-blue-600 focus:ring-2 focus:ring-blue-100"
                 />
@@ -568,9 +581,9 @@ export default function AddPage() {
                   使用期限（年月のみ・年月日の両方に対応）
                 </span>
 
-                <label className="mt-2 flex items-center gap-2 font-bold"><input type="checkbox" checked={expirationHasDay} onChange={(event) => { setExpirationHasDay(event.target.checked); change("expirationDate", ""); }} className="h-5 w-5" />日付まで記載されている</label>
-                <input type={expirationHasDay ? "date" : "month"} value={form.expirationDate} onChange={(event) => change("expirationDate", event.target.value)} className="mt-2 w-full rounded-xl border border-slate-300 px-4 py-3" />
-                <span className="mt-2 block text-sm font-bold text-blue-800">登録値：{form.expirationDate || "未入力（期限データなしエラーになります）"}</span>
+                <label className="mt-2 flex items-center gap-2 font-bold"><input type="checkbox" checked={noExpiration} onChange={(event) => { setNoExpiration(event.target.checked); change("expirationDate", ""); }} className="h-5 w-5" />この商品に使用期限はない</label>
+                {!noExpiration&&<><label className="mt-2 flex items-center gap-2 font-bold"><input type="checkbox" checked={expirationHasDay} onChange={(event) => { setExpirationHasDay(event.target.checked); change("expirationDate", ""); }} className="h-5 w-5" />日付まで記載されている</label><input type={expirationHasDay ? "date" : "month"} value={form.expirationDate} onChange={(event) => change("expirationDate", event.target.value)} className="mt-2 w-full rounded-xl border border-slate-300 px-4 py-3" /></>}
+                <span className="mt-2 block text-sm font-bold text-blue-800">登録内容：{noExpiration?"期限なし":form.expirationDate||"期限を選択してください"}</span>
               </label>
 
               <label className="sm:col-span-2">

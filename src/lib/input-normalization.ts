@@ -32,3 +32,7 @@ export function janCodeValidationMessage(value: string | null) {
 export function normalizeJanInput(value: string) {
   return value.normalize("NFKC").replace(/\D/g, "").slice(0, 13);
 }
+
+export function normalizeAsciiCodeInput(value: string, maxLength = 100) {
+  return value.normalize("NFKC").replace(/[^\x21-\x7E]/g, "").toUpperCase().slice(0, maxLength);
+}
