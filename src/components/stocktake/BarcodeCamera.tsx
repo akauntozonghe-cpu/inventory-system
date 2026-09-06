@@ -36,6 +36,31 @@ export default function BarcodeCamera({
   const [status, setStatus] = useState("カメラを起動しています…");
   const [lastBarcode, setLastBarcode] = useState("");
   const [cameraError, setCameraError] = useState("");
+  const [scanConfirmed, setScanConfirmed] = useState(false);
+
+  const confirmScan = () => {
+    setScanConfirmed(true);
+    window.setTimeout(() => setScanConfirmed(false), 850);
+    if ("vibrate" in navigator) navigator.vibrate([90, 45, 90]);
+    try {
+      const AudioContextClass = window.AudioContext || (window as typeof window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+      if (!AudioContextClass) return;
+      const context = new AudioContextClass();
+      const oscillator = context.createOscillator();
+      const gain = context.createGain();
+      oscillator.type = "sine";
+      oscillator.frequency.setValueAtTime(880, context.currentTime);
+      gain.gain.setValueAtTime(0.0001, context.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.16, context.currentTime + 0.01);
+      gain.gain.exponentialRampToValueAtTime(0.0001, context.currentTime + 0.13);
+      oscillator.connect(gain).connect(context.destination);
+      oscillator.start();
+      oscillator.stop(context.currentTime + 0.14);
+      oscillator.addEventListener("ended", () => void context.close(), { once: true });
+    } catch {
+      // 端末やブラウザが音声出力を許可しない場合も視覚表示と振動を継続する。
+    }
+  };
 
   useEffect(() => {
     onDetectedRef.current = onDetected;
@@ -137,6 +162,7 @@ export default function BarcodeCamera({
             detectedAtRef.current = now;
             setLastBarcode(barcode);
             setStatus(`読み取りました：${barcode}`);
+            confirmScan();
 
             if (closeOnDetect) {
               stopCamera();
@@ -212,6 +238,7 @@ export default function BarcodeCamera({
 
   return (
     <div className="fixed inset-0 z-[110] overflow-y-auto bg-slate-950">
+      {scanConfirmed && <div className="pointer-events-none fixed inset-0 z-[140] grid place-items-center border-[10px] border-emerald-400 bg-emerald-400/25" role="status" aria-live="assertive"><div className="rounded-3xl bg-emerald-500 px-8 py-6 text-center text-white shadow-2xl"><p className="text-4xl font-black">✓ 読取完了</p><p className="mt-2 max-w-xs break-all text-lg font-bold">{lastBarcode}</p></div></div>}
       <div className="mx-auto min-h-screen max-w-4xl bg-slate-950 text-white">
         <header className="flex items-start justify-between gap-4 border-b border-slate-800 px-5 py-5 sm:px-7">
           <div>
@@ -255,7 +282,7 @@ export default function BarcodeCamera({
             </div>
           </section>
 
-          <section className="rounded-3xl bg-white p-5 text-center text-slate-950 shadow-xl">
+          <section className={`rounded-3xl p-5 text-center text-slate-950 shadow-xl transition-colors ${scanConfirmed ? "bg-emerald-100 ring-4 ring-emerald-400" : "bg-white"}`}>
             {cameraError ? (
               <>
                 <p className="font-black text-red-600">
