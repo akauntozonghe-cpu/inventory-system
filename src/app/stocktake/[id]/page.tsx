@@ -17,6 +17,7 @@ import UnregisteredItemDialog from "@/components/stocktake/UnregisteredItemDialo
 import StocktakeSystemErrorDialog from "@/components/stocktake/StocktakeSystemErrorDialog";
 import { recoverAfterFailure } from "@/lib/client-error-recovery";
 import { useInstantStocktake } from "@/hooks/useInstantStocktake";
+import { useLiveRefresh } from "@/hooks/useLiveRefresh";
 
 type FilterType = "UNRECORDED" | "RECORDED" | "DIFFERENCE" | "ALL";
 type SessionAction = "PAUSE" | "RESUME" | "COMPLETE";
@@ -226,7 +227,6 @@ export default function StocktakePage() {
     }
 
     setProgress(data as ProgressData);
-    setLastSyncedAt(new Date());
   }, [sessionId]);
 
   const loadItems = useCallback(
@@ -274,7 +274,7 @@ export default function StocktakePage() {
           setItems(data as InventoryItem[]);
         }
       } finally {
-        if (requestId === searchRequestRef.current && !silent) {
+        if (!silent) {
           setSearching(false);
         }
       }
@@ -316,10 +316,11 @@ export default function StocktakePage() {
     });
     const response = await fetch(`/api/inventory/search?${query.toString()}`, { cache: "no-store" });
     const data: unknown = await response.json().catch(() => null);
-    if (!response.ok || !Array.isArray(data) || data.length === 0) return;
+    if (!response.ok || !Array.isArray(data)) throw new Error("選択商品の同期に失敗しました。");
+    if (data.length === 0) return;
     const latest = data[0] as InventoryItem;
-    if (latest.countedQuantity === selected.countedQuantity) return;
-    setSelected(latest);
+    if (JSON.stringify(latest) === JSON.stringify(selected)) return;
+    setSelected((current) => current?.id === selected.id ? latest : current);
     setMessage(
       latest.countedQuantity === null
         ? "別端末の更新を反映しました。この商品は未棚卸です。"
@@ -328,30 +329,16 @@ export default function StocktakePage() {
   }, [selected, sessionId]);
 
   const syncInBackground = useCallback(async () => {
-    await Promise.all([
+    const results = await Promise.allSettled([
       loadProgress(),
       loadItems(keyword, filter, majorCategory, true),
       syncSelectedItem(),
     ]);
+    if (results.some((result) => result.status === "rejected")) throw new Error("同期失敗");
+    setLastSyncedAt(new Date());
   }, [filter, keyword, loadItems, loadProgress, majorCategory, syncSelectedItem]);
 
-  useEffect(() => {
-    // 別端末の保存結果を入力中にも反映する。入力欄そのものは上書きしない。
-    const sync = () => {
-      if (document.visibilityState !== "visible") return;
-      void syncInBackground().catch(() => {
-        // 一時的な通信断では操作を止めず、次回同期で自動復旧する。
-      });
-    };
-    const timer = window.setInterval(sync, 1_000);
-    window.addEventListener("focus", sync);
-    window.addEventListener("online", sync);
-    return () => {
-      window.clearInterval(timer);
-      window.removeEventListener("focus", sync);
-      window.removeEventListener("online", sync);
-    };
-  }, [syncInBackground]);
+  const syncFailed = useLiveRefresh(syncInBackground);
 
   useEffect(() => {
     let mounted = true;
@@ -765,7 +752,7 @@ export default function StocktakePage() {
             </p>
             <div className="mt-3 inline-flex items-center gap-2 rounded-full border border-emerald-400/30 bg-emerald-400/10 px-3 py-1.5 text-xs font-bold text-emerald-200">
               <span className="h-2 w-2 animate-pulse rounded-full bg-emerald-400" />
-              他端末と自動同期中
+              {syncFailed ? "同期失敗：前回の情報を表示中・再接続を試行中" : "他端末と自動同期（通信時間＋約1秒）"}
               {lastSyncedAt && <span className="text-emerald-100/70">・{lastSyncedAt.toLocaleTimeString("ja-JP", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}</span>}
             </div>
           </div>

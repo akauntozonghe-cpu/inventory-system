@@ -7,6 +7,8 @@ import { useParams, useRouter } from "next/navigation";
 import SystemBarcodeLabel from "@/components/SystemBarcodeLabel";
 import FeedbackToast from "@/components/common/FeedbackToast";
 
+import { useLiveRefresh } from "@/hooks/useLiveRefresh";
+
 type CurrentUser = {
   id: string;
   displayName: string;
@@ -276,7 +278,7 @@ export default function ItemDetailPage() {
 
   const isAdmin = currentUser?.role === "ADMIN";
 
-  const loadItem = useCallback(async () => {
+  const loadItem = useCallback(async (silent = false) => {
     if (!itemId) {
       setError("商品IDを確認できません。");
       setLoading(false);
@@ -284,8 +286,7 @@ export default function ItemDetailPage() {
     }
 
     try {
-      setLoading(true);
-      setError("");
+      if (!silent) { setLoading(true); setError(""); }
 
       const response = await fetch(`/api/items/${itemId}`, {
         cache: "no-store",
@@ -301,6 +302,7 @@ export default function ItemDetailPage() {
 
       setItem(normalizeItem(data));
     } catch (loadError) {
+      if (silent) throw loadError;
       setItem(null);
       setError(
         loadError instanceof Error
@@ -308,9 +310,11 @@ export default function ItemDetailPage() {
           : "商品情報を取得できませんでした。"
       );
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   }, [itemId]);
+
+  const syncFailed = useLiveRefresh(() => loadItem(true));
 
   useEffect(() => {
     void loadItem();
@@ -578,6 +582,7 @@ export default function ItemDetailPage() {
 
   return (
     <main className="min-h-screen bg-slate-100 p-4 pb-24 sm:p-8">
+      <p role="status" className="mx-auto mb-3 max-w-6xl text-sm font-bold">{syncFailed ? "同期できていません。表示は前回取得時点です。" : "在庫情報を自動更新中（通信時間＋約1秒）。編集中の入力は保持します。"}</p>
       <div className="mx-auto max-w-6xl">
         <header className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
           <div>

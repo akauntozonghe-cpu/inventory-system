@@ -4,6 +4,8 @@ import { prisma } from "@/lib/prisma";
 import { getLoggedInUser, hasAdminAccess } from "@/lib/auth";
 import { withDatabaseRetry } from "@/lib/database-retry";
 
+export const dynamic = "force-dynamic";
+
 type FilterType = "UNRECORDED" | "RECORDED" | "DIFFERENCE" | "ALL";
 
 function isFilterType(value: string | null): value is FilterType {
@@ -33,7 +35,7 @@ export async function GET(request: NextRequest) {
 
     const sessionId = searchParams.get("sessionId")?.trim() ?? "";
     const inventoryInstanceId = searchParams.get("inventoryInstanceId")?.trim() ?? "";
-    const keyword = searchParams.get("q")?.trim() ?? "";
+    const keyword = searchParams.get("q")?.normalize("NFKC").trim() ?? "";
     const exact = searchParams.get("exact") === "true";
     const majorCategory = searchParams.get("majorCategory")?.trim() ?? "";
     const rawFilter = searchParams.get("filter");
@@ -95,27 +97,28 @@ export async function GET(request: NextRequest) {
       inventoryFilters.push({ id: inventoryInstanceId });
     }
 
-    if (exact && normalizedKeyword) {
+    if ((exact && normalizedKeyword) || session.status === "IN_PROGRESS") {
       // 棚卸開始後に登録・変更された商品も、読取時点の最新DBから対象へ反映する。
       const currentInventories = await withDatabaseRetry(() => prisma.inventoryInstance.findMany({
-        where: { status: { not: "廃止" } },
+        where: { status: { not: "廃止" }, item: { isArchived: false },
+          ...(!exact ? { stocktakeTargets: { none: { sessionId } } } : {}),
+        },
         select: {
           id: true, quantity: true, managementCode: true, managementGroupCode: true, majorCategory: true, minorCategory: true,
           storageLocation: { select: { name: true } },
           item: { select: { janCode: true, systemBarcode: true, managementCode: true, managementGroupCode: true, majorCategory: true, minorCategory: true } },
         },
-        take: 5000,
       }));
       const currentMatches = currentInventories.filter((inventory) => {
         const codes = [inventory.item.janCode, inventory.item.systemBarcode, inventory.item.managementCode, inventory.item.managementGroupCode, inventory.managementCode, inventory.managementGroupCode].map(normalizeCode);
-        return codes.includes(normalizedKeyword) && matchesSessionScope(inventory, session);
+        return (!exact || codes.includes(normalizedKeyword)) && matchesSessionScope(inventory, session);
       });
-      if (currentMatches.length > 0) {
-        await withDatabaseRetry(() => prisma.$transaction(currentMatches.map((inventory) => prisma.stocktakeTarget.upsert({
-          where: { sessionId_inventoryInstanceId: { sessionId, inventoryInstanceId: inventory.id } },
-          update: {},
-          create: { sessionId, inventoryInstanceId: inventory.id, expectedQuantity: inventory.quantity },
-        }))));
+      if (exact) inventoryFilters.push({ id: { in: currentMatches.map((inventory) => inventory.id) } });
+      if (currentMatches.length > 0 && session.status === "IN_PROGRESS") {
+        await withDatabaseRetry(() => prisma.stocktakeTarget.createMany({
+          data: currentMatches.map((inventory) => ({ sessionId, inventoryInstanceId: inventory.id, expectedQuantity: inventory.quantity })),
+          skipDuplicates: true,
+        }));
       }
     }
 
@@ -279,7 +282,7 @@ export async function GET(request: NextRequest) {
       orderBy: {
         createdAt: "asc",
       },
-      take: 1000,
+      ...(exact ? {} : { take: 1000 }),
     }));
 
     const records = await withDatabaseRetry(() => prisma.stocktakeRecord.findMany({
@@ -371,7 +374,7 @@ export async function GET(request: NextRequest) {
         return inventory.difference !== null && inventory.difference !== 0;
       });
 
-    return NextResponse.json(result);
+    return NextResponse.json(result, { headers: { "Cache-Control": "private, no-store, max-age=0" } });
   } catch (error) {
     console.error("GET /api/inventory/search", error);
 

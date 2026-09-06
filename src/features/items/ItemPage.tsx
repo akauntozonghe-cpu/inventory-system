@@ -15,6 +15,8 @@ import FeedbackToast from "@/components/common/FeedbackToast";
 import ItemTable from "./ItemTable";
 import type { Item } from "./types";
 
+import { useLiveRefresh } from "@/hooks/useLiveRefresh";
+
 type SortType =
   | "createdDesc"
   | "createdAsc"
@@ -62,6 +64,7 @@ async function readJson(response: Response): Promise<unknown> {
 
 export default function ItemPage() {
   const editNameRef = useRef<HTMLInputElement | null>(null);
+  const listRequestRef = useRef(0);
   const [items, setItems] = useState<Item[]>([]);
   const [currentUser, setCurrentUser] = useState<CurrentUser | null>(null);
   const [search, setSearch] = useState("");
@@ -112,9 +115,9 @@ export default function ItemPage() {
     }
   }, []);
 
-  const fetchItems = useCallback(async () => {
-    setLoading(true);
-    setError("");
+  const fetchItems = useCallback(async (silent = false) => {
+    const requestId = ++listRequestRef.current;
+    if (!silent) { setLoading(true); setError(""); }
 
     try {
       const query = showArchived ? "?includeArchived=true" : "";
@@ -131,8 +134,9 @@ export default function ItemPage() {
         );
       }
 
-      setItems(data as Item[]);
+      if (requestId === listRequestRef.current) setItems(data as Item[]);
     } catch (loadError) {
+      if (silent) throw loadError;
       setError(
         loadError instanceof Error
           ? loadError.message
@@ -140,9 +144,11 @@ export default function ItemPage() {
       );
       setItems([]);
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   }, [showArchived]);
+
+  const syncFailed = useLiveRefresh(() => fetchItems(true));
 
   useEffect(() => {
     void fetchUser();
@@ -401,6 +407,7 @@ export default function ItemPage() {
           </div>
         </header>
 
+        <p role="status" className="mb-3 text-sm font-bold text-slate-700">{syncFailed ? "同期できていません。表示は前回取得時点です。通信回復後に再取得します。" : "他端末の登録・在庫変更を自動取得（通信時間＋約1秒）。"}</p>
         {isAdmin && (
           <section className="mb-5 rounded-2xl border border-indigo-200 bg-indigo-50 p-4">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">

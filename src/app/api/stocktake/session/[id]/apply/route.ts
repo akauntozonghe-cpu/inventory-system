@@ -117,6 +117,7 @@ export async function POST(
       select: {
         id: true,
         quantity: true,
+        updatedAt: true,
       },
     });
 
@@ -136,6 +137,7 @@ export async function POST(
           inventoryInstanceId: record.inventoryInstanceId,
           countedQuantity: record.countedQuantity,
           changeQuantity: record.countedQuantity - inventory.quantity,
+          inventoryUpdatedAt: inventory.updatedAt,
         };
       })
       .filter(
@@ -145,6 +147,7 @@ export async function POST(
           inventoryInstanceId: string;
           countedQuantity: number;
           changeQuantity: number;
+          inventoryUpdatedAt: Date;
         } => target !== null
       );
 
@@ -161,10 +164,18 @@ export async function POST(
     const now = new Date();
 
     await prisma.$transaction(async (transaction) => {
+      // Claim the session inside the same transaction as the inventory writes.
+      // A second device cannot confirm the same session twice.
+      const claimed = await transaction.stocktakeSession.updateMany({
+        where: { id: sessionId, status: "REVIEW" },
+        data: { status: "COMPLETED", completedAt: now, pausedAt: null },
+      });
+      if (claimed.count !== 1) throw new Error("STOCKTAKE_APPLY_CHANGED");
       for (const target of targetsToApply) {
-        await transaction.inventoryInstance.update({
+        const changed = await transaction.inventoryInstance.updateMany({
           where: {
             id: target.inventoryInstanceId,
+            updatedAt: target.inventoryUpdatedAt,
           },
           data: {
             quantity: target.countedQuantity,
@@ -172,12 +183,8 @@ export async function POST(
             stocktakeStatus: "棚卸済",
             stocktakeAt: now,
           },
-          // 棚卸確定では返却値を使わない。全列の暗黙取得を避け、
-          // 拡張列の移行中でも既存在庫を安全に確定できるようにする。
-          select: {
-            id: true,
-          },
         });
+        if (changed.count !== 1) throw new Error("STOCKTAKE_APPLY_INVENTORY_CHANGED");
 
         await transaction.inventoryHistory.create({
           data: {
@@ -211,6 +218,10 @@ export async function POST(
     });
   } catch (error) {
     console.error("POST /api/stocktake/session/[id]/apply", error);
+
+    if (error instanceof Error && ["STOCKTAKE_APPLY_CHANGED", "STOCKTAKE_APPLY_INVENTORY_CHANGED"].includes(error.message)) {
+      return NextResponse.json({ code: error.message, message: "別端末が棚卸または在庫を更新しました。今回の反映は取り消しました。最新の結果を再確認してください。" }, { status: 409 });
+    }
 
     return NextResponse.json(
       {
