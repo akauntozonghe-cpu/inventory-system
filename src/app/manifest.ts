@@ -11,6 +11,8 @@ export default function manifest(): MetadataRoute.Manifest {
     // Keep the same identity so an update is not offered as a second app.
     id: "/",
     display: "standalone",
+    prefer_related_applications: false,
+    related_applications: [{ platform: "webapp", url: "/manifest.webmanifest", id: "/" }],
     background_color: "#f1f5f9",
     theme_color: "#0f172a",
     lang: "ja",
