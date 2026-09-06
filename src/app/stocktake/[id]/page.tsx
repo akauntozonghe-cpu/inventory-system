@@ -728,7 +728,7 @@ export default function StocktakePage() {
   }
 
   return (
-    <main className="min-h-screen bg-slate-950 pb-12 text-slate-950">
+    <main className="min-h-screen bg-[#f4f6f8] pb-24 text-slate-950">
       <FeedbackToast
         message={error}
         tone="error"
@@ -746,7 +746,7 @@ export default function StocktakePage() {
         onClose={() => setMessage("")}
         autoCloseMs={5000}
       />
-      <header className="border-b border-slate-800 bg-slate-950 px-5 py-5 text-white sm:px-8">
+      <header className="border-b border-white/10 bg-[#0b1220] px-5 py-5 text-white sm:px-8 sm:py-7">
         <div className="mx-auto flex max-w-7xl flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
           <div>
             <p className="text-sm font-bold text-indigo-300">棚卸作業</p>
@@ -883,7 +883,7 @@ export default function StocktakePage() {
           </div>
         )}
 
-        <section className="rounded-3xl bg-white p-5 shadow-sm sm:p-7">
+        <section className="rounded-[1.75rem] border border-slate-200 bg-white p-5 shadow-[0_10px_35px_rgba(15,23,42,.06)] sm:p-7">
           <div className="flex items-end justify-between gap-4">
             <div>
               <p className="text-sm font-bold text-slate-500">棚卸進捗</p>
@@ -895,14 +895,14 @@ export default function StocktakePage() {
                 </span>
               </p>
             </div>
-            <p className="text-3xl font-black text-indigo-600">
+            <p className="text-3xl font-black text-teal-700">
               {progress.summary.progressPercent}%
             </p>
           </div>
 
           <div className="mt-5 h-3 overflow-hidden rounded-full bg-slate-200">
             <div
-              className="h-full rounded-full bg-indigo-500 transition-all"
+              className="h-full rounded-full bg-teal-500 transition-all duration-500"
               style={{ width: `${progress.summary.progressPercent}%` }}
             />
           </div>
@@ -938,14 +938,14 @@ export default function StocktakePage() {
                   onChange={(event) => setKeyword(event.target.value)}
                   disabled={!canOperate}
                   placeholder="JAN・商品名・メーカー・分類・保管場所で検索"
-                  className="min-w-0 flex-1 rounded-2xl border-2 border-slate-200 px-4 py-4 text-lg outline-none transition focus:border-indigo-500 disabled:bg-slate-100"
+                  className="min-w-0 flex-1 rounded-2xl border border-slate-300 bg-white px-4 py-4 text-lg outline-none transition focus:border-teal-500 focus:ring-4 focus:ring-teal-100 disabled:bg-slate-100"
                 />
 
                 <button
                   type="button"
                   disabled={!canOperate}
                   onClick={() => setNormalCameraOpen(true)}
-                  className="rounded-2xl bg-indigo-600 px-5 py-4 text-xl font-bold text-white transition hover:bg-indigo-500 disabled:cursor-not-allowed disabled:opacity-40"
+                  className="rounded-2xl bg-teal-600 px-5 py-4 text-xl font-bold text-white transition hover:bg-teal-500 disabled:cursor-not-allowed disabled:opacity-40"
                   aria-label="カメラでバーコードを読み取る"
                 >
                   📷
@@ -968,7 +968,7 @@ export default function StocktakePage() {
                     onClick={() => setFilter(value)}
                     className={`rounded-full px-4 py-2 font-bold transition disabled:opacity-40 ${
                       filter === value
-                        ? "bg-indigo-600 text-white"
+                        ? "bg-slate-950 text-white"
                         : "bg-slate-100 text-slate-700 hover:bg-slate-200"
                     }`}
                   >

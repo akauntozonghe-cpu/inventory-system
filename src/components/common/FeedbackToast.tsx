@@ -49,11 +49,11 @@ export default function FeedbackToast({
   const guidance = tone === "error" ? getErrorGuidance(code) : null;
 
   return (
-    <div className="pointer-events-none fixed inset-x-0 top-3 z-[200] flex justify-center px-3 sm:top-5">
+    <div className="pointer-events-none fixed inset-x-3 bottom-3 z-[200] flex justify-center sm:inset-x-auto sm:bottom-5 sm:right-5">
       <section
         role={tone === "error" ? "alert" : "status"}
         aria-live={tone === "error" ? "assertive" : "polite"}
-        className={`pointer-events-auto w-full max-w-2xl rounded-2xl border-2 p-4 shadow-2xl ${styles[tone]}`}
+        className={`pointer-events-auto w-full max-w-xl rounded-2xl border p-4 shadow-[0_20px_60px_rgba(16,24,40,.18)] sm:min-w-[380px] ${styles[tone]}`}
       >
         <div className="flex items-start justify-between gap-4">
           <div className="min-w-0">
