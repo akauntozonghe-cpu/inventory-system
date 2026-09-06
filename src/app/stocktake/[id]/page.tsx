@@ -343,7 +343,7 @@ export default function StocktakePage() {
         // 一時的な通信断では操作を止めず、次回同期で自動復旧する。
       });
     };
-    const timer = window.setInterval(sync, 1_500);
+    const timer = window.setInterval(sync, 1_000);
     window.addEventListener("focus", sync);
     window.addEventListener("online", sync);
     return () => {
@@ -437,6 +437,7 @@ export default function StocktakePage() {
     setError("");
 
     window.setTimeout(() => {
+      document.getElementById("stocktake-input-panel")?.scrollIntoView({ behavior: "smooth", block: "start" });
       document.getElementById("stocktake-quantity")?.focus();
       (
         document.getElementById("stocktake-quantity") as HTMLInputElement | null
@@ -735,6 +736,7 @@ export default function StocktakePage() {
         title="棚卸操作エラー"
         onClose={() => setError("")}
       />
+      {selected && <button type="button" onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })} className="fixed bottom-4 left-4 z-40 rounded-full bg-slate-950 px-4 py-3 text-sm font-black text-white shadow-xl xl:hidden">操作メニューへ ↑</button>}
       {pendingCount > 0 && (
         <div className="fixed bottom-4 left-4 z-[190] rounded-2xl border-2 border-amber-400 bg-amber-50 px-4 py-3 text-sm font-black text-amber-950 shadow-xl">
           簡易保存 {pendingCount}件（{syncing ? "復旧確認中" : "管理者復旧待ち"}）
@@ -1101,7 +1103,7 @@ export default function StocktakePage() {
             </section>
           </div>
 
-          <aside className="xl:sticky xl:top-5 xl:h-fit">
+          <aside id="stocktake-input-panel" className="order-first scroll-mt-4 xl:order-last xl:sticky xl:top-5 xl:h-fit">
             <section className="rounded-3xl bg-white p-5 shadow-sm sm:p-6">
               <h2 className="text-2xl font-black">棚卸入力</h2>
 

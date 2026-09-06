@@ -32,34 +32,44 @@ export default function BarcodeCamera({
   const stoppedRef = useRef(false);
   const onDetectedRef = useRef(onDetected);
   const onCloseRef = useRef(onClose);
+  const audioContextRef = useRef<AudioContext | null>(null);
 
   const [status, setStatus] = useState("カメラを起動しています…");
   const [lastBarcode, setLastBarcode] = useState("");
   const [cameraError, setCameraError] = useState("");
   const [scanConfirmed, setScanConfirmed] = useState(false);
+  const [soundEnabled, setSoundEnabled] = useState(false);
+
+  const playTone = () => {
+    const context = audioContextRef.current;
+    if (!context || context.state !== "running") return;
+    const oscillator = context.createOscillator();
+    const gain = context.createGain();
+    oscillator.type = "sine";
+    oscillator.frequency.setValueAtTime(880, context.currentTime);
+    gain.gain.setValueAtTime(0.0001, context.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.16, context.currentTime + 0.01);
+    gain.gain.exponentialRampToValueAtTime(0.0001, context.currentTime + 0.13);
+    oscillator.connect(gain).connect(context.destination);
+    oscillator.start();
+    oscillator.stop(context.currentTime + 0.14);
+  };
+
+  const enableSound = async () => {
+    const AudioContextClass = window.AudioContext || (window as typeof window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+    if (!AudioContextClass) return;
+    const context = audioContextRef.current ?? new AudioContextClass();
+    audioContextRef.current = context;
+    await context.resume();
+    setSoundEnabled(true);
+    window.setTimeout(playTone, 0);
+  };
 
   const confirmScan = () => {
     setScanConfirmed(true);
     window.setTimeout(() => setScanConfirmed(false), 850);
     if ("vibrate" in navigator) navigator.vibrate([90, 45, 90]);
-    try {
-      const AudioContextClass = window.AudioContext || (window as typeof window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
-      if (!AudioContextClass) return;
-      const context = new AudioContextClass();
-      const oscillator = context.createOscillator();
-      const gain = context.createGain();
-      oscillator.type = "sine";
-      oscillator.frequency.setValueAtTime(880, context.currentTime);
-      gain.gain.setValueAtTime(0.0001, context.currentTime);
-      gain.gain.exponentialRampToValueAtTime(0.16, context.currentTime + 0.01);
-      gain.gain.exponentialRampToValueAtTime(0.0001, context.currentTime + 0.13);
-      oscillator.connect(gain).connect(context.destination);
-      oscillator.start();
-      oscillator.stop(context.currentTime + 0.14);
-      oscillator.addEventListener("ended", () => void context.close(), { once: true });
-    } catch {
-      // 端末やブラウザが音声出力を許可しない場合も視覚表示と振動を継続する。
-    }
+    try { playTone(); } catch { /* 視覚表示と振動は継続する。 */ }
   };
 
   useEffect(() => {
@@ -223,6 +233,7 @@ export default function BarcodeCamera({
     return () => {
       mounted = false;
       stopCamera();
+      if (audioContextRef.current) void audioContextRef.current.close();
     };
   }, [closeOnDetect]);
 
@@ -263,6 +274,11 @@ export default function BarcodeCamera({
         </header>
 
         <main className="space-y-5 p-5 sm:p-7">
+          <div className="sticky top-2 z-30 flex justify-end">
+            <button type="button" onClick={() => void enableSound()} className={`rounded-full px-4 py-2 text-sm font-black shadow-lg ${soundEnabled ? "bg-emerald-500 text-white" : "bg-white text-slate-900"}`}>
+              {soundEnabled ? "読取音 ON" : "読取音を有効化"}
+            </button>
+          </div>
           <section className="rounded-3xl bg-black p-3 shadow-2xl">
             <div className="relative aspect-[4/3] overflow-hidden rounded-2xl border-4 border-indigo-400 bg-black sm:aspect-video">
               <video
