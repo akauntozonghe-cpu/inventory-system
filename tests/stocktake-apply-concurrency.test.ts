@@ -16,7 +16,7 @@ describe("stocktake confirmation guards", () => {
   const request = () => POST(new NextRequest("http://localhost/api/stocktake/session/s/apply", { method: "POST" }), { params: Promise.resolve({ id: "s" }) });
   beforeEach(() => {
     vi.clearAllMocks();
-    db.stocktakeSession.findUnique.mockResolvedValue({ id: "s", title: "棚卸", status: "REVIEW", operatorUserId: "worker" });
+    db.stocktakeSession.findUnique.mockResolvedValue({ id: "s", title: "棚卸", status: "REVIEW", operatorUserId: "worker", updatedAt: date });
     db.stocktakeRecord.findMany.mockResolvedValue([{ inventoryInstanceId: "inventory", countedQuantity: 5 }]);
     db.inventoryInstance.findMany.mockResolvedValue([{ id: "inventory", quantity: 8, updatedAt: date }]);
     db.stocktakeSession.updateMany.mockResolvedValue({ count: 1 });
@@ -41,5 +41,6 @@ describe("stocktake confirmation guards", () => {
     expect(response.status).toBe(200);
     expect(db.inventoryInstance.updateMany).toHaveBeenCalledWith(expect.objectContaining({ where: { id: "inventory", updatedAt: date }, data: expect.objectContaining({ quantity: 5, actualQuantity: 5 }) }));
     expect(db.inventoryHistory.create).toHaveBeenCalledOnce();
+    expect(db.stocktakeSession.updateMany.mock.calls[0][0].where).toEqual({ id: "s", status: "REVIEW", updatedAt: date });
   });
 });

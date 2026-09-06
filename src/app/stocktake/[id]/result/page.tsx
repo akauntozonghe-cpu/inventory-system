@@ -2,6 +2,7 @@
 import { displayUnit } from "@/lib/unit";
 
 import Link from "next/link";
+import ReopenStocktakeButton from "@/components/stocktake/ReopenStocktakeButton";
 import { useLiveRefresh } from "@/hooks/useLiveRefresh";
 import { fetchFresh } from "@/lib/fetch-fresh";
 import FeedbackToast from "@/components/common/FeedbackToast";
@@ -282,6 +283,7 @@ export default function StocktakeResultPage() {
       </header>
 
       <div className="mx-auto max-w-7xl space-y-6 p-5 sm:p-8">
+        {data.permissions.isAdmin && <ReopenStocktakeButton sessionId={sessionId} status={data.session.status} disabled={applying} />}
         {isWorking && (
           <section className="rounded-3xl border border-amber-200 bg-amber-50 p-6">
             <h2 className="text-2xl font-black text-amber-900">

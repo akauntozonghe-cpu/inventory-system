@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import ReopenStocktakeButton from "@/components/stocktake/ReopenStocktakeButton";
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 
@@ -363,6 +364,7 @@ export default function StocktakeHistoryPage() {
                     </div>
 
                     <div className="grid grid-cols-2 gap-2">
+                      {isAdmin && <ReopenStocktakeButton sessionId={session.id} status={session.status} />}
                       <Link
                         href={`/stocktake/${encodeURIComponent(session.id)}`}
                         className="rounded-xl bg-slate-700 px-4 py-3 text-center font-bold text-white"

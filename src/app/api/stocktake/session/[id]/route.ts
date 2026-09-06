@@ -66,6 +66,7 @@ export async function PATCH(
         title: true,
         operatorUserId: true,
         status: true,
+        updatedAt: true,
       },
     });
 
@@ -107,7 +108,7 @@ export async function PATCH(
 
       const updated = await prisma.stocktakeSession.update({
         where: {
-          id,
+          id, status: session.status, updatedAt: session.updatedAt,
         },
         data: {
           status: "PAUSED",
@@ -145,7 +146,7 @@ export async function PATCH(
 
       const updated = await prisma.stocktakeSession.update({
         where: {
-          id,
+          id, status: session.status, updatedAt: session.updatedAt,
         },
         data: {
           status: "IN_PROGRESS",
@@ -182,7 +183,7 @@ export async function PATCH(
 
     const updated = await prisma.stocktakeSession.update({
       where: {
-        id,
+        id, status: session.status, updatedAt: session.updatedAt,
       },
       data: {
         status: "REVIEW",
@@ -203,6 +204,7 @@ export async function PATCH(
       session: updated,
     });
   } catch (error) {
+    if (error && typeof error === "object" && "code" in error && error.code === "P2025") return NextResponse.json({ code: "STOCKTAKE_SESSION_CHANGED", message: "別端末で棚卸が変更されました。最新の状態を確認してください。" }, { status: 409 });
     console.error("PATCH /api/stocktake/session/[id]", error);
 
     return NextResponse.json(

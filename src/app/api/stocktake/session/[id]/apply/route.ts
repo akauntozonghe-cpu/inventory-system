@@ -41,6 +41,7 @@ export async function POST(
         title: true,
         status: true,
         operatorUserId: true,
+        updatedAt: true,
       },
     });
 
@@ -167,7 +168,7 @@ export async function POST(
       // Claim the session inside the same transaction as the inventory writes.
       // A second device cannot confirm the same session twice.
       const claimed = await transaction.stocktakeSession.updateMany({
-        where: { id: sessionId, status: "REVIEW" },
+        where: { id: sessionId, status: "REVIEW", updatedAt: session.updatedAt },
         data: { status: "COMPLETED", completedAt: now, pausedAt: null },
       });
       if (claimed.count !== 1) throw new Error("STOCKTAKE_APPLY_CHANGED");
