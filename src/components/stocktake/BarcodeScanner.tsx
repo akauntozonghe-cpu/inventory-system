@@ -1,4 +1,5 @@
 "use client";
+import { playScanBeep, primeScanAudio } from "@/lib/scan-feedback";
 
 import { useEffect, useRef, useState } from "react";
 import { BrowserMultiFormatReader } from "@zxing/browser";
@@ -30,6 +31,7 @@ export default function BarcodeScanner({
   }, []);
 
   async function startScanner() {
+    primeScanAudio();
     try {
       const reader =
         new BrowserMultiFormatReader();
@@ -55,6 +57,7 @@ export default function BarcodeScanner({
           (result) => {
             if (!result) return;
 
+            playScanBeep(result.getText());
             onDetected(result.getText());
 
             stopScanner();

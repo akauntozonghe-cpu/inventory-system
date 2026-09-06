@@ -1,4 +1,5 @@
 "use client";
+import { displayUnit } from "@/lib/unit";
 
 import Link from "next/link";
 import {
@@ -473,7 +474,7 @@ export default function RegistrationRequestsPage() {
                           <dd className="mt-1 text-xl font-black text-blue-700">
                             {request.quantity}
                             <span className="ml-1 text-sm">
-                              {request.unit ?? "個"}
+                              {displayUnit(request.unit)}
                             </span>
                           </dd>
                         </div>

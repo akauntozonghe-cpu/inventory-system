@@ -1,4 +1,7 @@
 "use client";
+import SelectOrCreate from "@/components/SelectOrCreate";
+import { useRegistrationOptions } from "@/hooks/useRegistrationOptions";
+import { unitValidationMessage } from "@/lib/unit";
 
 import { useEffect, useRef, useState } from "react";
 import { normalizeJanInput } from "@/lib/input-normalization";
@@ -80,17 +83,9 @@ export default function UnregisteredItemDialog({
   const [saving, setSaving] = useState(false);
   const [expirationHasDay, setExpirationHasDay] = useState(false);
   const [noExpiration, setNoExpiration] = useState(false);
-  const [majorCategories, setMajorCategories] = useState<string[]>([]);
-  const [minorCategories, setMinorCategories] = useState<string[]>([]);
+  const registrationOptions = useRegistrationOptions(open);
+  useEffect(() => { if (registrationOptions.ready) setLocations(registrationOptions.storageLocationOptions); }, [registrationOptions.ready, registrationOptions.storageLocationOptions]);
 
-  useEffect(() => {
-    if (!open) return;
-    void fetch("/api/stocktake/options", { cache: "no-store" }).then((response) => response.ok ? response.json() : null).then((data) => {
-      if (!data || typeof data !== "object") return;
-      setMajorCategories(Array.isArray(data.majorCategories) ? data.majorCategories : []);
-      setMinorCategories(Array.isArray(data.minorCategories) ? data.minorCategories : []);
-    }).catch(() => undefined);
-  }, [open]);
   const [message, setMessage] = useState("");
   const [duplicateCandidates, setDuplicateCandidates] = useState<DuplicateCandidate[]>([]);
   const [checkingDuplicates, setCheckingDuplicates] = useState(false);
@@ -109,7 +104,7 @@ export default function UnregisteredItemDialog({
     minorCategory: "",
     unit: "個",
     storageLocationId: "",
-    quantity: "0",
+    quantity: "",
     lotNo: "",
     expirationDate: "",
   });
@@ -236,9 +231,11 @@ export default function UnregisteredItemDialog({
       return;
     }
 
-    const quantity = Number(form.quantity);
+    const quantity = Number(form.quantity.normalize("NFKC"));
+    const unitError = unitValidationMessage(form.unit);
+    if (unitError) { setMessage(unitError); return; }
 
-    if (!Number.isInteger(quantity) || quantity < 0) {
+    if (!form.quantity.trim() || !Number.isSafeInteger(quantity) || quantity < 0) {
       setMessage("在庫数は0以上の整数で入力してください。");
       window.requestAnimationFrame(() => quantityRef.current?.focus());
       return;
@@ -287,7 +284,7 @@ export default function UnregisteredItemDialog({
         minorCategory: "",
         unit: "個",
         storageLocationId: "",
-        quantity: "0",
+        quantity: "",
         lotNo: "",
         expirationDate: "",
       });
@@ -406,34 +403,19 @@ export default function UnregisteredItemDialog({
           <label>
             <span className="text-sm font-bold">大分類</span>
 
-            <select
-              value={form.majorCategory}
-              onChange={(event) => { update("majorCategory", event.target.value); update("minorCategory", ""); }}
-              className="mt-2 w-full rounded-xl border border-slate-300 bg-white px-4 py-3 outline-none focus:border-blue-600">
-              <option value="">大分類を選択</option>{majorCategories.map((category)=><option key={category} value={category}>{category}</option>)}
-            </select>
+            <SelectOrCreate label="大分類" value={form.majorCategory} options={registrationOptions.majorCategories} onChange={(value) => { update("majorCategory", value); update("minorCategory", ""); }} />
           </label>
 
           <label>
             <span className="text-sm font-bold">小分類</span>
 
-            <select
-              value={form.minorCategory}
-              onChange={(event) => update("minorCategory", event.target.value)}
-              className="mt-2 w-full rounded-xl border border-slate-300 bg-white px-4 py-3 outline-none focus:border-blue-600">
-              <option value="">小分類を選択</option>{minorCategories.map((category)=><option key={category} value={category}>{category}</option>)}
-            </select>
+            <SelectOrCreate key={form.majorCategory} label="小分類" value={form.minorCategory} options={registrationOptions.minorsFor(form.majorCategory)} onChange={(value) => { update("minorCategory", value);  }} />
           </label>
 
           <label>
             <span className="text-sm font-bold">単位</span>
 
-            <input
-              value={form.unit}
-              onChange={(event) => update("unit", event.target.value)}
-              placeholder="個"
-              className="mt-2 w-full rounded-xl border border-slate-300 px-4 py-3 outline-none focus:border-blue-600"
-            />
+            <SelectOrCreate label="単位" value={form.unit} options={registrationOptions.units} onChange={(value) => update("unit", value)} required />
           </label>
 
           <label>
@@ -471,8 +453,10 @@ export default function UnregisteredItemDialog({
 
             <input
               ref={quantityRef}
-              type="number"
-              min="0"
+                  type="text"
+                  onFocus={(event) => event.currentTarget.select()}
+                  placeholder="数量を入力（例：1）"
+                  required
               inputMode="numeric"
               value={form.quantity}
               onChange={(event) => update("quantity", event.target.value)}

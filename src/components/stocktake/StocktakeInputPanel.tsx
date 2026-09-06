@@ -1,4 +1,5 @@
 "use client";
+import { displayUnit } from "@/lib/unit";
 
 import { useEffect, useState, type RefObject } from "react";
 
@@ -35,6 +36,7 @@ type Props = {
   onSave: () => void;
   onCancel: () => void;
   continuous?: boolean;
+  onEditProduct?: () => void;
 };
 
 function Detail({
@@ -64,6 +66,7 @@ export default function StocktakeInputPanel({
   onSave,
   onCancel,
   continuous = false,
+  onEditProduct,
 }: Props) {
   const [detailsOpen, setDetailsOpen] = useState(false);
 
@@ -89,15 +92,15 @@ export default function StocktakeInputPanel({
     );
   }
 
-  const countedQuantity = Number(quantity);
+  const countedQuantity = Number(quantity.normalize("NFKC"));
   const isValidQuantity =
-    Number.isInteger(countedQuantity) && countedQuantity >= 0;
+    quantity.trim() !== "" && Number.isSafeInteger(countedQuantity) && countedQuantity >= 0;
 
   const difference = isValidQuantity
     ? countedQuantity - selected.expectedQuantity
     : null;
 
-  const unit = selected.unit ?? selected.item.defaultUnit ?? "";
+  const unit = displayUnit(selected.unit, selected.item.defaultUnit);
   const alreadyRecorded = selected.countedQuantity !== null;
 
   const category = [
@@ -116,6 +119,7 @@ export default function StocktakeInputPanel({
 
   return (
     <section className="rounded-3xl bg-white p-5 shadow-sm sm:p-6">
+      {onEditProduct && <button type="button" disabled={saving} onClick={onEditProduct} className="mb-3 rounded-xl border border-blue-300 p-3 font-bold text-blue-700">商品情報を編集する</button>}
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
@@ -192,12 +196,14 @@ export default function StocktakeInputPanel({
 
         <input
           ref={inputRef}
-          type="number"
-          min="0"
+          type="text"
           inputMode="numeric"
           disabled={disabled || saving}
           value={quantity}
           onChange={(event) => onQuantityChange(event.target.value)}
+          onFocus={(event) => event.target.select()}
+          onBlur={() => onQuantityChange(quantity.normalize("NFKC"))}
+          onCompositionEnd={(event) => onQuantityChange(event.currentTarget.value.normalize("NFKC"))}
           className="mt-2 min-h-16 w-full rounded-2xl border-2 border-blue-500 px-4 py-3 text-3xl font-black text-slate-950 outline-none transition focus:ring-4 focus:ring-blue-100 disabled:bg-slate-100"
         />
       </label>

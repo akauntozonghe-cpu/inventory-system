@@ -1,5 +1,7 @@
 "use client";
+import { displayUnit } from "@/lib/unit";
 
+import RecoveryWizard from "@/components/RecoveryWizard";
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { getErrorGuidance } from "@/lib/error-guidance";
@@ -513,6 +515,7 @@ export default function SystemCheckPage() {
   return (
     <main className="min-h-screen bg-slate-100 px-4 py-6 text-slate-900 sm:px-6 sm:py-10">
       <div className="mx-auto max-w-6xl">
+        <RecoveryWizard />
         <header className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
           <div>
             <p className="text-sm font-black tracking-[0.12em] text-cyan-700">
@@ -781,7 +784,7 @@ export default function SystemCheckPage() {
                           保管場所：
                           {inventory.storageLocation?.name ?? "未設定"} ・
                           在庫：{inventory.quantity}
-                          {inventory.unit ?? ""}
+                          {displayUnit(inventory.unit)}
                         </p>
 
                         <p className="mt-1 text-xs text-slate-500">

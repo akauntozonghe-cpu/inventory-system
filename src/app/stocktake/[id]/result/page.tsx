@@ -1,6 +1,9 @@
 "use client";
+import { displayUnit } from "@/lib/unit";
 
 import Link from "next/link";
+import { useLiveRefresh } from "@/hooks/useLiveRefresh";
+import { fetchFresh } from "@/lib/fetch-fresh";
 import FeedbackToast from "@/components/common/FeedbackToast";
 import { useCallback, useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
@@ -107,7 +110,7 @@ export default function StocktakeResultPage() {
   const [showConfirm, setShowConfirm] = useState(false);
 
   const loadResult = useCallback(async () => {
-    const response = await fetch(
+    const response = await fetchFresh(
       `/api/stocktake/session/${sessionId}/result`,
       {
         cache: "no-store",
@@ -201,6 +204,8 @@ export default function StocktakeResultPage() {
     }
   };
 
+  const syncFailed = useLiveRefresh(loadResult);
+
   if (loading) {
     return (
       <main className="min-h-screen bg-slate-950 p-5 text-white sm:p-8">
@@ -239,6 +244,7 @@ export default function StocktakeResultPage() {
 
   return (
     <main className="min-h-screen bg-slate-950 pb-12 text-slate-950">
+      {syncFailed && <p role="status" className="rounded-xl bg-amber-50 p-3 text-amber-900">最新の棚卸結果を確認できません。通信回復後に自動で再取得します。</p>}
       <FeedbackToast
         message={error}
         tone="error"
@@ -437,7 +443,7 @@ export default function StocktakeResultPage() {
                       <p className="text-slate-500">理論在庫</p>
                       <p className="mt-1 text-xl font-black">
                         {record.expectedQuantity}
-                        {record.unit ? ` ${record.unit}` : " 個"}
+                        {displayUnit(record.unit)}
                       </p>
                     </div>
 
@@ -445,7 +451,7 @@ export default function StocktakeResultPage() {
                       <p className="text-slate-500">棚卸数量</p>
                       <p className="mt-1 text-xl font-black">
                         {record.countedQuantity}
-                        {record.unit ? ` ${record.unit}` : " 個"}
+                        {displayUnit(record.unit)}
                       </p>
                     </div>
                   </div>

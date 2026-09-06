@@ -1,4 +1,5 @@
 "use client";
+import { displayUnit } from "@/lib/unit";
 
 import { useEffect, useRef } from "react";
 
@@ -82,7 +83,7 @@ export default function QuantityInput({
       </div>
 
       <div className="mt-3 text-gray-500">
-        単位：{unit ?? "個"}
+        単位：{displayUnit(unit)}
       </div>
     </div>
   );

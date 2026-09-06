@@ -1,9 +1,12 @@
+import { renameClassificationMaster } from "@/lib/classification-links";
+import { ensureClassification } from "@/lib/item-links";
+import { normalizeDisplayText } from "@/lib/input-normalization";
 import { NextRequest, NextResponse } from "next/server";
 import { requireAdmin } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { createAdminActionLog } from "@/lib/error-report";
 
-function text(value: unknown, max = 100) { return typeof value === "string" ? value.trim().slice(0, max) : ""; }
+function text(value: unknown, max = 100) { return normalizeDisplayText(value, max); }
 
 async function mergeInventory(sourceLocationId: string, targetLocationId: string, actorId: string) {
   return prisma.$transaction(async (tx) => {
@@ -67,36 +70,37 @@ export async function POST(request: NextRequest) {
     let result: unknown;
     if (action === "CREATE_CLASSIFICATION") {
       if (!["MAJOR", "MINOR"].includes(kind) || !name || (kind === "MINOR" && !parentName)) return NextResponse.json({ code: "CLASSIFICATION_INPUT_INVALID", message: "分類名と親分類を確認してください。" }, { status: 400 });
-      result = await prisma.classification.upsert({ where: { kind_name_parentName: { kind, name, parentName: kind === "MAJOR" ? "" : parentName } }, update: {}, create: { kind, name, parentName: kind === "MAJOR" ? "" : parentName } });
+      result = await prisma.$transaction(async (tx) => {
+        await ensureClassification(tx, kind === "MAJOR" ? name : parentName, kind === "MINOR" ? name : null);
+        return { created: true };
+      });
     } else if (action === "RENAME_OR_MERGE_CLASSIFICATION") {
       if (!["MAJOR", "MINOR"].includes(kind) || !source || !target) return NextResponse.json({ code: "CLASSIFICATION_INPUT_INVALID", message: "変更元と変更先を指定してください。" }, { status: 400 });
       result = await prisma.$transaction(async (tx) => {
         if (kind === "MAJOR") {
-          const [sourceMaster, targetMaster] = await Promise.all([
-            tx.classification.findFirst({ where: { kind: "MAJOR", name: source, parentName: "" } }),
-            tx.classification.findFirst({ where: { kind: "MAJOR", name: target, parentName: "" } }),
-          ]);
+          const linkedItems = await tx.item.findMany({ where: { majorCategory: source }, select: { id: true } });
           const items = await tx.item.updateMany({ where: { majorCategory: source }, data: { majorCategory: target } });
-          const inventories = await tx.inventoryInstance.updateMany({ where: { majorCategory: source }, data: { majorCategory: target } });
+          const inventories = await tx.inventoryInstance.updateMany({ where: { OR: [{ majorCategory: source }, { itemId: { in: linkedItems.map((item) => item.id) } }] }, data: { majorCategory: target } });
+          await tx.itemRegistrationRequest.updateMany({ where: { majorCategory: source, status: "PENDING" }, data: { majorCategory: target } });
           await tx.stocktakeSession.updateMany({ where: { scopeType: "MAJOR_CATEGORY", scopeValue: source, status: { in: ["IN_PROGRESS", "PAUSED", "REVIEW", "CONFLICT"] } }, data: { scopeValue: target, scopeLabel: target } });
-          await tx.classification.updateMany({ where: { kind: "MINOR", parentName: source }, data: { parentName: target } });
-          if (sourceMaster && targetMaster && sourceMaster.id !== targetMaster.id) {
-            await tx.classificationLabelAlias.updateMany({ where: { classificationId: sourceMaster.id }, data: { classificationId: targetMaster.id } });
-            await tx.classificationLabelAlias.upsert({ where: { labelCode: sourceMaster.labelCode }, update: { classificationId: targetMaster.id }, create: { labelCode: sourceMaster.labelCode, classificationId: targetMaster.id } });
-            await tx.classification.delete({ where: { id: sourceMaster.id } });
-          } else if (sourceMaster) {
-            await tx.classification.update({ where: { id: sourceMaster.id }, data: { name: target } });
-          } else {
-            await tx.classification.upsert({ where: { kind_name_parentName: { kind: "MAJOR", name: target, parentName: "" } }, update: {}, create: { kind: "MAJOR", name: target } });
-          }
+          const children = await tx.classification.findMany({ where: { kind: "MINOR", parentName: source } });
+          for (const child of children) await renameClassificationMaster(tx, "MINOR", child.name, source, child.name, target);
+          await renameClassificationMaster(tx, "MAJOR", source, "", target, "");
           return { items: items.count, inventories: inventories.count };
         }
-        const where = { minorCategory: source, ...(parentName ? { majorCategory: parentName } : {}) };
-        const items = await tx.item.updateMany({ where, data: { minorCategory: target, ...(targetParent ? { majorCategory: targetParent } : {}) } });
-        const inventories = await tx.inventoryInstance.updateMany({ where, data: { minorCategory: target, ...(targetParent ? { majorCategory: targetParent } : {}) } });
-        await tx.stocktakeSession.updateMany({ where: { scopeType: "MINOR_CATEGORY", scopeValue: source, status: { in: ["IN_PROGRESS", "PAUSED", "REVIEW", "CONFLICT"] } }, data: { scopeValue: target, scopeLabel: target } });
-        await tx.classification.deleteMany({ where: { kind: "MINOR", name: source, ...(parentName ? { parentName } : {}) } });
-        await tx.classification.upsert({ where: { kind_name_parentName: { kind: "MINOR", name: target, parentName: targetParent || parentName } }, update: {}, create: { kind: "MINOR", name: target, parentName: targetParent || parentName } });
+        if (!parentName) throw new Error("小分類の変更には親の大分類を指定してください。");
+        const otherParents = await tx.item.count({ where: { minorCategory: source, NOT: { majorCategory: parentName } } });
+        const activeScope = await tx.stocktakeSession.count({ where: { scopeType: "MINOR_CATEGORY", scopeValue: source, status: { in: ["IN_PROGRESS", "PAUSED", "REVIEW", "CONFLICT"] } } });
+        if (source !== target && otherParents && activeScope) throw new Error("同名の小分類をまとめて棚卸中です。棚卸の完了後に小分類名を変更してください。");
+        const where = { minorCategory: source, majorCategory: parentName };
+        const nextMajor = targetParent || parentName;
+        const linkedItems = await tx.item.findMany({ where, select: { id: true } });
+        const items = await tx.item.updateMany({ where, data: { minorCategory: target, majorCategory: nextMajor } });
+        const inventories = await tx.inventoryInstance.updateMany({ where: { OR: [where, { itemId: { in: linkedItems.map((item) => item.id) } }] }, data: { minorCategory: target, majorCategory: nextMajor } });
+        await tx.itemRegistrationRequest.updateMany({ where: { ...where, status: "PENDING" }, data: { minorCategory: target, majorCategory: nextMajor } });
+        if (!otherParents) await tx.stocktakeSession.updateMany({ where: { scopeType: "MINOR_CATEGORY", scopeValue: source, status: { in: ["IN_PROGRESS", "PAUSED", "REVIEW", "CONFLICT"] } }, data: { scopeValue: target, scopeLabel: target } });
+        await ensureClassification(tx, nextMajor, null);
+        await renameClassificationMaster(tx, "MINOR", source, parentName, target, nextMajor);
         return { items: items.count, inventories: inventories.count };
       });
     } else if (action === "ASSIGN_ITEMS") {
@@ -112,6 +116,7 @@ export async function POST(request: NextRequest) {
         for (const item of selected) {
           const nextMajor = hasMajor ? majorCategory : item.majorCategory;
           const nextMinor = hasMinor ? minorCategory : (hasMajor && majorCategory !== item.majorCategory ? null : item.minorCategory);
+          await ensureClassification(tx, nextMajor, nextMinor);
           await tx.item.update({ where: { id: item.id }, data: { majorCategory: nextMajor, minorCategory: nextMinor } });
           await tx.inventoryInstance.updateMany({ where: { itemId: item.id }, data: { majorCategory: nextMajor, minorCategory: nextMinor } });
         }
@@ -138,5 +143,5 @@ export async function POST(request: NextRequest) {
     } else return NextResponse.json({ code: "CLASSIFICATION_ACTION_INVALID", message: "編集操作が正しくありません。" }, { status: 400 });
     await createAdminActionLog({ adminUserId: auth.user.id, action: `CLASSIFICATION_${action}`, route: "/admin/classifications", detail: { kind, name, parentName, source, target, targetParent, result: result as never } });
     return NextResponse.json({ code: "CLASSIFICATION_UPDATE_OK", message: "分類・在庫・棚卸範囲を更新し、操作履歴へ記録しました。", result });
-  } catch (error) { console.error("POST classifications", error); return NextResponse.json({ code: "CLASSIFICATION_UPDATE_FAILED", message: "分類編集を完了できませんでした。変更は確定していません。", action: "入力内容を確認して再試行し、解決しない場合はエラー管理を開いてください。" }, { status: 500 }); }
+  } catch (error) { console.error("POST classifications", error); return NextResponse.json({ code: "CLASSIFICATION_UPDATE_FAILED", message: error instanceof Error && (error.message.startsWith("小分類の変更") || error.message.startsWith("同名の小分類")) ? error.message : "分類編集を完了できませんでした。現在の状態を再読込して確認してください。", action: "入力内容を確認して再試行し、解決しない場合はエラー管理を開いてください。" }, { status: 500 }); }
 }

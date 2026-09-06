@@ -1,4 +1,5 @@
 "use client";
+import { fetchFresh } from "@/lib/fetch-fresh";
 
 import Link from "next/link";
 import {
@@ -14,6 +15,7 @@ import BarcodeCamera from "@/components/stocktake/BarcodeCamera";
 import FeedbackToast from "@/components/common/FeedbackToast";
 import ItemTable from "./ItemTable";
 import type { Item } from "./types";
+import { useRegistrationOptions } from "@/hooks/useRegistrationOptions";
 
 import { useLiveRefresh } from "@/hooks/useLiveRefresh";
 
@@ -88,9 +90,7 @@ export default function ItemPage() {
 
   const fetchUser = useCallback(async () => {
     try {
-      const response = await fetch("/api/auth/me", {
-        cache: "no-store",
-      });
+      const response = await fetchFresh("/api/auth/me");
 
       const data = await readJson(response);
 
@@ -122,9 +122,7 @@ export default function ItemPage() {
     try {
       const query = showArchived ? "?includeArchived=true" : "";
 
-      const response = await fetch(`/api/items${query}`, {
-        cache: "no-store",
-      });
+      const response = await fetchFresh(`/api/items${query}`);
 
       const data = await readJson(response);
 
@@ -172,15 +170,16 @@ export default function ItemPage() {
     }
   }, [isAdmin, showArchived]);
 
+  const registrationOptions = useRegistrationOptions();
   const categories = useMemo(() => {
     return Array.from(
       new Set(
-        items
+        [...registrationOptions.majorCategories, ...items
           .map((item) => item.majorCategory?.trim() ?? "")
-          .filter((category) => category.length > 0)
+          .filter((category) => category.length > 0)]
       )
     ).sort((a, b) => a.localeCompare(b, "ja"));
-  }, [items]);
+  }, [items, registrationOptions.majorCategories]);
 
   const filteredItems = useMemo(() => {
     const keyword = search.trim().toLowerCase();

@@ -1,4 +1,5 @@
 "use client";
+import { fetchFresh } from "@/lib/fetch-fresh";
 
 import Link from "next/link";
 import { expiryPolicy, expiryPolicyLabels } from "@/lib/expiry-policy";
@@ -7,6 +8,9 @@ import { useParams, useRouter } from "next/navigation";
 import SystemBarcodeLabel from "@/components/SystemBarcodeLabel";
 import FeedbackToast from "@/components/common/FeedbackToast";
 
+import SelectOrCreate from "@/components/SelectOrCreate";
+import { useRegistrationOptions } from "@/hooks/useRegistrationOptions";
+import { displayUnit } from "@/lib/unit";
 import { useLiveRefresh } from "@/hooks/useLiveRefresh";
 
 type CurrentUser = {
@@ -288,9 +292,7 @@ export default function ItemDetailPage() {
     try {
       if (!silent) { setLoading(true); setError(""); }
 
-      const response = await fetch(`/api/items/${itemId}`, {
-        cache: "no-store",
-      });
+      const response = await fetchFresh(`/api/items/${itemId}`);
 
       const data = await readJson(response);
 
@@ -314,6 +316,9 @@ export default function ItemDetailPage() {
     }
   }, [itemId]);
 
+  const options = useRegistrationOptions();
+  const { minorsFor } = options;
+  useEffect(() => { if (options.ready) setLocations(options.storageLocationOptions); }, [options.ready, options.storageLocationOptions]);
   const syncFailed = useLiveRefresh(() => loadItem(true));
 
   useEffect(() => {
@@ -323,9 +328,7 @@ export default function ItemDetailPage() {
   useEffect(() => {
     const loadUser = async () => {
       try {
-        const response = await fetch("/api/auth/me", {
-          cache: "no-store",
-        });
+        const response = await fetchFresh("/api/auth/me");
 
         const data = await readJson(response);
 
@@ -351,9 +354,7 @@ export default function ItemDetailPage() {
 
     const loadLocations = async () => {
       try {
-        const response = await fetch("/api/storage-locations", {
-          cache: "no-store",
-        });
+        const response = await fetchFresh("/api/storage-locations");
 
         const data = await readJson(response);
 
@@ -741,45 +742,17 @@ export default function ItemDetailPage() {
 
                   <label className="block">
                     <span className="font-bold text-slate-700">大分類</span>
-                    <input
-                      value={itemForm.majorCategory}
-                      onChange={(event) =>
-                        setItemForm({
-                          ...itemForm,
-                          majorCategory: event.target.value,
-                        })
-                      }
-                      className="mt-2 w-full rounded-xl border border-slate-300 px-4 py-3"
-                    />
+                    <SelectOrCreate label="大分類" value={itemForm.majorCategory} options={options.majorCategories} onChange={(value) => setItemForm({ ...itemForm, majorCategory: value, minorCategory: "" })} />
                   </label>
 
                   <label className="block">
                     <span className="font-bold text-slate-700">小分類</span>
-                    <input
-                      value={itemForm.minorCategory}
-                      onChange={(event) =>
-                        setItemForm({
-                          ...itemForm,
-                          minorCategory: event.target.value,
-                        })
-                      }
-                      className="mt-2 w-full rounded-xl border border-slate-300 px-4 py-3"
-                    />
+                    <SelectOrCreate label="小分類" value={itemForm.minorCategory} options={minorsFor(itemForm.majorCategory)} onChange={(value) => setItemForm({ ...itemForm, minorCategory: value })} />
                   </label>
 
                   <label className="block">
                     <span className="font-bold text-slate-700">既定単位</span>
-                    <input
-                      value={itemForm.defaultUnit}
-                      onChange={(event) =>
-                        setItemForm({
-                          ...itemForm,
-                          defaultUnit: event.target.value,
-                        })
-                      }
-                      placeholder="個、箱、本 など"
-                      className="mt-2 w-full rounded-xl border border-slate-300 px-4 py-3"
-                    />
+                    <SelectOrCreate label="数量単位" value={itemForm.defaultUnit} options={options.units} onChange={(value) => setItemForm({ ...itemForm, defaultUnit: value })} />
                   </label>
                 </div>
 
@@ -1048,17 +1021,7 @@ export default function ItemDetailPage() {
                               <span className="font-bold text-slate-700">
                                 単位
                               </span>
-                              <input
-                                value={inventoryForm.unit}
-                                onChange={(event) =>
-                                  setInventoryForm({
-                                    ...inventoryForm,
-                                    unit: event.target.value,
-                                  })
-                                }
-                                placeholder="個、箱、本 など"
-                                className="mt-2 w-full rounded-xl border border-slate-300 px-4 py-3"
-                              />
+                              <SelectOrCreate label="数量単位" value={inventoryForm.unit} options={options.units} onChange={(value) => setInventoryForm({ ...inventoryForm, unit: value })} />
                             </label>
 
                             <label className="block">
@@ -1238,7 +1201,7 @@ export default function ItemDetailPage() {
                               <p className="text-3xl font-black text-blue-700">
                                 {inventory.quantity}
                                 <span className="ml-1 text-base">
-                                  {inventory.unit ?? item.defaultUnit ?? "個"}
+                                  {displayUnit(inventory.unit, item.defaultUnit)}
                                 </span>
                               </p>
                             </div>
@@ -1246,7 +1209,7 @@ export default function ItemDetailPage() {
                             {inventory.actualQuantity !== null && (
                               <p className="text-sm font-bold text-slate-600">
                                 実在庫：{inventory.actualQuantity}
-                                {inventory.unit ?? item.defaultUnit ?? "個"}
+                                {displayUnit(inventory.unit, item.defaultUnit)}
                               </p>
                             )}
 

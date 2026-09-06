@@ -1,4 +1,5 @@
 "use client";
+import { displayUnit } from "@/lib/unit";
 
 export type SearchItem = {
   id: string;
@@ -89,7 +90,7 @@ export default function SearchResult({
                   {" "}
                   {inventory.quantity}
                   {" "}
-                  {inventory.item.defaultUnit ?? "個"}
+                  {displayUnit(inventory.item.defaultUnit)}
 
                 </div>
 

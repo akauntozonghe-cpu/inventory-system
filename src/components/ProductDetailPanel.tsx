@@ -158,7 +158,7 @@ export default function ProductDetailPanel({
               value={
                 expectedQuantity === null
                   ? "-"
-                  : `${expectedQuantity}${product.defaultUnit ?? ""}`
+                  : `${expectedQuantity}${displayUnit(product.defaultUnit)}`
               }
             />
             <DetailCell
@@ -167,7 +167,7 @@ export default function ProductDetailPanel({
                 product.countedQuantity === null ||
                 product.countedQuantity === undefined
                   ? "未入力"
-                  : `${product.countedQuantity}${product.defaultUnit ?? ""}`
+                  : `${product.countedQuantity}${displayUnit(product.defaultUnit)}`
               }
             />
             <DetailCell
@@ -200,7 +200,7 @@ export default function ProductDetailPanel({
               {difference === null
                 ? "未入力"
                 : `${difference > 0 ? "+" : ""}${difference}${
-                    product.defaultUnit ?? ""
+                    displayUnit(product.defaultUnit)
                   }`}
             </p>
           </div>
@@ -221,3 +221,4 @@ export default function ProductDetailPanel({
     </details>
   );
 }
+import { displayUnit } from "@/lib/unit";

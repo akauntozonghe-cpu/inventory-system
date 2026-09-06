@@ -1,3 +1,4 @@
+import { unitValidationMessage } from "@/lib/unit";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireAdmin } from "@/lib/auth";
@@ -100,6 +101,8 @@ export async function POST(request: NextRequest) {
     );
     const lotNo = getOptionalText(body.lotNo, 100);
     const expirationDate = normalizeExpirationDate(body.expirationDate);
+    const unitError = unitValidationMessage(body.unit);
+    if (unitError) return NextResponse.json({ message: unitError }, { status: 400 });
     const unit = getOptionalText(body.unit, 30);
 
     if (!itemId) {
@@ -306,6 +309,8 @@ export async function PUT(request: NextRequest) {
   try {
     const body = await request.json();
     const normalizedExpirationDate = normalizeExpirationDate(body.expirationDate);
+    const unitError = unitValidationMessage(body.unit);
+    if (unitError) return NextResponse.json({ message: unitError }, { status: 400 });
     if (normalizedExpirationDate === undefined) {
       return NextResponse.json({ code: "INVENTORY_EXPIRATION_FORMAT_INVALID", message: "使用期限は未入力、YYYY-MM、YYYY-MM-DDのいずれかで入力してください。" }, { status: 400 });
     }

@@ -1,4 +1,5 @@
 "use client";
+import { playScanBeep } from "@/lib/scan-feedback";
 
 import { useEffect, useRef, useState } from "react";
 import {
@@ -161,13 +162,13 @@ export default function CategoryQrScanner({
 
               window.setTimeout(() => {
                 if (!active) return;
-                if (!labelCode) { onDetectedRef.current(category); return; }
+                if (!labelCode) { playScanBeep(rawValue); onDetectedRef.current(category); return; }
                 void fetch(`/api/classifications/resolve?labelCode=${encodeURIComponent(labelCode)}`, { cache: "no-store" })
                   .then(async (response) => {
                     const payload = await response.json().catch(() => null) as { classification?: { name?: string }; message?: string } | null;
                     const currentName = payload?.classification?.name?.trim();
                     if (!response.ok || !currentName) throw new Error(payload?.message ?? "分類ラベルを確認できませんでした。");
-                    if (active) onDetectedRef.current(currentName);
+                    if (active) { playScanBeep(rawValue); onDetectedRef.current(currentName); }
                   })
                   .catch((resolveError) => { if (active) { detectedRef.current = false; setError(resolveError instanceof Error ? resolveError.message : "分類ラベルを確認できませんでした。"); } });
               }, 350);

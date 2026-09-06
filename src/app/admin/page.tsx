@@ -1,4 +1,5 @@
 "use client";
+import InstallButton from "@/components/pwa/InstallButton";
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
@@ -315,6 +316,7 @@ export default function AdminPage() {
   return (
     <main className="min-h-screen bg-slate-100 px-4 py-6 text-slate-900 sm:px-6 sm:py-10">
       <div className="mx-auto max-w-7xl">
+        <InstallButton />
         <header className="flex flex-col gap-5 sm:flex-row sm:items-start sm:justify-between">
           <div>
             <p className="text-sm font-black tracking-[0.14em] text-violet-600">

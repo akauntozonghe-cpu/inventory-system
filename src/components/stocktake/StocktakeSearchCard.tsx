@@ -1,4 +1,5 @@
 "use client";
+import { displayUnit } from "@/lib/unit";
 
 export type StocktakeSearchItem = {
   id: string;
@@ -56,7 +57,7 @@ export default function StocktakeSearchCard({
   onToggle,
   onSelect,
 }: Props) {
-  const unit = item.unit ?? item.item.defaultUnit ?? "";
+  const unit = displayUnit(item.unit, item.item.defaultUnit);
 
   const difference =
     item.countedQuantity === null

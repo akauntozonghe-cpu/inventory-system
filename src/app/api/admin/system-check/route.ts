@@ -1,3 +1,5 @@
+import { countProductLinkProblems } from "@/lib/product-integrity";
+import { unitValidationMessage } from "@/lib/unit";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireAdmin } from "@/lib/auth";
@@ -234,6 +236,11 @@ export async function POST(request: NextRequest) {
         (record) => !targetKeys.has(`${record.sessionId}:${record.inventoryInstanceId}`)
       ).length;
 
+      const [linkProblems, units] = await Promise.all([
+        countProductLinkProblems(),
+        prisma.inventoryInstance.findMany({ select: { unit: true, item: { select: { defaultUnit: true } } } }),
+      ]);
+      const invalidUnits = units.filter((row) => unitValidationMessage(row.unit) || unitValidationMessage(row.item.defaultUnit)).length;
       const responseTimeMs = Date.now() - startedAt;
 
       const checks: Array<{
@@ -245,6 +252,8 @@ export async function POST(request: NextRequest) {
         actual?: string;
         errorCode?: string;
       }> = [
+        { code: "CHECK_PRODUCT_LINKS", title: "商品情報の紐付け", status: linkProblems ? "WARNING" : "PASS", detail: `商品マスターと分類・メーカーが一致しない在庫は${linkProblems}件です。`, actual: `${linkProblems}件` },
+        { code: "CHECK_INVALID_UNITS", title: "数量単位の入力", status: invalidUnits ? "WARNING" : "PASS", detail: `「0」などの不正な単位がある在庫は${invalidUnits}件です。商品詳細で正しい単位を選び直してください。`, actual: `${invalidUnits}件` },
         {
           code: "CHECK_DATABASE_CONNECTION",
           title: "データベース接続",

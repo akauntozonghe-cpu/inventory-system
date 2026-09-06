@@ -1,4 +1,5 @@
 "use client";
+import { displayUnit } from "@/lib/unit";
 
 export type BarcodeCandidate = {
   id: string;
@@ -65,7 +66,7 @@ export default function BarcodeCandidatePicker({
 
           <div className="mt-5 space-y-3">
             {candidates.map((candidate) => {
-              const unit = candidate.unit ?? "";
+              const unit = displayUnit(candidate.unit);
               const difference =
                 candidate.countedQuantity === null
                   ? null

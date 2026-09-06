@@ -1,5 +1,6 @@
 "use client";
 
+import { useLiveRefresh } from "@/hooks/useLiveRefresh";
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import QRCode from "qrcode";
@@ -135,6 +136,17 @@ export default function CategoryQrPage() {
 
     void load();
   }, []);
+
+  useLiveRefresh(async () => {
+    const response = await fetch("/api/admin/classifications", { cache: "no-store" });
+    if (!response.ok) throw new Error("分類を更新できませんでした。");
+    const data = await response.json() as ClassificationPayload;
+    const rows = (data.classifications ?? []).filter((row) => row.kind === "MAJOR");
+    const names = rows.map((row) => row.name).sort((a,b) => a.localeCompare(b, "ja"));
+    const images = await Promise.all(rows.map(async (row) => [row.name, await QRCode.toDataURL(createQrValue(row.name, row.labelCode), { errorCorrectionLevel: "M", width: 320, margin: 2 })] as const));
+    setCategories(names); setQrImages(Object.fromEntries(images));
+    setSelectedCategories((current) => current.filter((name) => names.includes(name)));
+  });
 
   const selected = useMemo(
     () =>

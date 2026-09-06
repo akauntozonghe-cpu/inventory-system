@@ -1,3 +1,4 @@
+import { unitValidationMessage } from "@/lib/unit";
 import { randomUUID } from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
@@ -84,7 +85,10 @@ function validateRow(
     };
   }
 
-  if (!Number.isInteger(quantity) || quantity < 0) {
+  const unitError = unitValidationMessage(row.unit);
+  if (unitError) return { success: false, message: `${rowNumber}行目：${unitError}` };
+
+  if (!Number.isSafeInteger(quantity) || quantity < 0 || row.quantity === "" || row.quantity == null) {
     return {
       success: false,
       message:

@@ -1,4 +1,5 @@
 "use client";
+import { displayUnit } from "@/lib/unit";
 
 import QuantityInput from "./QuantityInput";
 
@@ -162,7 +163,7 @@ export default function ItemCard({
           <span>理論在庫</span>
 
           <span className="font-bold">
-            {item.quantity} {item.item.defaultUnit ?? "個"}
+            {item.quantity} {displayUnit(item.item.defaultUnit)}
           </span>
 
         </div>
@@ -190,7 +191,7 @@ export default function ItemCard({
         {difference > 0 ? "+" : ""}
         {difference}
         {" "}
-        {item.item.defaultUnit ?? "個"}
+        {displayUnit(item.item.defaultUnit)}
       </div>
 
       <button

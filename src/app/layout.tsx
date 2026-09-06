@@ -1,3 +1,4 @@
+import ScanAudioInitializer from "@/components/ScanAudioInitializer";
 import type { Metadata } from "next";
 import LogoutButton from "@/components/auth/LogoutButton";
 import OperationModeBanner from "@/components/common/OperationModeBanner";
@@ -28,6 +29,7 @@ export default function RootLayout({
         <OperationModeBanner />
         <IdleSessionGuard />
         <PwaManager />
+        <ScanAudioInitializer />
         <LogoutButton />
         <main className="min-h-screen">{children}</main>
       </body>

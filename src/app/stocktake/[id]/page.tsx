@@ -1,6 +1,9 @@
 "use client";
+import { fetchFresh } from "@/lib/fetch-fresh";
 
 import Link from "next/link";
+import ProductEditDialog from "@/components/ProductEditDialog";
+import { displayUnit } from "@/lib/unit";
 import {
   useCallback,
   useEffect,
@@ -145,6 +148,7 @@ export default function StocktakePage() {
   const [filter, setFilter] = useState<FilterType>("UNRECORDED");
   const [majorCategory, setMajorCategory] = useState<string | null>(null);
 
+  const [editingProduct, setEditingProduct] = useState<string | null>(null);
   const [countedQuantity, setCountedQuantity] = useState("");
   const [memo, setMemo] = useState("");
   const [selectedDetailsOpen, setSelectedDetailsOpen] = useState(false);
@@ -314,7 +318,7 @@ export default function StocktakePage() {
       filter: "ALL",
       q: "",
     });
-    const response = await fetch(`/api/inventory/search?${query.toString()}`, { cache: "no-store" });
+    const response = await fetchFresh(`/api/inventory/search?${query.toString()}`);
     const data: unknown = await response.json().catch(() => null);
     if (!response.ok || !Array.isArray(data)) throw new Error("選択商品の同期に失敗しました。");
     if (data.length === 0) return;
@@ -434,7 +438,7 @@ export default function StocktakePage() {
 
   const requestBarcode = useCallback(async (barcode: string) => {
     const query = new URLSearchParams({ sessionId, q: barcode, filter: "ALL", exact: "true" });
-    const response = await fetch(`/api/inventory/search?${query.toString()}`, { cache: "no-store" });
+    const response = await fetchFresh(`/api/inventory/search?${query.toString()}`);
     const data: unknown = await response.json().catch(() => null);
     if (!response.ok) {
       throw new StocktakeRequestError(readErrorMessage(data, "バーコード検索に失敗しました。"), readErrorCode(data, `STOCKTAKE_LOOKUP_HTTP_${response.status}`));
@@ -512,11 +516,11 @@ export default function StocktakePage() {
       return;
     }
 
-    const quantity = Number(countedQuantity);
+    const quantity = Number(countedQuantity.normalize("NFKC"));
 
     if (
       countedQuantity.trim() === "" ||
-      !Number.isInteger(quantity) ||
+      !Number.isSafeInteger(quantity) ||
       quantity < 0
     ) {
       setError("棚卸数量には0以上の整数を入力してください。");
@@ -684,7 +688,7 @@ export default function StocktakePage() {
 
   const difference =
     selected && countedQuantity.trim() !== ""
-      ? Number(countedQuantity) - selected.expectedQuantity
+      ? Number(countedQuantity.normalize("NFKC")) - selected.expectedQuantity
       : null;
 
   if (loading) {
@@ -1069,12 +1073,12 @@ export default function StocktakePage() {
                       <div className="mt-4 flex flex-wrap gap-3 text-sm">
                         <span className="font-bold text-indigo-600">
                           現在庫：{item.expectedQuantity}
-                          {item.unit ? ` ${item.unit}` : " 個"}
+                          {displayUnit(item.unit, item.item.defaultUnit)}
                         </span>
                         {item.isRecorded && (
                           <span className="font-bold text-slate-700">
                             棚卸：{item.countedQuantity}
-                            {item.unit ? ` ${item.unit}` : " 個"}
+                            {displayUnit(item.unit, item.item.defaultUnit)}
                           </span>
                         )}
                         {itemDifference !== null && itemDifference !== 0 && (
@@ -1110,7 +1114,7 @@ export default function StocktakePage() {
                     </h3>
                     <p className="mt-2 text-slate-600">
                       現在庫：{selected.expectedQuantity}
-                      {selected.unit ? ` ${selected.unit}` : " 個"}
+                      {displayUnit(selected.unit, selected.item.defaultUnit)}
                     </p>
                   </div>
 
@@ -1126,6 +1130,8 @@ export default function StocktakePage() {
                       ? "商品詳細を閉じる"
                       : "商品詳細を見る"}
                   </button>
+
+                  {isAdmin && <button type="button" disabled={saving} onClick={() => setEditingProduct(selected.item.id)} className="w-full rounded-xl border border-blue-300 p-3 font-bold text-blue-700">商品情報を編集する</button>}
 
                   {selectedDetailsOpen && (
                     <dl className="grid grid-cols-1 gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm sm:grid-cols-2">
@@ -1150,8 +1156,10 @@ export default function StocktakePage() {
                     </label>
                     <input
                       id="stocktake-quantity"
-                      type="number"
-                      min="0"
+                      type="text"
+                      onFocus={(event) => event.target.select()}
+                      onBlur={() => setCountedQuantity(countedQuantity.normalize("NFKC"))}
+                      onCompositionEnd={(event) => setCountedQuantity(event.currentTarget.value.normalize("NFKC"))}
                       inputMode="numeric"
                       value={countedQuantity}
                       onChange={(event) =>
@@ -1161,7 +1169,7 @@ export default function StocktakePage() {
                       className="mt-2 w-full rounded-2xl border-2 border-indigo-500 px-4 py-4 text-3xl font-black outline-none disabled:bg-slate-100"
                     />
                     <p className="mt-2 text-sm text-slate-500">
-                      {selected.unit ? `単位：${selected.unit}` : "単位：個"}
+                      {`単位：${displayUnit(selected.unit, selected.item.defaultUnit)}`}
                     </p>
                   </div>
 
@@ -1175,7 +1183,7 @@ export default function StocktakePage() {
                     >
                       差異：{difference > 0 ? "+" : ""}
                       {difference}
-                      {selected.unit ? ` ${selected.unit}` : " 個"}
+                      {displayUnit(selected.unit, selected.item.defaultUnit)}
                     </div>
                   )}
 
@@ -1259,6 +1267,7 @@ export default function StocktakePage() {
         >
           <StocktakeInputPanel
             selected={selected}
+            onEditProduct={isAdmin && selected ? () => setEditingProduct(selected.item.id) : undefined}
             quantity={countedQuantity}
             saving={saving}
             disabled={!canOperate}
@@ -1287,6 +1296,8 @@ export default function StocktakePage() {
           onClose={() => setSystemError(null)}
         />
       )}
+
+      {editingProduct && <ProductEditDialog key={editingProduct} itemId={editingProduct} onClose={() => setEditingProduct(null)} onSaved={() => { setEditingProduct(null); setMessage("商品情報を更新しました。棚卸数量の入力は保持しています。"); void syncInBackground().catch(() => setMessage("保存は完了しましたが画面更新に失敗しました。再接続時に取得します。")); }}/>}
 
       <UnregisteredItemDialog
         open={registerItemOpen}

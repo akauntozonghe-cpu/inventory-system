@@ -1,3 +1,5 @@
+import { syncItemLinks } from "@/lib/item-links";
+import { unitValidationMessage } from "@/lib/unit";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireAdmin } from "@/lib/auth";
@@ -21,6 +23,7 @@ type ItemInput = {
   minorCategory?: unknown;
   defaultUnit?: unknown;
   reason?: unknown;
+  expectedUpdatedAt?: unknown;
 };
 
 type NormalizedItemData = {
@@ -203,7 +206,9 @@ export async function PUT(
     }
 
     const body = rawBody as ItemInput;
-    const data = toItemData(body);
+    let data = toItemData(body);
+    const unitError = unitValidationMessage(body.defaultUnit);
+    if (unitError) return NextResponse.json({ message: unitError }, { status: 400 });
     const reason = requiredText(body.reason, 300);
 
     if (!data.name) {
@@ -256,6 +261,10 @@ export async function PUT(
         { status: 404 }
       );
     }
+
+    data = toItemData({ ...before, ...body });
+    if (data.minorCategory && !data.majorCategory) return NextResponse.json({ message: "小分類を設定する場合は大分類を選択してください。" }, { status: 400 });
+    if (body.expectedUpdatedAt !== undefined && (typeof body.expectedUpdatedAt !== "string" || !Number.isFinite(Date.parse(body.expectedUpdatedAt)))) return NextResponse.json({ message: "更新日時が不正です。画面を開き直してください。" }, { status: 400 });
 
     if (data.janCode) {
       const duplicateJan = await prisma.item.findFirst({
@@ -326,8 +335,9 @@ export async function PUT(
       }
     }
 
-    const updated = await prisma.item.update({
-      where: { id },
+    const updated = await prisma.$transaction(async (tx) => {
+    const updatedItem = await tx.item.update({
+      where: { id, ...(typeof body.expectedUpdatedAt === "string" ? { updatedAt: new Date(body.expectedUpdatedAt) } : {}) },
       data: {
         name: data.name,
         janCode: data.janCode,
@@ -354,6 +364,10 @@ export async function PUT(
       },
     });
 
+    await syncItemLinks(tx, id, before, updatedItem);
+    return updatedItem;
+    });
+
     await createAdminActionLog({
       adminUserId: adminUser.id,
       action: "ITEM_UPDATE",
@@ -372,6 +386,7 @@ export async function PUT(
       item: updated,
     });
   } catch (error) {
+    if (error && typeof error === "object" && "code" in error && error.code === "P2025") return NextResponse.json({ message: "他の端末で商品情報が変更されました。閉じて開き直し、最新の内容を確認してください。" }, { status: 409 });
     console.error("PUT /api/items/[id]", error);
 
     return NextResponse.json(

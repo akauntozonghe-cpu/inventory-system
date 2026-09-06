@@ -1,3 +1,5 @@
+import { ensureClassification } from "@/lib/item-links";
+import { unitValidationMessage } from "@/lib/unit";
 import { randomUUID } from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
@@ -27,10 +29,6 @@ type RegisterItemBody = {
 
 function getText(value: unknown, maxLength = 500) {
   return normalizeDisplayText(value, maxLength);
-}
-
-function getOptionalText(value: unknown, maxLength = 500) {
-  return getText(value, maxLength) || null;
 }
 
 function getQuantity(value: unknown) {
@@ -87,6 +85,8 @@ export async function POST(request: NextRequest) {
 
   try {
     const body = (await request.json()) as RegisterItemBody;
+    const unitError = unitValidationMessage(body.unit);
+    if (unitError) return NextResponse.json({ message: unitError }, { status: 400 });
 
     const sessionId = getText(body.sessionId, 100);
     const name = getText(body.name, 200);
@@ -245,6 +245,8 @@ export async function POST(request: NextRequest) {
 
           itemCreated = true;
         }
+
+        await ensureClassification(transaction, item.majorCategory, item.minorCategory);
 
         const lotNo = normalizeIdentifier(body.lotNo, 100);
         const expirationDate = normalizeExpirationDate(body.expirationDate);

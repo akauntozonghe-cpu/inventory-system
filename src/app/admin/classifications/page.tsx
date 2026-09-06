@@ -1,5 +1,7 @@
 "use client";
+import { fetchFresh } from "@/lib/fetch-fresh";
 
+import { useLiveRefresh } from "@/hooks/useLiveRefresh";
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import QRCode from "qrcode";
@@ -45,10 +47,11 @@ export default function ClassificationsPage() {
   const [scannerOpen, setScannerOpen] = useState(false);
   const [locationQr, setLocationQr] = useState<{ name: string; image: string } | null>(null);
 
-  const load = useCallback(async () => { const response = await fetch("/api/admin/classifications", { cache: "no-store" }); const payload: unknown = await response.json().catch(() => null); if (!response.ok) { const message = payload && typeof payload === "object" && "message" in payload && typeof payload.message === "string" ? payload.message : "分類を取得できませんでした。"; throw new Error(message); } setData(normalizePayload(payload)); }, []);
+  const load = useCallback(async () => { const response = await fetchFresh("/api/admin/classifications"); const payload: unknown = await response.json().catch(() => null); if (!response.ok) { const message = payload && typeof payload === "object" && "message" in payload && typeof payload.message === "string" ? payload.message : "分類を取得できませんでした。"; throw new Error(message); } setData(normalizePayload(payload)); }, []);
   useEffect(() => { void load().catch((e) => setError(e instanceof Error ? e.message : "分類を取得できませんでした。")); }, [load]);
   const majors = useMemo(() => data.classifications.filter((row) => row.kind === "MAJOR"), [data.classifications]);
   const minors = useMemo(() => data.classifications.filter((row) => row.kind === "MINOR"), [data.classifications]);
+  useLiveRefresh(load);
   const visibleItems = useMemo(() => { const query = itemSearch.trim().toLocaleLowerCase("ja"); return data.items.filter((item) => (itemMajorFilter === "ALL" || (itemMajorFilter === "NONE" ? !item.majorCategory : item.majorCategory === itemMajorFilter)) && (!query || [item.name,item.janCode,item.systemBarcode,item.majorCategory,item.minorCategory].filter(Boolean).join(" ").toLocaleLowerCase("ja").includes(query))); }, [data.items, itemMajorFilter, itemSearch]);
   const assignableMinors = useMemo(() => minors.filter((row) => row.parentName === assignMajor), [assignMajor, minors]);
 

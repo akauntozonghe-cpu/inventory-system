@@ -158,8 +158,8 @@ export async function GET(request: NextRequest) {
             true
           ),
           cell(inventory.manufacturer ?? inventory.item.manufacturer),
-          cell(inventory.majorCategory ?? inventory.item.majorCategory),
-          cell(inventory.minorCategory ?? inventory.item.minorCategory),
+          cell(inventory.item.majorCategory),
+          cell(inventory.item.minorCategory),
           cell(inventory.storageLocation?.name),
           cell(inventory.lotNo, true),
           cell(inventory.expirationDate, true),

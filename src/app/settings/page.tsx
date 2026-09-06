@@ -1,4 +1,5 @@
 "use client";
+import InstallButton from "@/components/pwa/InstallButton";
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
@@ -148,6 +149,7 @@ export default function SettingsPage() {
   return (
     <main className="min-h-screen bg-slate-100 p-4 sm:p-8">
       <div className="mx-auto max-w-5xl">
+        <InstallButton />
         <header className="flex flex-col gap-5 sm:flex-row sm:items-start sm:justify-between">
           <div>
             <p className="text-sm font-bold tracking-widest text-blue-600">

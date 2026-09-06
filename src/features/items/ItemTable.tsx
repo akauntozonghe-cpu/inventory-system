@@ -1,8 +1,9 @@
 "use client";
+import { displayUnit } from "@/lib/unit";
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
-import JsBarcode from "jsbarcode";
+import { barcodePrintDocument, type LabelScale } from "@/lib/barcode-label";
 import type { Item } from "./types";
 
 type Props = {
@@ -50,46 +51,6 @@ async function readJson(response: Response): Promise<unknown> {
   }
 }
 
-function barcodeFormat(value: string): "EAN13" | "EAN8" | "CODE128" {
-  if (/^\d{13}$/.test(value)) {
-    return "EAN13";
-  }
-
-  if (/^\d{8}$/.test(value)) {
-    return "EAN8";
-  }
-
-  return "CODE128";
-}
-
-function escapeHtml(value: string) {
-  return value
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
-}
-
-function createBarcodeSvg(value: string) {
-  const svg = document.createElementNS(
-    "http://www.w3.org/2000/svg",
-    "svg"
-  );
-
-  JsBarcode(svg, value, {
-    format: barcodeFormat(value),
-    width: 1.35,
-    height: 34,
-    displayValue: true,
-    fontSize: 10,
-    margin: 2,
-    background: "#ffffff",
-    lineColor: "#111827",
-  });
-
-  return new XMLSerializer().serializeToString(svg);
-}
-
 export default function ItemTable({ items, reload }: Props) {
   const [currentUser, setCurrentUser] = useState<CurrentUser | null>(null);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
@@ -101,6 +62,7 @@ export default function ItemTable({ items, reload }: Props) {
   const [reason, setReason] = useState("");
   const [confirmed, setConfirmed] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [labelScale, setLabelScale] = useState<LabelScale>(0.8);
 
   const isAdmin = currentUser?.role === "ADMIN";
 
@@ -267,127 +229,14 @@ export default function ItemTable({ items, reload }: Props) {
         ? selectedItems
         : printableItems;
 
-    const labels = targets
-      .filter((item) => Boolean(item.janCode || item.systemBarcode))
-      .map((item) => {
-        const barcode = item.janCode || item.systemBarcode;
-
-        if (!barcode) {
-          return "";
-        }
-
-        const barcodeKind = item.janCode ? "JANコード" : "システムバーコード";
-        const category =
-          [item.majorCategory, item.minorCategory]
-            .filter(Boolean)
-            .join(" / ") || "分類未設定";
-
-        return `
-          <article class="label">
-            <p class="caption">INVENTORY OS / ${barcodeKind}</p>
-            <h1>${escapeHtml(item.name)}</h1>
-            <p class="category">${escapeHtml(category)}</p>
-            <p class="code">${escapeHtml(barcode)}</p>
-            <div class="barcode">${createBarcodeSvg(barcode)}</div>
-          </article>
-        `;
-      })
-      .join("");
-
-    if (!labels) {
-      setError(
-        "印刷できるJANコードまたはシステムバーコードを持つ商品がありません。"
-      );
-      return;
-    }
-
-    const printWindow = window.open("", "_blank", "width=900,height=700");
-
-    if (!printWindow) {
-      setError(
-        "印刷画面を開けませんでした。ブラウザのポップアップ許可を確認してください。"
-      );
-      return;
-    }
-
-    printWindow.document.write(`
-      <!doctype html>
-      <html lang="ja">
-        <head>
-          <meta charset="utf-8" />
-          <title>商品バーコードラベル</title>
-          <style>
-            @page { size: A4; margin: 8mm; }
-            * { box-sizing: border-box; }
-            body {
-              margin: 0;
-              color: #111827;
-              font-family: Arial, "Noto Sans JP", sans-serif;
-            }
-            .grid {
-              display: grid;
-              grid-template-columns: repeat(3, 62mm);
-              grid-auto-rows: 32mm;
-              gap: 2mm;
-            }
-            .label {
-              width: 62mm;
-              height: 32mm;
-              overflow: hidden;
-              padding: 2mm;
-              border: 1px solid #cbd5e1;
-              border-radius: 1.5mm;
-              break-inside: avoid;
-            }
-            .caption {
-              margin: 0;
-              color: #475569;
-              font-size: 6pt;
-              font-weight: 700;
-            }
-            h1 {
-              margin: 1mm 0 0.5mm;
-              max-height: 7mm;
-              overflow: hidden;
-              font-size: 9pt;
-              line-height: 1.15;
-              word-break: break-word;
-            }
-            .category {
-              margin: 0;
-              color: #475569;
-              font-size: 6pt;
-            }
-            .code {
-              margin: 0.5mm 0 0;
-              font-family: monospace;
-              font-size: 6.5pt;
-              font-weight: 700;
-            }
-            .barcode {
-              margin-top: 0.5mm;
-              text-align: center;
-            }
-            svg {
-              display: inline-block;
-              max-width: 100%;
-              height: 10mm;
-            }
-          </style>
-        </head>
-        <body>
-          <main class="grid">${labels}</main>
-          <script>
-            window.onload = () => {
-              window.print();
-              window.onafterprint = () => window.close();
-            };
-          </script>
-        </body>
-      </html>
-    `);
-
-    printWindow.document.close();
+    try {
+      const labels = targets.filter((item) => item.janCode || item.systemBarcode).map((item) => ({ name: item.name, barcode: (item.janCode || item.systemBarcode)! }));
+      const html = barcodePrintDocument(labels, "A4", labelScale);
+      const printWindow = window.open("", "_blank", "width=900,height=700");
+      if (!printWindow) throw new Error("印刷画面を開けませんでした。ポップアップを許可してください。");
+      printWindow.document.write(html);
+      printWindow.document.close();
+    } catch (error) { setError(error instanceof Error ? error.message : "ラベルを作成できませんでした。"); }
   };
 
   if (items.length === 0) {
@@ -404,6 +253,11 @@ export default function ItemTable({ items, reload }: Props) {
   return (
     <>
       <section className="space-y-4">
+        <label className="block rounded-xl bg-white p-3 text-sm font-bold">印刷サイズ
+          <select value={labelScale} onChange={(event) => setLabelScale(Number(event.target.value) as LabelScale)} className="ml-3 rounded-lg border p-2">
+            <option value={0.8}>小型 36×26mm（JAN 80%）</option><option value={1}>標準 42×32mm（JAN 100%）</option>
+          </select>
+        </label>
         {(message || error) && (
           <div
             className={`rounded-2xl p-4 font-bold ${
@@ -484,10 +338,12 @@ export default function ItemTable({ items, reload }: Props) {
               [item.majorCategory, item.minorCategory]
                 .filter(Boolean)
                 .join(" / ") || "-";
-            const totalQuantity = item.inventoryInstances.reduce(
-              (sum, inventory) => sum + (inventory.actualQuantity ?? inventory.quantity),
-              0
-            );
+            const totals = new Map<string, number>();
+            for (const inventory of item.inventoryInstances) {
+              const unit = displayUnit(inventory.unit, item.defaultUnit);
+              totals.set(unit, (totals.get(unit) ?? 0) + (inventory.actualQuantity ?? inventory.quantity));
+            }
+            const totalQuantity = totals.size ? [...totals].map(([unit, quantity]) => quantity + " " + unit).join(" ／ ") : "0 " + displayUnit(item.defaultUnit);
             const locationNames = Array.from(
               new Set(
                 item.inventoryInstances
@@ -547,7 +403,7 @@ export default function ItemTable({ items, reload }: Props) {
                       <div>
                         <dt className="font-bold text-slate-500">現在庫合計</dt>
                         <dd className="mt-1 text-lg font-black text-emerald-700">
-                          {totalQuantity} {item.defaultUnit ?? "個"}
+                          {totalQuantity}
                         </dd>
                       </div>
 
@@ -579,7 +435,7 @@ export default function ItemTable({ items, reload }: Props) {
                       <div>
                         <dt className="font-bold text-slate-500">基本単位</dt>
                         <dd className="mt-1 text-slate-800">
-                          {item.defaultUnit ?? "-"}
+                          {displayUnit(item.defaultUnit)}
                         </dd>
                       </div>
 

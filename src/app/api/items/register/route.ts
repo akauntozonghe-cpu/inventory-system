@@ -1,3 +1,5 @@
+import { ensureClassification } from "@/lib/item-links";
+import { unitValidationMessage } from "@/lib/unit";
 import { randomInt } from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
 import {
@@ -130,6 +132,8 @@ export async function POST(request: NextRequest) {
     }
 
     const body = rawBody as RegisterBody;
+    const unitError = unitValidationMessage(body.unit);
+    if (unitError) return NextResponse.json({ code: "UNIT_INVALID", message: unitError }, { status: 400 });
     const canRegisterImmediately = hasAdminAccess(request);
 
     const name = requiredText(body.name, 200);
@@ -371,6 +375,8 @@ export async function POST(request: NextRequest) {
             defaultUnit: unit,
           },
         });
+
+        await ensureClassification(transaction, item.majorCategory, item.minorCategory);
 
         const inventory = await transaction.inventoryInstance.create({
           data: {

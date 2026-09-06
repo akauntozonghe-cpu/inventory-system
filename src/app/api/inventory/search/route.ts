@@ -208,12 +208,6 @@ export async function GET(request: NextRequest) {
             manufacturer: textCondition,
           },
           {
-            majorCategory: textCondition,
-          },
-          {
-            minorCategory: textCondition,
-          },
-          {
             lotNo: textCondition,
           },
           {
@@ -347,9 +341,9 @@ export async function GET(request: NextRequest) {
               inventory.item.managementGroupCode,
             manufacturer: inventory.manufacturer ?? inventory.item.manufacturer,
             majorCategory:
-              inventory.majorCategory ?? inventory.item.majorCategory,
+              inventory.item.majorCategory,
             minorCategory:
-              inventory.minorCategory ?? inventory.item.minorCategory,
+              inventory.item.minorCategory,
             defaultUnit: inventory.item.defaultUnit,
           },
         };
@@ -401,6 +395,6 @@ function matchesSessionScope(
   if (session.scopeType === "ALL") return true;
   if (!session.scopeValue) return false;
   if (session.scopeType === "LOCATION") return inventory.storageLocation?.name === session.scopeValue;
-  if (session.scopeType === "MAJOR_CATEGORY") return (inventory.majorCategory ?? inventory.item.majorCategory) === session.scopeValue;
-  return (inventory.minorCategory ?? inventory.item.minorCategory) === session.scopeValue;
+  if (session.scopeType === "MAJOR_CATEGORY") return (inventory.item.majorCategory) === session.scopeValue;
+  return (inventory.item.minorCategory) === session.scopeValue;
 }

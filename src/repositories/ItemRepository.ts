@@ -1,3 +1,4 @@
+import { syncItemLinks, ensureClassification } from "@/lib/item-links";
 import { prisma } from "@/lib/prisma";
 
 type ItemInput = {
@@ -60,15 +61,19 @@ export class ItemRepository {
   }
 
   static async create(data: ItemInput) {
-    return prisma.item.create({
-      data,
+    return prisma.$transaction(async (tx) => {
+      const item = await tx.item.create({ data });
+      await ensureClassification(tx, item.majorCategory, item.minorCategory);
+      return item;
     });
   }
 
   static async update(id: string, data: ItemUpdateInput) {
-    return prisma.item.update({
-      where: { id },
-      data,
+    return prisma.$transaction(async (tx) => {
+      const before = await tx.item.findUniqueOrThrow({ where: { id } });
+      const item = await tx.item.update({ where: { id }, data });
+      await syncItemLinks(tx, id, before, item);
+      return item;
     });
   }
 

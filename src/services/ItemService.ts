@@ -1,3 +1,4 @@
+import { unitValidationMessage } from "@/lib/unit";
 import { ItemRepository } from "@/repositories/ItemRepository";
 
 type ItemCreateInput = {
@@ -42,6 +43,8 @@ export class ItemService {
   }
 
   static async create(data: ItemCreateInput) {
+    const unitError = unitValidationMessage(data.defaultUnit);
+    if (unitError) throw new Error(unitError);
     if (!data.name?.trim()) {
       throw new Error("商品名は必須です。");
     }
@@ -61,6 +64,8 @@ export class ItemService {
   }
 
   static async update(data: ItemUpdateInput & { id: string }) {
+    const unitError = unitValidationMessage(data.defaultUnit);
+    if (unitError) throw new Error(unitError);
     if (!data.id) {
       throw new Error("商品IDがありません。");
     }

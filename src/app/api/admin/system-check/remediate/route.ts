@@ -1,3 +1,4 @@
+import { repairProductLinks } from "@/lib/product-integrity";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getAdminElevation, requireAdmin } from "@/lib/auth";
@@ -180,6 +181,9 @@ export async function PATCH(request: NextRequest) {
     );
   }
 
+  const elevation = getAdminElevation(request);
+  if (!elevation || elevation.authenticatedByUserId !== auth.user.id) return NextResponse.json({ code: "ADMIN_ELEVATION_REQUIRED", message: "復旧処置の実行前に再認証してください。" }, { status: 403 });
+
   try {
     const body: unknown = await request.json();
 
@@ -195,6 +199,10 @@ export async function PATCH(request: NextRequest) {
 
     const input = body as Record<string, unknown>;
     const action = input.action;
+    if (action === "SYNC_PRODUCT_METADATA") {
+      const result = await repairProductLinks(auth.user.id);
+      return NextResponse.json({ success: true, message: "商品情報の紐付けを修復しました（" + result.updated + "件）。再チェックで結果を確認します。", result });
+    }
 
     if (
       action === "PAUSE_SESSION" ||

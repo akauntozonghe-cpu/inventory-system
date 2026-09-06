@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import JsBarcode from "jsbarcode";
+import { barcodeLabel, barcodePrintDocument, type LabelScale } from "@/lib/barcode-label";
 
 type SystemBarcodeLabelProps = {
   itemId: string;
@@ -20,18 +20,6 @@ type IssueResponse = {
 
 type PrintLayout = "A4" | "LABEL";
 
-function barcodeFormat(value: string): "EAN13" | "EAN8" | "CODE128" {
-  if (/^\d{13}$/.test(value)) {
-    return "EAN13";
-  }
-
-  if (/^\d{8}$/.test(value)) {
-    return "EAN8";
-  }
-
-  return "CODE128";
-}
-
 function readMessage(data: unknown, fallback: string) {
   if (
     typeof data === "object" &&
@@ -43,14 +31,6 @@ function readMessage(data: unknown, fallback: string) {
   }
 
   return fallback;
-}
-
-function escapeHtml(value: string) {
-  return value
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
 }
 
 export default function SystemBarcodeLabel({
@@ -68,6 +48,8 @@ export default function SystemBarcodeLabel({
   const [message, setMessage] = useState("");
   const [printLayout, setPrintLayout] = useState<PrintLayout>("A4");
   const [printCopies, setPrintCopies] = useState(1);
+  const [scale, setScale] = useState<LabelScale>(0.8);
+  const [barcodeError, setBarcodeError] = useState("");
 
   const barcode = janCode || systemJan;
   const barcodeTitle = janCode ? "既存JANコード" : "システムJAN";
@@ -116,20 +98,16 @@ export default function SystemBarcodeLabel({
     }
 
     try {
-      JsBarcode(svgRef.current, barcode, {
-        format: barcodeFormat(barcode),
-        width: 1.7,
-        height: 64,
-        displayValue: true,
-        fontSize: 15,
-        margin: 12,
-        background: "#ffffff",
-        lineColor: "#111827",
-      });
-    } catch {
-      setMessage("バーコードを表示できませんでした。");
+      const rendered = barcodeLabel(barcode, scale);
+      const parsed = new DOMParser().parseFromString(rendered.svg, "image/svg+xml").documentElement;
+      svgRef.current.replaceChildren(...Array.from(parsed.childNodes));
+      for (const attribute of Array.from(parsed.attributes)) svgRef.current.setAttribute(attribute.name, attribute.value);
+      setBarcodeError("");
+    } catch (error) {
+      svgRef.current.replaceChildren();
+      setBarcodeError(error instanceof Error ? error.message : "バーコードを表示できませんでした。");
     }
-  }, [barcode]);
+  }, [barcode, scale]);
 
   const issueSystemJan = async () => {
     if (janCode) {
@@ -194,107 +172,14 @@ export default function SystemBarcodeLabel({
       return;
     }
 
-    const copies = Math.min(Math.max(Math.trunc(printCopies), 1), 100);
-    const labelHtml = `
-      <section class="label">
-        <p class="system">INVENTORY OS / ${barcodeTitle}</p>
-        <p class="name">${escapeHtml(itemName)}</p>
-        <p class="code">${escapeHtml(barcode)}</p>
-        ${svgRef.current.outerHTML}
-      </section>
-    `;
-    const labels = Array.from({ length: copies }, () => labelHtml).join("");
-    const printWindow = window.open("", "_blank", "width=900,height=700");
-
-    if (!printWindow) {
-      setMessage(
-        "印刷画面を開けませんでした。ブラウザのポップアップ許可を確認してください。"
-      );
-      return;
-    }
-
-    printWindow.document.write(`
-      <!doctype html>
-      <html lang="ja">
-        <head>
-          <meta charset="utf-8" />
-          <title>${escapeHtml(itemName)} ラベル</title>
-          <style>
-            @page {
-              size: ${printLayout === "A4" ? "A4 portrait" : "48mm 28mm"};
-              margin: ${printLayout === "A4" ? "8mm" : "0"};
-            }
-
-            * { box-sizing: border-box; }
-
-            body {
-              margin: 0;
-              color: #111827;
-              font-family: Arial, "Noto Sans JP", sans-serif;
-              ${printLayout === "A4" ? "display:grid;grid-template-columns:repeat(4,48mm);grid-auto-rows:28mm;gap:1.5mm;" : ""}
-            }
-
-            .label {
-              width: 48mm;
-              height: 28mm;
-              overflow: hidden;
-              border: 0.25mm dashed #94a3b8;
-              padding: 1.5mm;
-              break-inside: avoid;
-              page-break-inside: avoid;
-            }
-
-            ${printLayout === "A4" ? ".label:nth-child(40n){break-after:page;page-break-after:always;}" : ".label{break-after:page;page-break-after:always;}.label:last-child{break-after:auto;page-break-after:auto;}"}
-
-            .system {
-              margin: 0;
-              color: #475569;
-              font-size: 6pt;
-              font-weight: 700;
-            }
-
-            .name {
-              margin: .5mm 0;
-              max-height: 4mm;
-              overflow: hidden;
-              font-size: 7.5pt;
-              font-weight: 800;
-              word-break: break-word;
-            }
-
-            .code {
-              margin: 0;
-              font-family: monospace;
-              font-size: 7pt;
-              font-weight: 700;
-            }
-
-            svg {
-              display: block;
-              width: 38mm;
-              height: 16mm;
-              margin: 0 auto;
-            }
-
-            @media print {
-              body { print-color-adjust: exact; -webkit-print-color-adjust: exact; }
-            }
-          </style>
-        </head>
-        <body>
-          ${labels}
-
-          <script>
-            window.onload = () => {
-              window.print();
-              window.onafterprint = () => window.close();
-            };
-          </script>
-        </body>
-      </html>
-    `);
-
-    printWindow.document.close();
+    try {
+      const copies = Number.isFinite(printCopies) ? Math.min(Math.max(Math.trunc(printCopies), 1), 100) : 1;
+      const html = barcodePrintDocument(Array.from({ length: copies }, () => ({ name: itemName, barcode })), printLayout, scale);
+      const printWindow = window.open("", "_blank", "width=900,height=700");
+      if (!printWindow) throw new Error("印刷画面を開けませんでした。ポップアップを許可してください。");
+      printWindow.document.write(html);
+      printWindow.document.close();
+    } catch (error) { setMessage(error instanceof Error ? error.message : "ラベルを作成できませんでした。"); }
   };
 
   return (
@@ -322,6 +207,7 @@ export default function SystemBarcodeLabel({
           <button
             type="button"
             onClick={printLabel}
+            disabled={Boolean(barcodeError)}
             className="rounded-xl bg-slate-800 px-4 py-3 font-bold text-white hover:bg-slate-950"
           >
             ラベルを印刷
@@ -342,6 +228,7 @@ export default function SystemBarcodeLabel({
         )}
       </div>
 
+      {barcodeError && <p role="alert" className="mt-4 font-bold text-red-700">{barcodeError}</p>}
       {message && (
         <p className="mt-4 rounded-xl bg-slate-100 px-4 py-3 text-sm font-bold text-slate-700">
           {message}
@@ -350,6 +237,12 @@ export default function SystemBarcodeLabel({
 
       {barcode && (
         <div className="mt-5 rounded-xl border border-slate-200 bg-slate-50 p-4">
+          <label className="mb-3 block text-sm font-bold">ラベルサイズ
+            <select value={scale} onChange={(event) => setScale(Number(event.target.value) as LabelScale)} className="ml-3 rounded-lg border p-2">
+              <option value={0.8}>小型 36×26mm（JAN 80%）</option><option value={1}>標準 42×32mm（JAN 100%）</option>
+            </select>
+          </label>
+          <p className="mb-3 text-sm">JANは規定の余白・高さで印刷します。旧SYSコードは内容に応じて横幅が広がります。</p>
           <div className="mb-4 grid gap-3 sm:grid-cols-2">
             <label className="text-sm font-bold text-slate-700">
               印刷用紙
@@ -358,8 +251,8 @@ export default function SystemBarcodeLabel({
                 onChange={(event) => setPrintLayout(event.target.value as PrintLayout)}
                 className="mt-1 w-full rounded-lg border bg-white p-2"
               >
-                <option value="A4">A4・小型24枚配置（62×32mm）</option>
-                <option value="LABEL">ラベルプリンター・62×32mm</option>
+                <option value="A4">A4・小型ラベル</option>
+                <option value="LABEL">ラベルプリンター</option>
               </select>
             </label>
             <label className="text-sm font-bold text-slate-700">

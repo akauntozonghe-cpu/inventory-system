@@ -1,4 +1,5 @@
 "use client";
+import { playScanBeep, primeScanAudio, scanSoundEnabled, setScanSoundEnabled } from "@/lib/scan-feedback";
 
 import { useEffect, useRef, useState } from "react";
 import { BrowserMultiFormatReader } from "@zxing/browser";
@@ -32,7 +33,7 @@ export default function BarcodeCamera({
   const stoppedRef = useRef(false);
   const onDetectedRef = useRef(onDetected);
   const onCloseRef = useRef(onClose);
-  const audioContextRef = useRef<AudioContext | null>(null);
+  const lastSeenRef = useRef({ code: "", at: 0 });
 
   const [status, setStatus] = useState("カメラを起動しています…");
   const [lastBarcode, setLastBarcode] = useState("");
@@ -40,50 +41,18 @@ export default function BarcodeCamera({
   const [scanConfirmed, setScanConfirmed] = useState(false);
   const [soundEnabled, setSoundEnabled] = useState(true);
 
-  useEffect(() => {
-    setSoundEnabled(localStorage.getItem("barcode-sound-enabled") !== "off");
-  }, []);
-
-  const playTone = () => {
-    const context = audioContextRef.current;
-    if (!soundEnabled || !context || context.state !== "running") return;
-    const oscillator = context.createOscillator();
-    const gain = context.createGain();
-    oscillator.type = "sine";
-    oscillator.frequency.setValueAtTime(880, context.currentTime);
-    gain.gain.setValueAtTime(0.0001, context.currentTime);
-    gain.gain.exponentialRampToValueAtTime(0.16, context.currentTime + 0.01);
-    gain.gain.exponentialRampToValueAtTime(0.0001, context.currentTime + 0.13);
-    oscillator.connect(gain).connect(context.destination);
-    oscillator.start();
-    oscillator.stop(context.currentTime + 0.14);
-  };
-
-  const enableSound = async () => {
-    const AudioContextClass = window.AudioContext || (window as typeof window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
-    if (!AudioContextClass) return;
-    const context = audioContextRef.current ?? new AudioContextClass();
-    audioContextRef.current = context;
-    await context.resume();
-    localStorage.setItem("barcode-sound-enabled", "on");
-    setSoundEnabled(true);
-    window.setTimeout(playTone, 0);
-  };
-
+  useEffect(() => { setSoundEnabled(scanSoundEnabled()); primeScanAudio(); }, []);
   const toggleSound = async () => {
-    if (soundEnabled) {
-      localStorage.setItem("barcode-sound-enabled", "off");
-      setSoundEnabled(false);
-      return;
-    }
-    await enableSound();
+    const next = !scanSoundEnabled();
+    setScanSoundEnabled(next); setSoundEnabled(next);
+    if (next) primeScanAudio();
   };
 
-  const confirmScan = () => {
+  const confirmScan = (barcode: string) => {
     setScanConfirmed(true);
     window.setTimeout(() => setScanConfirmed(false), 850);
     if ("vibrate" in navigator) navigator.vibrate([90, 45, 90]);
-    try { playTone(); } catch { /* 視覚表示と振動は継続する。 */ }
+    try { playScanBeep(barcode); } catch { /* 視覚表示と振動は継続する。 */ }
   };
 
   useEffect(() => {
@@ -143,8 +112,8 @@ export default function BarcodeCamera({
 
         const videoConstraints: MediaTrackConstraints = {
           facingMode: { ideal: "environment" },
-          width: { ideal: 2560, min: 1280 },
-          height: { ideal: 1440, min: 720 },
+          width: { ideal: 1920 },
+          height: { ideal: 1080 },
           aspectRatio: { ideal: 16 / 9 },
         };
 
@@ -179,14 +148,16 @@ export default function BarcodeCamera({
 
             const now = Date.now();
 
-            if (now - detectedAtRef.current < 900) {
+            const duplicate = barcode === lastSeenRef.current.code && now - lastSeenRef.current.at < 1200;
+            lastSeenRef.current = { code: barcode, at: now };
+            if (duplicate || now - detectedAtRef.current < 250) {
               return;
             }
 
             detectedAtRef.current = now;
             setLastBarcode(barcode);
             setStatus(`読み取りました：${barcode}`);
-            confirmScan();
+            confirmScan(barcode);
 
             if (closeOnDetect) {
               stopCamera();
@@ -221,7 +192,7 @@ export default function BarcodeCamera({
           if (capabilities?.focusMode?.includes("continuous")) advanced.push({ focusMode: "continuous" } as MediaTrackConstraintSet);
           if (capabilities?.exposureMode?.includes("continuous")) advanced.push({ exposureMode: "continuous" } as MediaTrackConstraintSet);
           if (capabilities?.zoom && capabilities.zoom.max > capabilities.zoom.min) advanced.push({ zoom: Math.min(capabilities.zoom.max, Math.max(capabilities.zoom.min, 1.5)) } as MediaTrackConstraintSet);
-          if (advanced.length > 0) await track.applyConstraints({ advanced });
+          if (advanced.length > 0) { try { await track.applyConstraints({ advanced }); } catch { /* Keep the usable stream when optional camera tuning is unsupported. */ } }
         }
 
         if (mounted) {
@@ -247,7 +218,7 @@ export default function BarcodeCamera({
     return () => {
       mounted = false;
       stopCamera();
-      if (audioContextRef.current) void audioContextRef.current.close();
+
     };
   }, [closeOnDetect]);
 

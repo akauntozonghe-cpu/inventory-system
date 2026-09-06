@@ -1,8 +1,10 @@
 "use client";
+import { fetchFresh } from "@/lib/fetch-fresh";
 
 import Link from "next/link";
 import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import { useLiveRefresh } from "@/hooks/useLiveRefresh";
 import FeedbackToast from "@/components/common/FeedbackToast";
 
 type ScopeType = "ALL" | "LOCATION" | "MAJOR_CATEGORY" | "MINOR_CATEGORY";
@@ -143,9 +145,9 @@ export default function StocktakeStartPage() {
   const loadPageData = useCallback(async () => {
     const [userResponse, sessionResponse, optionsResponse] =
       await Promise.all([
-        fetch("/api/auth/me", { cache: "no-store" }),
-        fetch("/api/stocktake/session", { cache: "no-store" }),
-        fetch("/api/stocktake/options", { cache: "no-store" }),
+        fetchFresh("/api/auth/me"),
+        fetchFresh("/api/stocktake/session"),
+        fetchFresh("/api/stocktake/options"),
       ]);
 
     const userData: unknown = await userResponse.json().catch(() => null);
@@ -210,6 +212,8 @@ export default function StocktakeStartPage() {
 
     setOperator((previous) => previous || user.displayName);
   }, []);
+
+  useLiveRefresh(loadPageData);
 
   useEffect(() => {
     let mounted = true;

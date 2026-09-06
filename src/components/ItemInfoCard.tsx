@@ -1,4 +1,5 @@
 "use client";
+import { displayUnit } from "@/lib/unit";
 
 type Item = {
   id: string;
@@ -78,7 +79,7 @@ export default function ItemInfoCard({
 
         <InfoRow
           label="単位"
-          value={item.defaultUnit ?? "個"}
+          value={displayUnit(item.defaultUnit)}
         />
 
       </div>

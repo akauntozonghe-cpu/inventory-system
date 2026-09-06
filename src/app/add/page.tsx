@@ -1,16 +1,18 @@
 "use client";
+import SelectOrCreate from "@/components/SelectOrCreate";
+import { useRegistrationOptions } from "@/hooks/useRegistrationOptions";
+import { unitValidationMessage } from "@/lib/unit";
 
 import Link from "next/link";
 import { type FormEvent, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { normalizeAsciiCodeInput, normalizeDisplayText, normalizeJanInput } from "@/lib/input-normalization";
+import { normalizeAsciiCodeInput, normalizeJanInput } from "@/lib/input-normalization";
 import FeedbackToast from "@/components/common/FeedbackToast";
 
 type Location = {
   id: string;
   name: string;
 };
-type OptionPayload = { majorCategories: string[]; minorCategories: string[] };
 
 type CurrentUser = {
   id: string;
@@ -47,7 +49,7 @@ const initialForm: FormState = {
   lotNo: "",
   expirationDate: "",
   unit: "個",
-  quantity: "0",
+  quantity: "",
   memo: "",
 };
 
@@ -105,10 +107,8 @@ export default function AddPage() {
 
   const [form, setForm] = useState<FormState>(initialForm);
   const [locations, setLocations] = useState<Location[]>([]);
-  const [majorCategories, setMajorCategories] = useState<string[]>([]);
-  const [minorCategories, setMinorCategories] = useState<string[]>([]);
-  const [newMajor, setNewMajor] = useState(false);
-  const [newMinor, setNewMinor] = useState(false);
+  const registrationOptions = useRegistrationOptions();
+  useEffect(() => { if (registrationOptions.ready) setLocations(registrationOptions.storageLocationOptions); }, [registrationOptions.ready, registrationOptions.storageLocationOptions]);
   const [currentUser, setCurrentUser] = useState<CurrentUser | null>(null);
 
   const [loading, setLoading] = useState(true);
@@ -137,16 +137,14 @@ export default function AddPage() {
   useEffect(() => {
     const loadInitialData = async () => {
       try {
-        const [locationResponse, userResponse, optionResponse] = await Promise.all([
+        const [locationResponse, userResponse] = await Promise.all([
           fetch("/api/storage-locations", { cache: "no-store" }),
           fetch("/api/auth/me", { cache: "no-store" }),
-          fetch("/api/stocktake/options", { cache: "no-store" }),
         ]);
 
-        const [locationData, userData, optionData] = await Promise.all([
+        const [locationData, userData] = await Promise.all([
           readJson(locationResponse),
           readJson(userResponse),
-          readJson(optionResponse),
         ]);
 
         if (!locationResponse.ok || !Array.isArray(locationData)) {
@@ -168,11 +166,6 @@ export default function AddPage() {
         }
 
         setLocations(locationData as Location[]);
-        if (optionResponse.ok && optionData && typeof optionData === "object") {
-          const options = optionData as OptionPayload;
-          setMajorCategories(Array.isArray(options.majorCategories) ? options.majorCategories : []);
-          setMinorCategories(Array.isArray(options.minorCategories) ? options.minorCategories : []);
-        }
         setCurrentUser(userData);
       } catch (loadError) {
         setError(
@@ -206,14 +199,16 @@ export default function AddPage() {
     setMessage("");
 
     const name = form.name.trim();
-    const quantity = Number(form.quantity);
+    const quantity = Number(form.quantity.normalize("NFKC"));
+    const unitError = unitValidationMessage(form.unit);
+    if (unitError) { setError(unitError); return; }
 
     if (!name) {
       showValidationError("商品名を入力してください。", nameRef.current);
       return;
     }
 
-    if (!Number.isInteger(quantity) || quantity < 0) {
+    if (!form.quantity.trim() || !Number.isSafeInteger(quantity) || quantity < 0) {
       showValidationError(
         "数量は0以上の整数で入力してください。",
         quantityRef.current
@@ -482,13 +477,7 @@ export default function AddPage() {
                   大分類
                 </span>
 
-                <select
-                  value={form.majorCategory}
-                  onChange={(event) => { if(event.target.value==="__NEW__"){setNewMajor(true);change("majorCategory","");}else{setNewMajor(false);change("majorCategory",event.target.value);} change("minorCategory", ""); }}
-                  className="mt-2 w-full rounded-xl border border-slate-300 bg-white px-4 py-3 outline-none transition focus:border-blue-600 focus:ring-2 focus:ring-blue-100">
-                  <option value="">大分類を選択</option>{majorCategories.map((category)=><option key={category} value={category}>{category}</option>)}<option value="__NEW__">＋ 新しい大分類を追加</option>
-                </select>
-                {newMajor&&<input value={form.majorCategory} onChange={(event)=>change("majorCategory",normalizeDisplayText(event.target.value,60))} inputMode="text" placeholder="新しい大分類" className="mt-2 w-full rounded-xl border border-indigo-400 px-4 py-3"/>}
+                <SelectOrCreate label="大分類" value={form.majorCategory} options={registrationOptions.majorCategories} onChange={(value) => { change("majorCategory", value); change("minorCategory", ""); }} />
               </label>
 
               <label>
@@ -496,13 +485,7 @@ export default function AddPage() {
                   小分類
                 </span>
 
-                <select
-                  value={form.minorCategory}
-                  onChange={(event) => {if(event.target.value==="__NEW__"){setNewMinor(true);change("minorCategory","");}else{setNewMinor(false);change("minorCategory",event.target.value);}}}
-                  className="mt-2 w-full rounded-xl border border-slate-300 bg-white px-4 py-3 outline-none transition focus:border-blue-600 focus:ring-2 focus:ring-blue-100">
-                  <option value="">小分類を選択</option>{minorCategories.map((category)=><option key={category} value={category}>{category}</option>)}<option value="__NEW__">＋ 新しい小分類を追加</option>
-                </select>
-                {newMinor&&<input value={form.minorCategory} onChange={(event)=>change("minorCategory",normalizeDisplayText(event.target.value,60))} inputMode="text" placeholder="新しい小分類" className="mt-2 w-full rounded-xl border border-indigo-400 px-4 py-3"/>}
+                <SelectOrCreate key={form.majorCategory} label="小分類" value={form.minorCategory} options={registrationOptions.minorsFor(form.majorCategory)} onChange={(value) => { change("minorCategory", value);  }} />
               </label>
             </div>
           </section>
@@ -543,8 +526,10 @@ export default function AddPage() {
 
                 <input
                   ref={quantityRef}
-                  type="number"
-                  min="0"
+                  type="text"
+                  onFocus={(event) => event.currentTarget.select()}
+                  placeholder="数量を入力（例：1）"
+                  required
                   inputMode="numeric"
                   value={form.quantity}
                   onChange={(event) =>
@@ -559,12 +544,7 @@ export default function AddPage() {
                   単位
                 </span>
 
-                <input
-                  value={form.unit}
-                  onChange={(event) => change("unit", event.target.value)}
-                  placeholder="例：個、箱"
-                  className="mt-2 w-full rounded-xl border border-slate-300 px-4 py-3 outline-none transition focus:border-blue-600 focus:ring-2 focus:ring-blue-100"
-                />
+                <SelectOrCreate label="単位" value={form.unit} options={registrationOptions.units} onChange={(value) => change("unit", value)} required />
               </label>
 
               <label>
