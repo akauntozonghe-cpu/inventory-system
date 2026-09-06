@@ -152,6 +152,7 @@ export default function StocktakePage() {
   const [searching, setSearching] = useState(false);
   const [saving, setSaving] = useState(false);
   const [changingStatus, setChangingStatus] = useState(false);
+  const [lastSyncedAt, setLastSyncedAt] = useState<Date | null>(null);
 
   const [normalCameraOpen, setNormalCameraOpen] = useState(false);
   const [continuousCameraOpen, setContinuousCameraOpen] = useState(false);
@@ -225,17 +226,19 @@ export default function StocktakePage() {
     }
 
     setProgress(data as ProgressData);
+    setLastSyncedAt(new Date());
   }, [sessionId]);
 
   const loadItems = useCallback(
     async (
       nextKeyword = "",
       nextFilter: FilterType = "UNRECORDED",
-      nextMajorCategory: string | null = null
+      nextMajorCategory: string | null = null,
+      silent = false
     ) => {
       const requestId = ++searchRequestRef.current;
 
-      setSearching(true);
+      if (!silent) setSearching(true);
 
       try {
         const query = new URLSearchParams({
@@ -271,7 +274,7 @@ export default function StocktakePage() {
           setItems(data as InventoryItem[]);
         }
       } finally {
-        if (requestId === searchRequestRef.current) {
+        if (requestId === searchRequestRef.current && !silent) {
           setSearching(false);
         }
       }
@@ -303,15 +306,44 @@ export default function StocktakePage() {
     ]);
   }, [filter, keyword, loadItems, loadProgress, majorCategory]);
 
+  const syncSelectedItem = useCallback(async () => {
+    if (!selected) return;
+    const query = new URLSearchParams({
+      sessionId,
+      inventoryInstanceId: selected.id,
+      filter: "ALL",
+      q: "",
+    });
+    const response = await fetch(`/api/inventory/search?${query.toString()}`, { cache: "no-store" });
+    const data: unknown = await response.json().catch(() => null);
+    if (!response.ok || !Array.isArray(data) || data.length === 0) return;
+    const latest = data[0] as InventoryItem;
+    if (latest.countedQuantity === selected.countedQuantity) return;
+    setSelected(latest);
+    setMessage(
+      latest.countedQuantity === null
+        ? "別端末の更新を反映しました。この商品は未棚卸です。"
+        : `別端末の棚卸結果（${latest.countedQuantity}）を反映しました。入力中の数量は保持しています。`
+    );
+  }, [selected, sessionId]);
+
+  const syncInBackground = useCallback(async () => {
+    await Promise.all([
+      loadProgress(),
+      loadItems(keyword, filter, majorCategory, true),
+      syncSelectedItem(),
+    ]);
+  }, [filter, keyword, loadItems, loadProgress, majorCategory, syncSelectedItem]);
+
   useEffect(() => {
-    // 複数端末の入力や在庫変更を定期反映する。入力中は数量を上書きしない。
+    // 別端末の保存結果を入力中にも反映する。入力欄そのものは上書きしない。
     const sync = () => {
-      if (document.visibilityState !== "visible" || selected || saving) return;
-      void refresh().catch(() => {
+      if (document.visibilityState !== "visible") return;
+      void syncInBackground().catch(() => {
         // 一時的な通信断では操作を止めず、次回同期で自動復旧する。
       });
     };
-    const timer = window.setInterval(sync, 3_000);
+    const timer = window.setInterval(sync, 1_500);
     window.addEventListener("focus", sync);
     window.addEventListener("online", sync);
     return () => {
@@ -319,7 +351,7 @@ export default function StocktakePage() {
       window.removeEventListener("focus", sync);
       window.removeEventListener("online", sync);
     };
-  }, [refresh, saving, selected]);
+  }, [syncInBackground]);
 
   useEffect(() => {
     let mounted = true;
@@ -728,6 +760,11 @@ export default function StocktakePage() {
               担当者：{progress.session.operator || "未設定"} ／ 状態：
               {statusLabel(progress.session.status)}
             </p>
+            <div className="mt-3 inline-flex items-center gap-2 rounded-full border border-emerald-400/30 bg-emerald-400/10 px-3 py-1.5 text-xs font-bold text-emerald-200">
+              <span className="h-2 w-2 animate-pulse rounded-full bg-emerald-400" />
+              他端末と自動同期中
+              {lastSyncedAt && <span className="text-emerald-100/70">・{lastSyncedAt.toLocaleTimeString("ja-JP", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}</span>}
+            </div>
           </div>
 
           <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap">

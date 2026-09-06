@@ -32,6 +32,7 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
 
     const sessionId = searchParams.get("sessionId")?.trim() ?? "";
+    const inventoryInstanceId = searchParams.get("inventoryInstanceId")?.trim() ?? "";
     const keyword = searchParams.get("q")?.trim() ?? "";
     const exact = searchParams.get("exact") === "true";
     const majorCategory = searchParams.get("majorCategory")?.trim() ?? "";
@@ -89,6 +90,10 @@ export async function GET(request: NextRequest) {
 
     const inventoryFilters: Prisma.InventoryInstanceWhereInput[] = [];
     const normalizedKeyword = normalizeCode(keyword);
+
+    if (inventoryInstanceId) {
+      inventoryFilters.push({ id: inventoryInstanceId });
+    }
 
     if (exact && normalizedKeyword) {
       // 棚卸開始後に登録・変更された商品も、読取時点の最新DBから対象へ反映する。
