@@ -14,6 +14,23 @@ import { GET } from "../src/app/api/inventory/search/route";
 const item = { id: "new-item", janCode: "4901234567890", systemBarcode: null, managementCode: null, managementGroupCode: null, name: "他端末の新商品", majorCategory: "食品", minorCategory: null, manufacturer: null, defaultUnit: "個" };
 const inventory = { id: "new-inventory", quantity: 8, item, managementCode: null, managementGroupCode: null, majorCategory: null, minorCategory: null, storageLocation: { id: "shelf", name: "棚A" } };
 describe("live stocktake search", () => {
+  it("同じJANの別ロットを正常な複数候補として返し、管理No.を混同しない", async () => {
+    const lots = [{ ...inventory, id: "lot-a", lotNo: "A" }, { ...inventory, id: "lot-b", lotNo: "B" }];
+    db.inventoryInstance.findMany.mockResolvedValue(lots);
+    db.stocktakeTarget.findMany.mockResolvedValue(lots.map(row => ({ inventoryInstanceId: row.id, expectedQuantity: 8, inventoryInstance: row })));
+    const response = await GET(new NextRequest("http://localhost/api/inventory/search?sessionId=session&exact=true&filter=ALL&q=4901234567890"));
+    expect(response.status).toBe(200);
+    expect((await response.json()).map((row: { id: string; lotNo: string }) => [row.id, row.lotNo])).toEqual([["lot-a", "A"], ["lot-b", "B"]]);
+  });
+  it("管理No.で在庫を特定できる", async () => {
+    const response = await GET(new NextRequest("http://localhost/api/inventory/search?sessionId=session&exact=true&filter=ALL&q=new-inventory"));
+    expect(response.status).toBe(200);
+    expect((await response.json()).map((row: { id: string }) => row.id)).toEqual(["new-inventory"]);
+  });
+  it("選択中の同期では他の全在庫を取得しない", async () => {
+    await GET(new NextRequest("http://localhost/api/inventory/search?sessionId=session&inventoryInstanceId=new-inventory&filter=ALL"));
+    expect(db.inventoryInstance.findMany.mock.calls[0][0].where.id).toBe("new-inventory");
+  });
   beforeEach(() => {
     vi.clearAllMocks();
     db.stocktakeSession.findUnique.mockResolvedValue({ id: "session", operatorUserId: "worker", status: "IN_PROGRESS", scopeType: "ALL", scopeValue: null });

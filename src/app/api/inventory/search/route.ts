@@ -101,6 +101,7 @@ export async function GET(request: NextRequest) {
       // 棚卸開始後に登録・変更された商品も、読取時点の最新DBから対象へ反映する。
       const currentInventories = await withDatabaseRetry(() => prisma.inventoryInstance.findMany({
         where: { status: { not: "廃止" }, item: { isArchived: false },
+          ...(inventoryInstanceId ? { id: inventoryInstanceId } : {}),
           ...(!exact ? { stocktakeTargets: { none: { sessionId } } } : {}),
         },
         select: {
@@ -110,7 +111,7 @@ export async function GET(request: NextRequest) {
         },
       }));
       const currentMatches = currentInventories.filter((inventory) => {
-        const codes = [inventory.item.janCode, inventory.item.systemBarcode, inventory.item.managementCode, inventory.item.managementGroupCode, inventory.managementCode, inventory.managementGroupCode].map(normalizeCode);
+        const codes = [inventory.id, inventory.item.janCode, inventory.item.systemBarcode, inventory.item.managementCode, inventory.item.managementGroupCode, inventory.managementCode, inventory.managementGroupCode].map(normalizeCode);
         return (!exact || codes.includes(normalizedKeyword)) && matchesSessionScope(inventory, session);
       });
       if (exact) inventoryFilters.push({ id: { in: currentMatches.map((inventory) => inventory.id) } });
@@ -142,6 +143,7 @@ export async function GET(request: NextRequest) {
 
       inventoryFilters.push({
         OR: [
+          { id: textCondition },
           {
             item: {
               is: {
@@ -350,7 +352,7 @@ export async function GET(request: NextRequest) {
       })
       .filter((inventory) => {
         if (!exact || !normalizedKeyword) return true;
-        return [inventory.item.janCode, inventory.item.systemBarcode, inventory.item.managementCode, inventory.item.managementGroupCode].map(normalizeCode).includes(normalizedKeyword);
+        return [inventory.id, inventory.item.janCode, inventory.item.systemBarcode, inventory.item.managementCode, inventory.item.managementGroupCode].map(normalizeCode).includes(normalizedKeyword);
       })
       .filter((inventory) => {
         if (filter === "ALL") {

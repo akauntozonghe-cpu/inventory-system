@@ -17,6 +17,7 @@ import {
 import { useParams, useRouter } from "next/navigation";
 import BarcodeCamera from "@/components/stocktake/BarcodeCamera";
 import CategoryQrScanner from "@/components/CategoryQrScanner";
+import StocktakeLotPicker from "@/components/stocktake/StocktakeLotPicker";
 import StocktakeInputPanel from "@/components/stocktake/StocktakeInputPanel";
 import FeedbackToast from "@/components/common/FeedbackToast";
 import UnregisteredItemDialog from "@/components/stocktake/UnregisteredItemDialog";
@@ -146,6 +147,7 @@ export default function StocktakePage() {
 
   const [progress, setProgress] = useState<ProgressData | null>(null);
   const [items, setItems] = useState<InventoryItem[]>([]);
+  const [lotCandidates, setLotCandidates] = useState<InventoryItem[]>([]);
   const [selected, setSelected] = useState<InventoryItem | null>(null);
 
   const [keyword, setKeyword] = useState("");
@@ -504,12 +506,8 @@ export default function StocktakePage() {
           return;
         }
 
-        setItems(foundItems);
-        setFilter("ALL");
-        setKeyword(trimmed);
-        setError(
-          `${foundItems.length}件の商品が見つかりました。該当する商品を選択してください。`
-        );
+        setLotCandidates(foundItems);
+        setMessage("ロット・保管場所を選択してください。");
       } catch (lookupError) {
         const code = lookupError instanceof StocktakeRequestError ? lookupError.code : "STOCKTAKE_LOOKUP_NETWORK_ERROR";
         const detail = lookupError instanceof Error ? lookupError.message : "バーコード検索に失敗しました。";
@@ -519,20 +517,19 @@ export default function StocktakePage() {
           setMessage("自動復旧して最新の商品情報を取得しました。");
           setSystemError(null);
           if (recoveredItems.length === 1) selectItem(recoveredItems[0]);
-          else if (recoveredItems.length > 1) { setItems(recoveredItems); setFilter("ALL"); setKeyword(trimmed); }
+          else if (recoveredItems.length > 1) { setLotCandidates(recoveredItems); }
           else setError("自動復旧後も該当商品がありません。棚卸範囲を確認し、登録済みの場合は管理者へお問い合わせください。");
         } else {
           setSystemError({ code, message: `${detail} 管理者へ即時通知しました。管理者にお問い合わせください。`, reportId: recovery.reportId, provisional: false, retry: async () => {
             const retryItems = await requestBarcode(trimmed);
             if (retryItems.length === 1) selectItem(retryItems[0]);
-            else { setItems(retryItems); setFilter("ALL"); setKeyword(trimmed); }
+            else if (retryItems.length > 1) { setLotCandidates(retryItems); }
+            else setError("該当する在庫がありません。棚卸範囲を確認してください。");
             setSystemError(null); setMessage("最新DBから商品情報を再取得しました。");
           } });
         }
       } finally {
-        window.setTimeout(() => {
-          barcodeBusyRef.current = false;
-        }, 1000);
+        barcodeBusyRef.current = false;
       }
     },
     [requestBarcode, selectItem, sessionId]
@@ -631,10 +628,10 @@ export default function StocktakePage() {
         setKeyword("");
 
         if (formallySaved) {
-          await Promise.all([
+          void Promise.all([
             loadProgress(),
             loadItems("", filter, majorCategory),
-          ]);
+          ]).catch(() => setError("保存済みです。一覧の更新に失敗しましたが、再入力は不要です。"));
         }
       } catch {
         setError("保存は完了しましたが、一覧の更新に失敗しました。再接続後に更新します。再入力は不要です。");
@@ -1070,8 +1067,9 @@ export default function StocktakePage() {
                             {item.item.name}
                           </h2>
                           <p className="mt-2 text-sm text-slate-600">
-                            JAN：{item.item.janCode || "-"}
+                            Lot：{item.lotNo || "未設定"} ／ JAN：{item.item.janCode || "-"}
                           </p>
+                          <p className="mt-1 break-all text-xs text-slate-500">管理No.：{item.id}</p>
                           {item.item.systemBarcode && (
                             <p className="mt-1 text-sm text-slate-600">
                               システムバーコード：{item.item.systemBarcode}
@@ -1163,7 +1161,7 @@ export default function StocktakePage() {
           title="連続スキャン中"
           notice="保存後、そのまま次の商品を読み取れます。終了するまでカメラは閉じません。"
           closeOnDetect={false}
-          paused={Boolean(selected) || saving || !canOperate}
+          paused={Boolean(selected) || saving || lotCandidates.length > 0 || !canOperate}
           onClose={() => setContinuousCameraOpen(false)}
           onDetected={(barcode) => {
             if (selected || saving) {
@@ -1196,6 +1194,8 @@ export default function StocktakePage() {
           />
         </BarcodeCamera>
       )}
+
+      {lotCandidates.length > 0 && <StocktakeLotPicker candidates={lotCandidates} onClose={() => setLotCandidates([])} onSelect={(item) => { setLotCandidates([]); selectItem(item); }} />}
 
       {systemError && (
         <StocktakeSystemErrorDialog

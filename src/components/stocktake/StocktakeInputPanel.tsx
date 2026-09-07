@@ -165,6 +165,7 @@ export default function StocktakeInputPanel({
 
       {detailsOpen && (
         <dl className="mt-4 grid grid-cols-1 gap-x-5 gap-y-4 rounded-2xl border border-slate-200 bg-slate-50 p-4 sm:grid-cols-2">
+          <Detail label="管理No.（システム識別用）" value={selected.id} />
           <Detail label="JANコード" value={selected.item.janCode} />
           <Detail
             label="システムバーコード"
