@@ -2,6 +2,9 @@
 import { displayUnit } from "@/lib/unit";
 
 import ProductEditDialog from "@/components/ProductEditDialog";
+import Pagination from "@/components/common/Pagination";
+import SearchBar from "@/components/common/SearchBar";
+import { usePagedItems } from "@/hooks/usePagedItems";
 import Link from "next/link";
 import ReopenStocktakeButton from "@/components/stocktake/ReopenStocktakeButton";
 import { useLiveRefresh } from "@/hooks/useLiveRefresh";
@@ -112,6 +115,8 @@ export default function StocktakeResultPage() {
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
   const [editingProduct, setEditingProduct] = useState<string | null>(null);
+  const [resultSearch, setResultSearch] = useState("");
+  const [differenceOnly, setDifferenceOnly] = useState(false);
   const [memoOnly, setMemoOnly] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
 
@@ -211,6 +216,12 @@ export default function StocktakeResultPage() {
   };
 
   const syncFailed = useLiveRefresh(loadResult);
+
+  const matchingRecords = (data?.records ?? []).filter(record => {
+    const text = [record.item.name, record.item.janCode, record.lotNo, record.inventoryInstanceId, record.memo, record.storageLocation?.name].filter(Boolean).join(" ").normalize("NFKC").toLowerCase();
+    return (!memoOnly || record.memo?.trim()) && (!differenceOnly || record.difference !== 0) && resultSearch.normalize("NFKC").toLowerCase().trim().split(/\s+/).every(word => text.includes(word));
+  });
+  const pagination = usePagedItems(matchingRecords, JSON.stringify([memoOnly, differenceOnly, resultSearch]));
 
   if (loading) {
     return (
@@ -394,18 +405,21 @@ export default function StocktakeResultPage() {
             </p>
           </div>
 
+          <SearchBar value={resultSearch} onChange={setResultSearch} placeholder="商品・Lot・保管場所・メモで検索" className="mt-5" />
+          <label className="mt-3 flex items-center gap-3 rounded-xl bg-slate-100 p-3 font-bold"><input type="checkbox" checked={differenceOnly} onChange={event => setDifferenceOnly(event.target.checked)} className="h-5 w-5" />差異ありのみ表示</label>
           <label className="mt-5 flex items-center gap-3 rounded-xl bg-slate-100 p-3 font-bold">
             <input type="checkbox" checked={memoOnly} onChange={(event) => setMemoOnly(event.target.checked)} className="h-5 w-5" />
             メモありのみ表示（{data.records.filter(record => record.memo?.trim()).length}件）
           </label>
-          {memoOnly && !data.records.some(record => record.memo?.trim()) && <p className="mt-4 text-slate-600">メモのある棚卸入力はありません。</p>}
+          <Pagination {...pagination} />
+          {data.records.length > 0 && matchingRecords.length === 0 && <p className="mt-4 text-slate-600">条件に合う記録がありません。検索語や絞り込みを確認してください。</p>}
           {data.records.length === 0 ? (
             <div className="mt-6 rounded-2xl bg-slate-100 p-6 text-center text-slate-600">
               保存済みの棚卸入力がありません。
             </div>
           ) : (
             <div className="mt-6 space-y-3">
-              {data.records.filter(record => !memoOnly || record.memo?.trim()).map((record) => (
+              {pagination.visible.map((record) => (
                 <article
                   key={record.id}
                   className={`rounded-2xl border p-5 ${

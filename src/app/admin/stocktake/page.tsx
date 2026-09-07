@@ -2,6 +2,10 @@
 
 import StocktakeGroupFilter from "@/components/stocktake/StocktakeGroupFilter";
 import { matchesStocktakeGroup, type StocktakeGroup } from "@/lib/stocktake-groups";
+import Pagination from "@/components/common/Pagination";
+import { usePagedItems } from "@/hooks/usePagedItems";
+import { matchesSessionSearch } from "@/lib/session-search";
+import SearchBar from "@/components/common/SearchBar";
 import Link from "next/link";
 import { useLiveRefresh } from "@/hooks/useLiveRefresh";
 import { fetchFresh } from "@/lib/fetch-fresh";
@@ -204,6 +208,7 @@ function normalizeSessions(value: unknown): StocktakeSession[] {
 export default function AdminStocktakePage() {
   const router = useRouter();
 
+  const [sessionSearch, setSessionSearch] = useState("");
   const [sessions, setSessions] = useState<StocktakeSession[]>([]);
   const [loading, setLoading] = useState(true);
   const [updatingId, setUpdatingId] = useState<string | null>(null);
@@ -289,7 +294,8 @@ export default function AdminStocktakePage() {
 
   const syncFailed = useLiveRefresh(() => loadData(false, true));
 
-  const filteredSessions = useMemo(() => sessions.filter(session => matchesStocktakeGroup(session.status, filter)), [filter, sessions]);
+  const filteredSessions = useMemo(() => sessions.filter(session => matchesStocktakeGroup(session.status, filter) && matchesSessionSearch(session, sessionSearch)), [filter, sessions, sessionSearch]);
+  const pagination = usePagedItems(filteredSessions, JSON.stringify([filter, sessionSearch]));
 
   const summary = useMemo(
     () => ({
@@ -460,10 +466,12 @@ export default function AdminStocktakePage() {
           </button>
         </div>
 
+        <SearchBar value={sessionSearch} onChange={setSessionSearch} placeholder="棚卸名・担当者・範囲で検索" />
         <StocktakeGroupFilter sessions={sessions} value={filter} onChange={setFilter} />
 
         <div className="mt-5 space-y-4">
-          {filteredSessions.map((session) => {
+          <Pagination {...pagination} />
+          {pagination.visible.map((session) => {
             const busy = updatingId === session.id;
 
             return (

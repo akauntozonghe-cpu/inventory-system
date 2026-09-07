@@ -1,6 +1,9 @@
 "use client";
 import { displayUnit } from "@/lib/unit";
 
+import Pagination from "@/components/common/Pagination";
+import { usePagedItems } from "@/hooks/usePagedItems";
+import Modal from "@/components/common/Modal";
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { barcodePrintDocument, type LabelScale } from "@/lib/barcode-label";
@@ -8,14 +11,10 @@ import type { Item } from "./types";
 
 type Props = {
   items: Item[];
+  isAdmin: boolean;
+  filterKey: string;
   reload: () => void | Promise<void>;
   onEdit: (item: Item) => void;
-};
-
-type CurrentUser = {
-  id: string;
-  displayName: string;
-  role: "ADMIN" | "WORKER";
 };
 
 type BulkOperation = "ARCHIVE" | "RESTORE";
@@ -51,8 +50,8 @@ async function readJson(response: Response): Promise<unknown> {
   }
 }
 
-export default function ItemTable({ items, reload }: Props) {
-  const [currentUser, setCurrentUser] = useState<CurrentUser | null>(null);
+export default function ItemTable({ items, reload, isAdmin, onEdit, filterKey }: Props) {
+  const pagination = usePagedItems(items, filterKey);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
@@ -64,56 +63,17 @@ export default function ItemTable({ items, reload }: Props) {
   const [submitting, setSubmitting] = useState(false);
   const [labelScale, setLabelScale] = useState<LabelScale>(0.8);
 
-  const isAdmin = currentUser?.role === "ADMIN";
-
   useEffect(() => {
-    let active = true;
-
-    const loadUser = async () => {
-      try {
-        const response = await fetch("/api/auth/me", {
-          cache: "no-store",
-        });
-
-        const data = await readJson(response);
-
-        if (
-          !response.ok ||
-          !data ||
-          typeof data !== "object" ||
-          !("role" in data) ||
-          !("id" in data) ||
-          !("displayName" in data)
-        ) {
-          return;
-        }
-
-        const user = data as CurrentUser;
-
-        if (active && (user.role === "ADMIN" || user.role === "WORKER")) {
-          setCurrentUser(user);
-        }
-      } catch {
-        // 権限不明時は安全側に倒し、管理者用操作を表示しない
-      }
-    };
-
-    void loadUser();
-
-    return () => {
-      active = false;
-    };
-  }, []);
-
-  useEffect(() => {
+    const availableIds = new Set(items.map(item => item.id));
     setSelectedIds((current) =>
-      current.filter((id) => items.some((item) => item.id === id))
+      current.filter((id) => availableIds.has(id))
     );
   }, [items]);
 
+  const selectedIdSet = useMemo(() => new Set(selectedIds), [selectedIds]);
   const selectedItems = useMemo(
-    () => items.filter((item) => selectedIds.includes(item.id)),
-    [items, selectedIds]
+    () => items.filter((item) => selectedIdSet.has(item.id)),
+    [items, selectedIdSet]
   );
 
   const printableItems = useMemo(
@@ -280,7 +240,7 @@ export default function ItemTable({ items, reload }: Props) {
                   onChange={toggleAll}
                   className="h-5 w-5"
                 />
-                この一覧の商品をすべて選択
+                検索結果の全{items.length}件を選択（全ページ）
               </label>
             ) : (
               <p className="text-sm font-bold text-slate-600">
@@ -297,7 +257,7 @@ export default function ItemTable({ items, reload }: Props) {
               >
                 {selectedItems.length > 0
                   ? `選択した${selectedItems.length}件を印刷`
-                  : "表示中のラベルを印刷"}
+                  : `検索結果の${printableItems.length}件を印刷`}
               </button>
 
               {isAdmin && (
@@ -331,8 +291,9 @@ export default function ItemTable({ items, reload }: Props) {
           )}
         </div>
 
+        <Pagination {...pagination} />
         <div className="grid gap-4 md:grid-cols-2">
-          {items.map((item) => {
+          {pagination.visible.map((item) => {
             const barcode = item.janCode || item.systemBarcode;
             const category =
               [item.majorCategory, item.minorCategory]
@@ -365,7 +326,7 @@ export default function ItemTable({ items, reload }: Props) {
                   {isAdmin && (
                     <input
                       type="checkbox"
-                      checked={selectedIds.includes(item.id)}
+                      checked={selectedIdSet.has(item.id)}
                       onChange={() => toggleItem(item.id)}
                       className="mt-1 h-5 w-5 shrink-0"
                       aria-label={`${item.name}を選択`}
@@ -454,11 +415,12 @@ export default function ItemTable({ items, reload }: Props) {
                     )}
 
                     <div className="mt-5 flex flex-wrap gap-2">
+                      {isAdmin && <button type="button" onClick={() => onEdit(item)} className="min-h-11 rounded-xl bg-blue-700 px-4 py-2 font-bold text-white">商品情報を編集</button>}
                       <Link
                         href={`/items/${item.id}`}
                         className="rounded-xl bg-sky-600 px-4 py-2 font-bold text-white transition hover:bg-sky-700"
                       >
-                        {isAdmin ? "詳細・すべて編集" : "詳細"}
+                        在庫・ロットの詳細
                       </Link>
                     </div>
                   </div>
@@ -467,14 +429,11 @@ export default function ItemTable({ items, reload }: Props) {
             );
           })}
         </div>
+        {pagination.totalPages > 1 && <Pagination {...pagination} />}
       </section>
 
       {bulkOperation && (
-        <div
-          role="dialog"
-          aria-modal="true"
-          className="fixed inset-0 z-50 grid place-items-center bg-slate-950/60 p-4"
-        >
+        <Modal titleId="bulk-operation-title" busy={submitting} onClose={() => setBulkOperation(null)}>
           <section className="w-full max-w-lg rounded-2xl bg-white p-6 shadow-2xl">
             <p
               className={`text-sm font-black ${
@@ -486,7 +445,7 @@ export default function ItemTable({ items, reload }: Props) {
               管理者操作
             </p>
 
-            <h2 className="mt-2 text-2xl font-black text-slate-900">
+            <h2 id="bulk-operation-title" className="mt-2 text-2xl font-black text-slate-900">
               {bulkOperation === "ARCHIVE"
                 ? "選択商品を廃止しますか？"
                 : "選択商品を復元しますか？"}
@@ -559,7 +518,7 @@ export default function ItemTable({ items, reload }: Props) {
               </button>
             </div>
           </section>
-        </div>
+        </Modal>
       )}
     </>
   );

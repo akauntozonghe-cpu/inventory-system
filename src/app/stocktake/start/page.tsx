@@ -3,6 +3,10 @@ import { fetchFresh } from "@/lib/fetch-fresh";
 
 import StocktakeGroupFilter from "@/components/stocktake/StocktakeGroupFilter";
 import { matchesStocktakeGroup, type StocktakeGroup } from "@/lib/stocktake-groups";
+import Pagination from "@/components/common/Pagination";
+import { usePagedItems } from "@/hooks/usePagedItems";
+import { matchesSessionSearch } from "@/lib/session-search";
+import SearchBar from "@/components/common/SearchBar";
 import Link from "next/link";
 import ReopenStocktakeButton from "@/components/stocktake/ReopenStocktakeButton";
 import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
@@ -128,6 +132,7 @@ export default function StocktakeStartPage() {
 
   const [currentUser, setCurrentUser] = useState<CurrentUser | null>(null);
   const [group, setGroup] = useState<StocktakeGroup>("ACTIVE");
+  const [sessionSearch, setSessionSearch] = useState("");
   const [sessions, setSessions] = useState<StocktakeSession[]>([]);
   const [options, setOptions] = useState<OptionData>({
     storageLocations: [],
@@ -368,6 +373,9 @@ export default function StocktakeStartPage() {
           ? options.minorCategories
           : [];
 
+  const filteredSessions = sessions.filter(session => matchesStocktakeGroup(session.status, group) && matchesSessionSearch(session, sessionSearch));
+  const pagination = usePagedItems(filteredSessions, JSON.stringify([group, sessionSearch]));
+
   if (loading) {
     return (
       <main className="min-h-screen bg-slate-950 p-5 text-white sm:p-8">
@@ -417,9 +425,11 @@ export default function StocktakeStartPage() {
             </p>
 
             <div className="mt-6 space-y-3">
+              <SearchBar value={sessionSearch} onChange={setSessionSearch} placeholder="棚卸名・担当者・範囲で検索" />
               <StocktakeGroupFilter sessions={sessions} value={group} onChange={setGroup} />
-              {!sessions.some(session => matchesStocktakeGroup(session.status, group)) && <p className="p-4 text-slate-600">この区分の棚卸はありません。上のボタンで切り替えられます。</p>}
-              {sessions.filter(session => matchesStocktakeGroup(session.status, group)).map((session) => (
+              {filteredSessions.length === 0 && <p className="p-4 text-slate-600">この区分の棚卸はありません。上のボタンで切り替えられます。</p>}
+              <Pagination {...pagination} />
+              {pagination.visible.map((session) => (
                 <article
                   key={session.id}
                   className="rounded-2xl border border-slate-200 p-5"

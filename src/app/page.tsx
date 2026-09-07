@@ -1,6 +1,8 @@
 "use client";
 
 import Link from "next/link";
+import ContinueStocktake from "@/components/dashboard/ContinueStocktake";
+import { fetchFresh } from "@/lib/fetch-fresh";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { FeatureKey } from "@/lib/feature-permissions";
@@ -165,7 +167,7 @@ export default function HomePage() {
         setLoading(true);
         setError("");
 
-        const authResponse = await fetch("/api/auth/me", {
+        const authResponse = await fetchFresh("/api/auth/me", {
           cache: "no-store",
         });
 
@@ -185,9 +187,10 @@ export default function HomePage() {
         if (cancelled) return;
 
         setUser(authData);
+        setLoading(false);
 
         try {
-          const notificationResponse = await fetch("/api/notifications", {
+          const notificationResponse = await fetchFresh("/api/notifications", {
             cache: "no-store",
           });
 
@@ -336,6 +339,8 @@ export default function HomePage() {
           </div>
           </div>
         </header>
+
+        {(user.role === "ADMIN" || user.featurePermissions.includes("STOCKTAKE")) && <ContinueStocktake />}
 
         <div className="mb-4 mt-8 flex items-end justify-between px-1"><div><p className="text-xs font-bold uppercase tracking-[.18em] text-slate-500">Workspace</p><h2 className="mt-1 text-xl font-black tracking-tight">機能を選ぶ</h2></div><p className="hidden text-sm text-slate-500 sm:block">よく使う順に配置しています</p></div>
         <section className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">

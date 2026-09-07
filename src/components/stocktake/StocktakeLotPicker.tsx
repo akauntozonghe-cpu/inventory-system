@@ -1,12 +1,13 @@
 "use client";
 import type { StocktakeSelectedItem } from "./StocktakeInputPanel";
+import Modal from "@/components/common/Modal";
 
 export default function StocktakeLotPicker<T extends StocktakeSelectedItem>({ candidates, onSelect, onClose }: {
   candidates: T[]; onSelect: (item: T) => void; onClose: () => void;
 }) {
-  return <div className="fixed inset-0 z-[180] overflow-y-auto bg-slate-950/80 p-3 sm:p-8" role="dialog" aria-modal="true" aria-labelledby="lot-picker-title">
+  return <Modal titleId="lot-picker-title" onClose={onClose}>
     <section className="mx-auto max-w-2xl rounded-3xl bg-white p-5">
-      <div className="flex items-center justify-between gap-3"><h2 id="lot-picker-title" className="text-xl font-black">棚卸するロットを選択</h2><button autoFocus type="button" onClick={onClose} className="rounded-xl bg-slate-100 p-3 font-bold">戻る</button></div>
+      <div className="flex items-center justify-between gap-3"><h2 id="lot-picker-title" className="text-xl font-black">棚卸するロットを選択</h2><button type="button" onClick={onClose} className="rounded-xl bg-slate-100 p-3 font-bold">戻る</button></div>
       <p className="my-4 text-slate-600">同じコードで{candidates.length}件あります。ロットと保管場所を確認してください。</p>
       <div className="space-y-3">{candidates.map(item => <button key={item.id} type="button" onClick={() => onSelect(item)} className="w-full rounded-2xl border-2 border-slate-200 p-4 text-left hover:border-blue-500 focus:border-blue-500">
         <p className="font-black">{item.item.name}</p>
@@ -16,5 +17,5 @@ export default function StocktakeLotPicker<T extends StocktakeSelectedItem>({ ca
         <p className="mt-2 break-all text-xs text-slate-500">管理No.：{item.id}</p>
       </button>)}</div>
     </section>
-  </div>;
+  </Modal>;
 }

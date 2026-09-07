@@ -3,7 +3,6 @@ import { fetchFresh } from "@/lib/fetch-fresh";
 
 import Link from "next/link";
 import {
-  type FormEvent,
   useCallback,
   useEffect,
   useMemo,
@@ -13,6 +12,7 @@ import {
 import CategoryQrScanner from "@/components/CategoryQrScanner";
 import BarcodeCamera from "@/components/stocktake/BarcodeCamera";
 import FeedbackToast from "@/components/common/FeedbackToast";
+import ProductEditDialog from "@/components/ProductEditDialog";
 import ItemTable from "./ItemTable";
 import type { Item } from "./types";
 import { useRegistrationOptions } from "@/hooks/useRegistrationOptions";
@@ -65,7 +65,6 @@ async function readJson(response: Response): Promise<unknown> {
 }
 
 export default function ItemPage() {
-  const editNameRef = useRef<HTMLInputElement | null>(null);
   const listRequestRef = useRef(0);
   const [items, setItems] = useState<Item[]>([]);
   const [currentUser, setCurrentUser] = useState<CurrentUser | null>(null);
@@ -82,9 +81,6 @@ export default function ItemPage() {
   const [error, setError] = useState("");
 
   const [editingItem, setEditingItem] = useState<Item | null>(null);
-  const [editName, setEditName] = useState("");
-  const [editJanCode, setEditJanCode] = useState("");
-  const [savingEdit, setSavingEdit] = useState(false);
 
   const isAdmin = currentUser?.role === "ADMIN";
 
@@ -134,15 +130,15 @@ export default function ItemPage() {
 
       if (requestId === listRequestRef.current) setItems(data as Item[]);
     } catch (loadError) {
+      if (requestId !== listRequestRef.current) return;
       if (silent) throw loadError;
       setError(
         loadError instanceof Error
           ? loadError.message
           : "商品一覧を取得できませんでした。"
       );
-      setItems([]);
     } finally {
-      if (!silent) setLoading(false);
+      if (requestId === listRequestRef.current) setLoading(false);
     }
   }, [showArchived]);
 
@@ -275,75 +271,7 @@ export default function ItemPage() {
   }, []);
 
   const startEdit = (item: Item) => {
-    if (!isAdmin) {
-      setError("商品情報の編集には管理者権限が必要です。");
-      return;
-    }
-
-    setEditingItem(item);
-    setEditName(item.name);
-    setEditJanCode(item.janCode ?? "");
-    setMessage("");
-    setError("");
-
-    window.scrollTo({
-      top: 0,
-      behavior: "smooth",
-    });
-  };
-
-  const cancelEdit = () => {
-    setEditingItem(null);
-    setEditName("");
-    setEditJanCode("");
-  };
-
-  const saveEdit = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-
-    if (!editingItem || !editName.trim()) {
-      setError("商品名を入力してください。");
-      window.requestAnimationFrame(() => editNameRef.current?.focus());
-      return;
-    }
-
-    setSavingEdit(true);
-    setMessage("");
-    setError("");
-
-    try {
-      const response = await fetch(`/api/items/${editingItem.id}`, {
-        method: "PUT",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          name: editName.trim(),
-          janCode: editJanCode.trim() || null,
-          reason: "商品一覧からの編集",
-        }),
-      });
-
-      const data = await readJson(response);
-
-      if (!response.ok) {
-        throw new Error(
-          getMessage(data, "商品情報を更新できませんでした。")
-        );
-      }
-
-      cancelEdit();
-      setMessage("商品情報を更新しました。");
-      await fetchItems();
-    } catch (saveError) {
-      setError(
-        saveError instanceof Error
-          ? saveError.message
-          : "商品情報を更新できませんでした。"
-      );
-    } finally {
-      setSavingEdit(false);
-    }
+    if (isAdmin) setEditingItem(item);
   };
 
   return (
@@ -439,69 +367,17 @@ export default function ItemPage() {
           </section>
         )}
 
-        {editingItem && (
-          <section className="mb-6 rounded-2xl bg-white p-5 shadow-sm sm:p-7">
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-              <div>
-                <p className="text-sm font-bold text-amber-600">商品情報の編集</p>
-                <h2 className="mt-1 text-xl font-black text-slate-900">
-                  {editingItem.name}
-                </h2>
-              </div>
-
-              <button
-                type="button"
-                onClick={cancelEdit}
-                className="rounded-xl bg-slate-100 px-4 py-2 font-bold text-slate-700 transition hover:bg-slate-200"
-              >
-                編集をやめる
-              </button>
-            </div>
-
-            <form
-              onSubmit={saveEdit}
-              className="mt-5 grid gap-4 sm:grid-cols-2"
-            >
-              <label>
-                <span className="font-bold">
-                  商品名<span className="text-red-600">*</span>
-                </span>
-
-                <input
-                  ref={editNameRef}
-                  value={editName}
-                  onChange={(event) => setEditName(event.target.value)}
-                  className="mt-2 w-full rounded-xl border border-slate-300 px-4 py-3 outline-none focus:border-blue-600"
-                />
-              </label>
-
-              <label>
-                <span className="font-bold">JANコード</span>
-
-                <input
-                  value={editJanCode}
-                  onChange={(event) => setEditJanCode(event.target.value)}
-                  inputMode="numeric"
-                  className="mt-2 w-full rounded-xl border border-slate-300 px-4 py-3 outline-none focus:border-blue-600"
-                />
-              </label>
-
-              <div className="sm:col-span-2">
-                <button
-                  type="submit"
-                  disabled={savingEdit}
-                  className="rounded-xl bg-amber-500 px-5 py-3 font-bold text-white transition hover:bg-amber-600 disabled:cursor-not-allowed disabled:bg-slate-400"
-                >
-                  {savingEdit ? "更新中…" : "商品情報を更新"}
-                </button>
-              </div>
-            </form>
-          </section>
-        )}
+        {editingItem && <ProductEditDialog key={editingItem.id} itemId={editingItem.id} onClose={() => setEditingItem(null)} onSaved={() => {
+          setEditingItem(null);
+          setMessage("商品情報を更新しました。");
+          void fetchItems(true).catch(() => setError("商品情報は保存済みですが、一覧を更新できませんでした。再入力は不要です。"));
+        }} />}
 
         <section className="rounded-2xl bg-white p-4 shadow-sm sm:p-5">
           <div className="grid gap-3 lg:grid-cols-[1fr_auto_auto]">
             <input
+              aria-label="商品を検索"
+              type="search"
               value={search}
               onChange={(event) => setSearch(event.target.value.normalize("NFKC"))}
               placeholder="商品名・JAN・システムバーコード・管理番号・メーカー・分類で検索"
@@ -605,13 +481,15 @@ export default function ItemPage() {
         </section>
 
         <section className="mt-6">
-          {loading ? (
+          {loading && items.length === 0 ? (
             <div className="rounded-2xl bg-white p-10 text-center text-slate-500 shadow-sm">
               商品一覧を読み込んでいます…
             </div>
           ) : (
             <ItemTable
               items={sortedItems}
+              isAdmin={isAdmin}
+              filterKey={JSON.stringify([search, majorCategory, sort, todayOnly, registeredDate, showArchived])}
               reload={fetchItems}
               onEdit={startEdit}
             />

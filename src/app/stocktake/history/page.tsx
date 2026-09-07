@@ -2,6 +2,10 @@
 
 import StocktakeGroupFilter from "@/components/stocktake/StocktakeGroupFilter";
 import { matchesStocktakeGroup, type StocktakeGroup } from "@/lib/stocktake-groups";
+import Pagination from "@/components/common/Pagination";
+import { usePagedItems } from "@/hooks/usePagedItems";
+import { matchesSessionSearch } from "@/lib/session-search";
+import SearchBar from "@/components/common/SearchBar";
 import Link from "next/link";
 import { useRef } from "react";
 import { useLiveRefresh } from "@/hooks/useLiveRefresh";
@@ -204,27 +208,8 @@ export default function StocktakeHistoryPage() {
 
   const syncFailed = useLiveRefresh(() => load(showAll, true));
 
-  const displayedSessions = useMemo(() => {
-    const normalizedKeyword = keyword.trim().toLowerCase();
-
-    const grouped = sessions.filter(session => matchesStocktakeGroup(session.status, group));
-    if (!normalizedKeyword) return grouped;
-
-    return grouped.filter((session) => {
-      const searchText = [
-        session.title,
-        session.operator,
-        session.operatorUser?.displayName,
-        session.operatorUser?.username,
-        session.scopeLabel,
-      ]
-        .filter((value): value is string => Boolean(value))
-        .join(" ")
-        .toLowerCase();
-
-      return searchText.includes(normalizedKeyword);
-    });
-  }, [keyword, sessions, group]);
+  const displayedSessions = useMemo(() => sessions.filter(session => matchesStocktakeGroup(session.status, group) && matchesSessionSearch(session, keyword)), [sessions, group, keyword]);
+  const pagination = usePagedItems(displayedSessions, JSON.stringify([group, keyword, showAll]));
 
   return (
     <main className="min-h-screen bg-slate-50 p-4 text-slate-900 sm:p-8">
@@ -267,12 +252,7 @@ export default function StocktakeHistoryPage() {
         <section className="mt-6 rounded-3xl bg-white p-4 shadow-sm">
           <StocktakeGroupFilter sessions={sessions} value={group} onChange={setGroup} />
           <div className="flex flex-col gap-3 sm:flex-row">
-            <input
-              value={keyword}
-              onChange={(event) => setKeyword(event.target.value)}
-              placeholder="棚卸名・担当者・範囲で検索"
-              className="min-h-12 min-w-0 flex-1 rounded-2xl border-2 border-slate-200 px-4 outline-none focus:border-blue-500"
-            />
+            <SearchBar value={keyword} onChange={setKeyword} placeholder="棚卸名・担当者・範囲で検索" />
 
             <button
               type="button"
@@ -343,7 +323,8 @@ export default function StocktakeHistoryPage() {
           </section>
         ) : (
           <section className="mt-6 space-y-4">
-            {displayedSessions.map((session) => {
+            <Pagination {...pagination} />
+            {pagination.visible.map((session) => {
               const status = statusInfo(session.status);
 
               const loginOperator =
