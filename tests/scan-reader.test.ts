@@ -6,6 +6,13 @@ import { createProductReader, createScanGate } from "../src/lib/scan-reader";
 import { barcodeLabel } from "../src/lib/barcode-label";
 
 describe("shared JAN and QR reader", () => {
+  it("does not permanently suppress a different label first seen during the throttle", () => {
+    const accept = createScanGate();
+    expect(accept("A", 0, false)).toBe(true);
+    expect(accept("B", 100, false)).toBe(false);
+    expect(accept("B", 200, false)).toBe(false);
+    expect(accept("B", 300, false)).toBe(true);
+  });
   it("decodes JAN-13, JAN-8 and QR with the same camera reader", async () => {
     const reader = createProductReader();
     for (const [code, input] of [

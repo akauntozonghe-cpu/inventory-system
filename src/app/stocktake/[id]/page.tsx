@@ -15,9 +15,7 @@ import {
   useState,
 } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { resolveScan } from "@/lib/resolve-scan";
-import BarcodeCamera from "@/components/stocktake/BarcodeCamera";
-import CategoryQrScanner from "@/components/CategoryQrScanner";
+import UnifiedScanner from "@/components/stocktake/UnifiedScanner";
 import StocktakeLotPicker from "@/components/stocktake/StocktakeLotPicker";
 import StocktakeInputPanel from "@/components/stocktake/StocktakeInputPanel";
 import FeedbackToast from "@/components/common/FeedbackToast";
@@ -154,8 +152,6 @@ export default function StocktakePage() {
   const [keyword, setKeyword] = useState("");
   const [filter, setFilter] = useState<FilterType>("UNRECORDED");
   const [scanLocation, setScanLocation] = useState<{ id: string; name: string } | null>(null);
-  const [resolvingScan, setResolvingScan] = useState(false);
-  const scanBusyRef = useRef(false);
   const [majorCategory, setMajorCategory] = useState<string | null>(null);
 
   const [editingProduct, setEditingProduct] = useState<string | null>(null);
@@ -173,7 +169,6 @@ export default function StocktakePage() {
 
   const [normalCameraOpen, setNormalCameraOpen] = useState(false);
   const [continuousCameraOpen, setContinuousCameraOpen] = useState(false);
-  const [categoryQrOpen, setCategoryQrOpen] = useState(false);
   const [registerItemOpen, setRegisterItemOpen] = useState(false);
 
   const [message, setMessage] = useState("");
@@ -706,7 +701,6 @@ export default function StocktakePage() {
   };
 
   const handleCategoryDetected = useCallback((category: string) => {
-    setCategoryQrOpen(false);
     setScanLocation(null);
     setMajorCategory(category);
     setKeyword("");
@@ -715,19 +709,8 @@ export default function StocktakePage() {
     setError("");
   }, []);
 
-  const handleScan = async (raw: string) => {
-    if (scanBusyRef.current) return;
-    scanBusyRef.current = true; setResolvingScan(true); setError("");
-    try {
-      const scanned = await resolveScan(raw);
-      if (scanned.type === "CLASSIFICATION" && scanned.name) {
-        setScanLocation(null); handleCategoryDetected(scanned.name);
-      } else if (scanned.type === "LOCATION" && scanned.id && scanned.name) {
-        setMajorCategory(null); setScanLocation({ id: scanned.id, name: scanned.name });
-        setKeyword(""); setFilter("UNRECORDED"); setMessage("保管場所で絞り込みました。");
-      } else if (scanned.type === "ITEM" && scanned.code) await findBarcode(scanned.code);
-    } catch { setError("ラベルを確認できませんでした。商品・大分類・保管場所のラベルと通信状態を確認してください。"); }
-    finally { scanBusyRef.current = false; setResolvingScan(false); }
+  const handleLocationDetected = (location: { id: string; name: string }) => {
+    setMajorCategory(null); setScanLocation(location); setKeyword(""); setFilter("UNRECORDED"); setMessage("保管場所で絞り込みました。");
   };
 
   if (loading) {
@@ -801,14 +784,6 @@ export default function StocktakePage() {
           </div>
 
           <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap">
-            <button
-              type="button"
-              onClick={() => setCategoryQrOpen(true)}
-              disabled={!canOperate}
-              className="rounded-xl bg-violet-600 px-4 py-3 font-bold text-white transition hover:bg-violet-500 disabled:cursor-not-allowed disabled:opacity-40"
-            >
-              大分類QR
-            </button>
 
             <button
               type="button"
@@ -922,7 +897,7 @@ export default function StocktakePage() {
                 : "この棚卸は現在操作できません"}
             </p>
             <p className="mt-1 text-sm">
-              再開されるまで、棚卸入力・バーコード読取・検索からの入力はできません。
+              再開されるまで、棚卸入力・JAN・大分類QR読取・検索からの入力はできません。
             </p>
           </div>
         )}
@@ -1165,36 +1140,11 @@ export default function StocktakePage() {
         </div>
       </div>
 
-      {normalCameraOpen && (
-        <BarcodeCamera
-          title="JAN・QRを読み取る"
-          notice="読み取ると自動でカメラを閉じ、棚卸入力へ進みます。"
-          closeOnDetect
-          onClose={() => setNormalCameraOpen(false)}
-          onDetected={(barcode) => {
-            setNormalCameraOpen(false);
-            void handleScan(barcode);
-          }}
-        />
-      )}
+      {normalCameraOpen && <UnifiedScanner onClose={() => setNormalCameraOpen(false)} onProduct={findBarcode} onCategory={handleCategoryDetected} onLocation={handleLocationDetected} />}
 
       {continuousCameraOpen && (
-        <BarcodeCamera
-          title="連続スキャン中"
-          notice="保存後、そのまま次の商品を読み取れます。終了するまでカメラは閉じません。"
-          closeOnDetect={false}
-          paused={resolvingScan || Boolean(selected) || saving || lotCandidates.length > 0 || !canOperate}
-          onClose={() => setContinuousCameraOpen(false)}
-          onDetected={(barcode) => {
-            if (selected || saving) {
-              setError(
-                "表示中の商品を保存するか「戻る」で解除してから、次の商品を読み取ってください。"
-              );
-              return;
-            }
-            void handleScan(barcode);
-          }}
-        >
+        <UnifiedScanner continuous paused={Boolean(selected) || saving || lotCandidates.length > 0 || !canOperate}
+          onClose={() => setContinuousCameraOpen(false)} onProduct={findBarcode} onCategory={handleCategoryDetected} onLocation={handleLocationDetected}>
           <StocktakeInputPanel
             selected={selected}
             onEditProduct={isAdmin && selected ? () => setEditingProduct(selected.item.id) : undefined}
@@ -1214,7 +1164,7 @@ export default function StocktakePage() {
             }}
             continuous
           />
-        </BarcodeCamera>
+        </UnifiedScanner>
       )}
 
       {lotCandidates.length > 0 && <StocktakeLotPicker candidates={lotCandidates} onClose={() => setLotCandidates([])} onSelect={(item) => { setLotCandidates([]); selectItem(item); }} />}
@@ -1252,13 +1202,6 @@ export default function StocktakePage() {
           ]);
         }}
       />
-
-      {categoryQrOpen && (
-        <CategoryQrScanner
-          onDetected={handleCategoryDetected}
-          onClose={() => setCategoryQrOpen(false)}
-        />
-      )}
 
       {confirm && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/70 p-5">

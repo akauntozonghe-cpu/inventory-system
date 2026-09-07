@@ -171,7 +171,6 @@ export default function BarcodeCamera({
           const advanced: MediaTrackConstraintSet[] = [];
           if (capabilities?.focusMode?.includes("continuous")) advanced.push({ focusMode: "continuous" } as MediaTrackConstraintSet);
           if (capabilities?.exposureMode?.includes("continuous")) advanced.push({ exposureMode: "continuous" } as MediaTrackConstraintSet);
-          if (capabilities?.zoom && capabilities.zoom.max > capabilities.zoom.min) advanced.push({ zoom: Math.min(capabilities.zoom.max, Math.max(capabilities.zoom.min, 1.5)) } as MediaTrackConstraintSet);
           if (advanced.length > 0) { try { await track.applyConstraints({ advanced }); } catch { /* Keep the usable stream when optional camera tuning is unsupported. */ } }
         }
 
@@ -252,10 +251,10 @@ export default function BarcodeCamera({
                 autoPlay
                 muted
                 playsInline
-                className="h-full w-full object-cover"
+                className="h-full w-full object-contain"
               />
 
-              <div className="pointer-events-none absolute inset-x-[7%] inset-y-[15%] rounded-2xl border-4 border-white/90">
+              <div className="pointer-events-none absolute inset-[7%] rounded-2xl border-4 border-white/90">
                 <div className="absolute -left-1 -top-1 h-9 w-9 rounded-tl-xl border-l-8 border-t-8 border-indigo-400" />
                 <div className="absolute -right-1 -top-1 h-9 w-9 rounded-tr-xl border-r-8 border-t-8 border-indigo-400" />
                 <div className="absolute -bottom-1 -left-1 h-9 w-9 rounded-bl-xl border-b-8 border-l-8 border-indigo-400" />

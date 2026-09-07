@@ -9,8 +9,7 @@ import {
   useRef,
   useState,
 } from "react";
-import CategoryQrScanner from "@/components/CategoryQrScanner";
-import BarcodeCamera from "@/components/stocktake/BarcodeCamera";
+import UnifiedScanner from "@/components/stocktake/UnifiedScanner";
 import FeedbackToast from "@/components/common/FeedbackToast";
 import ProductEditDialog from "@/components/ProductEditDialog";
 import ItemTable from "./ItemTable";
@@ -76,7 +75,6 @@ export default function ItemPage() {
   const [showArchived, setShowArchived] = useState(false);
   const [loading, setLoading] = useState(true);
   const [scannerOpen, setScannerOpen] = useState(false);
-  const [janScannerOpen, setJanScannerOpen] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
 
@@ -266,7 +264,7 @@ export default function ItemPage() {
   const handleQrDetected = useCallback((category: string) => {
     setMajorCategory(category);
     setSearch("");
-    setScannerOpen(false);
+    setTodayOnly(false); setRegisteredDate("");
     setMessage(`大分類「${category}」で絞り込みました。`);
   }, []);
 
@@ -389,10 +387,7 @@ export default function ItemPage() {
               onClick={() => setScannerOpen(true)}
               className="rounded-xl bg-indigo-600 px-4 py-3 font-bold text-white transition hover:bg-indigo-700"
             >
-              QRで大分類を読む
-            </button>
-            <button type="button" onClick={() => setJanScannerOpen(true)} className="rounded-xl bg-emerald-600 px-4 py-3 font-bold text-white transition hover:bg-emerald-700">
-              JANを読み取って検索
+              JAN・大分類QRを読み取る
             </button>
 
             <select
@@ -497,13 +492,11 @@ export default function ItemPage() {
         </section>
       </div>
 
-      {scannerOpen && (
-        <CategoryQrScanner
-          onDetected={handleQrDetected}
-          onClose={() => setScannerOpen(false)}
-        />
-      )}
-      {janScannerOpen && <BarcodeCamera title="JANコードを読み取る" notice="読み取ったJANコードで商品を検索します。" onClose={() => setJanScannerOpen(false)} onDetected={(barcode) => { setSearch(barcode); setMajorCategory(""); setJanScannerOpen(false); }} />}
+      {scannerOpen && <UnifiedScanner
+        onClose={() => setScannerOpen(false)}
+        onCategory={async name => { handleQrDetected(name); await fetchItems(true); }}
+        onProduct={async code => { setSearch(code); setMajorCategory(""); setTodayOnly(false); setRegisteredDate(""); await fetchItems(true); }}
+      />}
     </main>
   );
 }

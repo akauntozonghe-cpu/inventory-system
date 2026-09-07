@@ -21,8 +21,11 @@ export function createScanGate() {
   let acceptedAt = -Infinity;
   return (code: string, now: number, paused: boolean) => {
     const duplicate = code === last.code && now - last.at < 1200;
+    if (!code) return false;
+    if (paused || duplicate) { last = { code, at: now }; return false; }
+    // A new label seen during the short throttle must remain eligible next frame.
+    if (now - acceptedAt < 250) return false;
     last = { code, at: now };
-    if (!code || paused || duplicate || now - acceptedAt < 250) return false;
     acceptedAt = now;
     return true;
   };

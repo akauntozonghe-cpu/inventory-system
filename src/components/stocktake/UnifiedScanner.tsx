@@ -1,0 +1,48 @@
+"use client";
+import { useEffect, useRef, useState, type ReactNode } from "react";
+import BarcodeCamera from "./BarcodeCamera";
+import { resolveScan } from "@/lib/resolve-scan";
+
+type Props = {
+  onProduct: (code: string) => void | Promise<void>;
+  onCategory: (name: string) => void | Promise<void>;
+  onLocation?: (location: { id: string; name: string }) => void | Promise<void>;
+  onClose: () => void;
+  continuous?: boolean;
+  paused?: boolean;
+  children?: ReactNode;
+};
+
+// Own recognition, payload resolution, duplicate/in-flight protection and errors here.
+// Pages only supply the action to take for a product or category.
+export default function UnifiedScanner({ onProduct, onCategory, onLocation, onClose, continuous = false, paused = false, children }: Props) {
+  const active = useRef(true);
+  const locked = useRef(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  useEffect(() => { active.current = true; return () => { active.current = false; }; }, []);
+  const close = () => { active.current = false; onClose(); };
+  const detect = async (raw: string) => {
+    if (locked.current || paused || !active.current) return;
+    locked.current = true; setBusy(true); setError("");
+    try {
+      const scanned = await resolveScan(raw);
+      if (!active.current) return;
+      if (scanned.type === "CLASSIFICATION" && scanned.name) await onCategory(scanned.name);
+      else if (scanned.type === "ITEM" && scanned.code) await onProduct(scanned.code);
+      else if (scanned.type === "LOCATION" && scanned.id && scanned.name && onLocation) await onLocation({ id: scanned.id, name: scanned.name });
+      else { setError("JANまたは大分類QRを読み取ってください。"); return; }
+      if (active.current && !continuous) close();
+    } catch {
+      if (active.current) setError("読み取ったラベルを確認できませんでした。通信とラベルの登録内容を確認して、もう一度読み取ってください。");
+    } finally {
+      locked.current = false;
+      if (active.current) setBusy(false);
+    }
+  };
+  return <BarcodeCamera title="JAN・大分類QRを読み取る" notice="JANは商品検索、大分類QRは分類の絞り込みに使います。QR全体を枠内に入れてください。" closeOnDetect={false} paused={paused || busy} onClose={close} onDetected={raw => void detect(raw)}>
+    {busy && <p role="status" className="rounded-xl bg-white p-4 font-bold text-slate-900">読み取った内容を確認しています…</p>}
+    {error && <p role="alert" className="rounded-xl bg-white p-4 font-bold text-red-700">{error}</p>}
+    {children}
+  </BarcodeCamera>;
+}
