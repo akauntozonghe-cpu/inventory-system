@@ -1,4 +1,5 @@
 "use client";
+import { parseStocktakeQuantity, stepStocktakeQuantity } from "@/lib/stocktake-quantity";
 import { displayUnit } from "@/lib/unit";
 
 import { useEffect, useState, type RefObject } from "react";
@@ -29,6 +30,8 @@ export type StocktakeSelectedItem = {
 type Props = {
   selected: StocktakeSelectedItem | null;
   quantity: string;
+  memo: string;
+  onMemoChange: (value: string) => void;
   saving: boolean;
   disabled: boolean;
   inputRef: RefObject<HTMLInputElement | null>;
@@ -59,6 +62,8 @@ function Detail({
 export default function StocktakeInputPanel({
   selected,
   quantity,
+  memo,
+  onMemoChange,
   saving,
   disabled,
   inputRef,
@@ -92,11 +97,10 @@ export default function StocktakeInputPanel({
     );
   }
 
-  const countedQuantity = Number(quantity.normalize("NFKC"));
-  const isValidQuantity =
-    quantity.trim() !== "" && Number.isSafeInteger(countedQuantity) && countedQuantity >= 0;
+  const countedQuantity = parseStocktakeQuantity(quantity);
+  const isValidQuantity = countedQuantity !== null;
 
-  const difference = isValidQuantity
+  const difference = countedQuantity !== null
     ? countedQuantity - selected.expectedQuantity
     : null;
 
@@ -134,7 +138,7 @@ export default function StocktakeInputPanel({
           </h2>
 
           <p className="mt-2 text-sm font-semibold text-slate-600">
-            現在庫：{selected.expectedQuantity}
+            基準数量：{selected.expectedQuantity}
             {unit}
           </p>
           {alreadyRecorded && <p className="mt-2 text-sm font-bold text-emerald-700">前回入力：{selected.countedQuantity}{unit}（再保存すると上書きされます）</p>}
@@ -180,17 +184,7 @@ export default function StocktakeInputPanel({
         </dl>
       )}
 
-      <div className="mt-5 rounded-2xl border-2 border-slate-200 px-4 py-4">
-        <div className="flex items-baseline justify-between gap-4">
-          <span className="font-bold text-slate-600">現在庫</span>
-
-          <span className="text-2xl font-black text-slate-950">
-            {selected.expectedQuantity}
-            {unit}
-          </span>
-        </div>
-      </div>
-
+      <p className="mt-3 text-sm font-bold text-slate-600">保管場所：{selected.storageLocation?.name || "未設定"} ／ ロット：{selected.lotNo || "なし"}</p>
       <label className="mt-5 block">
         <span className="font-black text-slate-900">棚卸数量</span>
 
@@ -198,6 +192,15 @@ export default function StocktakeInputPanel({
           ref={inputRef}
           type="text"
           inputMode="numeric"
+          enterKeyHint="done"
+          autoComplete="off"
+          aria-invalid={quantity.trim() !== "" && !isValidQuantity}
+          onKeyDown={(event) => {
+            if (event.key === "Enter" && !event.nativeEvent.isComposing && event.keyCode !== 229) {
+              event.preventDefault();
+              if (!disabled && !saving && isValidQuantity) onSave();
+            }
+          }}
           disabled={disabled || saving}
           value={quantity}
           onChange={(event) => onQuantityChange(event.target.value)}
@@ -207,6 +210,17 @@ export default function StocktakeInputPanel({
           className="mt-2 min-h-16 w-full rounded-2xl border-2 border-blue-500 px-4 py-3 text-3xl font-black text-slate-950 outline-none transition focus:ring-4 focus:ring-blue-100 disabled:bg-slate-100"
         />
       </label>
+      <div className="mt-3 grid grid-cols-3 gap-2">
+        <button type="button" disabled={disabled || saving || !isValidQuantity || countedQuantity === 0} onClick={() => onQuantityChange(stepStocktakeQuantity(quantity, -1))} className="min-h-12 rounded-xl bg-slate-100 text-xl font-black disabled:opacity-40" aria-label="数量を1減らす">−1</button>
+        <button type="button" disabled={disabled || saving} onClick={() => onQuantityChange("0")} className="min-h-12 rounded-xl bg-slate-100 font-black disabled:opacity-40">0にする</button>
+        <button type="button" disabled={disabled || saving || !isValidQuantity || countedQuantity === Number.MAX_SAFE_INTEGER} onClick={() => onQuantityChange(stepStocktakeQuantity(quantity, 1))} className="min-h-12 rounded-xl bg-slate-100 text-xl font-black disabled:opacity-40" aria-label="数量を1増やす">＋1</button>
+      </div>
+      <p className="mt-2 text-sm text-slate-500">単位：{unit}。実際に数えた数量を入力してください。</p>
+      {quantity.trim() !== "" && !isValidQuantity && <p role="alert" className="mt-2 font-bold text-red-700">0以上の整数を入力してください。</p>}
+      <details className="mt-4" open={memo ? true : undefined}>
+        <summary className="cursor-pointer py-2 font-bold text-slate-600">メモ（任意）</summary>
+        <label className="block"><span className="sr-only">棚卸メモ</span><textarea rows={2} value={memo} onChange={(event) => onMemoChange(event.target.value)} disabled={disabled || saving} placeholder="破損や保管場所の違いなど" className="mt-2 w-full rounded-xl border p-3" /></label>
+      </details>
 
       <div
         className={`mt-4 rounded-2xl px-4 py-4 text-center text-lg font-black ${differenceStyle}`}

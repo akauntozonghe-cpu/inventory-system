@@ -13,6 +13,7 @@ type BarcodeCameraProps = {
   title?: string;
   notice?: string;
   closeOnDetect?: boolean;
+  paused?: boolean;
   onDetected: (barcode: string) => void;
   onClose: () => void;
   children?: React.ReactNode;
@@ -22,6 +23,7 @@ export default function BarcodeCamera({
   title = "バーコードを読み取る",
   notice,
   closeOnDetect = true,
+  paused = false,
   onDetected,
   onClose,
   children,
@@ -33,6 +35,7 @@ export default function BarcodeCamera({
   const stoppedRef = useRef(false);
   const onDetectedRef = useRef(onDetected);
   const onCloseRef = useRef(onClose);
+  const pausedRef = useRef(paused);
   const lastSeenRef = useRef({ code: "", at: 0 });
 
   const [status, setStatus] = useState("カメラを起動しています…");
@@ -54,6 +57,10 @@ export default function BarcodeCamera({
     if ("vibrate" in navigator) navigator.vibrate([90, 45, 90]);
     try { playScanBeep(barcode); } catch { /* 視覚表示と振動は継続する。 */ }
   };
+
+  useEffect(() => {
+    pausedRef.current = paused;
+  }, [paused]);
 
   useEffect(() => {
     onDetectedRef.current = onDetected;
@@ -150,7 +157,7 @@ export default function BarcodeCamera({
 
             const duplicate = barcode === lastSeenRef.current.code && now - lastSeenRef.current.at < 1200;
             lastSeenRef.current = { code: barcode, at: now };
-            if (duplicate || now - detectedAtRef.current < 250) {
+            if (pausedRef.current || duplicate || now - detectedAtRef.current < 250) {
               return;
             }
 
@@ -247,6 +254,7 @@ export default function BarcodeCamera({
             {notice && (
               <p className="mt-2 text-sm text-slate-300">{notice}</p>
             )}
+            {paused && <p role="status" className="mt-2 font-bold text-amber-200">数量入力中は読取を休止しています。保存すると再開します。</p>}
           </div>
 
           <button

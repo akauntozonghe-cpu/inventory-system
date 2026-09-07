@@ -30,6 +30,7 @@ function installBrowserMocks(reportId = "report-001") {
 }
 
 afterEach(() => {
+  vi.useRealTimers();
   globalThis.fetch = originalFetch;
   Object.defineProperty(globalThis, "window", {
     configurable: true,
@@ -39,6 +40,19 @@ afterEach(() => {
 });
 
 describe("recoverAfterFailure", () => {
+  it("エラーレポート通信が応答しなくても期限後に保存の再試行へ進む", async () => {
+    installBrowserMocks();
+    vi.useFakeTimers();
+    globalThis.fetch = vi.fn((_input, init) => new Promise<Response>((_resolve, reject) => {
+      init?.signal?.addEventListener("abort", () => reject(new Error("timeout")), { once: true });
+    })) as typeof fetch;
+    const action = vi.fn(async () => "saved");
+    const pending = recoverAfterFailure({ code: "NETWORK_ERROR", title: "test", message: "test", action, retryDelayMs: 0 });
+    await vi.advanceTimersByTimeAsync(15001);
+    expect(await pending).toEqual({ success: true, value: "saved", reportId: null });
+    expect(action).toHaveBeenCalledTimes(1);
+  });
+
   it("一時エラーなら再試行し、自動復旧完了を記録する", async () => {
     const actions = installBrowserMocks();
     const action = vi.fn<() => Promise<string>>()

@@ -1,4 +1,5 @@
 "use client";
+import { fetchFresh } from "@/lib/fetch-fresh";
 
 type RecoveryOptions<T> = {
   code: string;
@@ -33,7 +34,7 @@ async function createReport(options: {
   detail?: Record<string, unknown>;
 }) {
   try {
-    const response = await fetch("/api/error-reports", {
+    const response = await fetchFresh("/api/error-reports", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -74,7 +75,7 @@ async function updateReport(
   }
 
   try {
-    await fetch(
+    await fetchFresh(
       `/api/error-reports/${encodeURIComponent(reportId)}`,
       {
         method: "PATCH",

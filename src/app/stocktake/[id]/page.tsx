@@ -1,5 +1,6 @@
 "use client";
 import { fetchFresh } from "@/lib/fetch-fresh";
+import { parseStocktakeQuantity } from "@/lib/stocktake-quantity";
 
 import Link from "next/link";
 import { canReopenStocktake } from "@/lib/stocktake-reopening";
@@ -32,6 +33,7 @@ type InventoryItem = {
   expectedQuantity: number;
   isRecorded: boolean;
   countedQuantity: number | null;
+  memo?: string | null;
   difference: number | null;
   lotNo: string | null;
   expirationDate: string | null;
@@ -153,7 +155,9 @@ export default function StocktakePage() {
   const [editingProduct, setEditingProduct] = useState<string | null>(null);
   const [countedQuantity, setCountedQuantity] = useState("");
   const [memo, setMemo] = useState("");
-  const [selectedDetailsOpen, setSelectedDetailsOpen] = useState(false);
+  const savingRef = useRef(false);
+  const draftRef = useRef<{ id: string; dirty: boolean } | null>(null);
+  const normalQuantityRef = useRef<HTMLInputElement | null>(null);
 
   const [loading, setLoading] = useState(true);
   const [searching, setSearching] = useState(false);
@@ -192,9 +196,27 @@ export default function StocktakePage() {
   const canRegisterItem = progress?.permissions.canRegisterItem === true;
   const { pendingCount, syncing, saveInstant } = useInstantStocktake(sessionId);
 
+  useEffect(() => {
+    draftRef.current = selected ? {
+      id: selected.id,
+      dirty: countedQuantity !== String(selected.countedQuantity ?? selected.expectedQuantity) || memo !== (selected.memo ?? ""),
+    } : null;
+  }, [selected, countedQuantity, memo]);
+
+  useEffect(() => {
+    const preventUnsavedExit = (event: BeforeUnloadEvent) => {
+      if (draftRef.current?.dirty || savingRef.current) {
+        event.preventDefault();
+        event.returnValue = "";
+      }
+    };
+    window.addEventListener("beforeunload", preventUnsavedExit);
+    return () => window.removeEventListener("beforeunload", preventUnsavedExit);
+  }, []);
+
   const submitStocktakeRecord = useCallback(
     async (inventoryInstanceId: string, quantity: number, recordMemo: string) => {
-      const response = await fetch("/api/stocktake/record", {
+      const response = await fetchFresh("/api/stocktake/record", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -217,7 +239,7 @@ export default function StocktakePage() {
   );
 
   const loadProgress = useCallback(async () => {
-    const response = await fetch(
+    const response = await fetchFresh(
       `/api/stocktake/session/${sessionId}/progress`,
       {
         cache: "no-store",
@@ -257,7 +279,7 @@ export default function StocktakePage() {
           query.set("majorCategory", nextMajorCategory);
         }
 
-        const response = await fetch(
+        const response = await fetchFresh(
           `/api/inventory/search?${query.toString()}`,
           {
             cache: "no-store",
@@ -420,21 +442,24 @@ export default function StocktakePage() {
   }, [items]);
 
   const selectItem = useCallback((item: InventoryItem) => {
+    if (savingRef.current) return;
+    if (draftRef.current?.dirty) {
+      setError("入力中の数量・メモを保持しています。保存するか「戻る」で解除してから商品を選んでください。");
+      return;
+    }
     setSelected(item);
     setCountedQuantity(
       String(item.countedQuantity ?? item.expectedQuantity)
     );
-    setMemo("");
-    setSelectedDetailsOpen(false);
+    setMemo(item.memo ?? "");
     setMessage("");
     setError("");
 
     window.setTimeout(() => {
       document.getElementById("stocktake-input-panel")?.scrollIntoView({ behavior: "smooth", block: "start" });
-      document.getElementById("stocktake-quantity")?.focus();
-      (
-        document.getElementById("stocktake-quantity") as HTMLInputElement | null
-      )?.select();
+      const input = continuousQuantityRef.current ?? normalQuantityRef.current;
+      input?.focus();
+      input?.select();
     }, 100);
   }, []);
 
@@ -514,122 +539,124 @@ export default function StocktakePage() {
   );
 
   const saveRecord = async () => {
-    if (!selected || !canOperate) {
+    if (!selected || !canOperate || savingRef.current) {
       return;
     }
 
-    const quantity = Number(countedQuantity.normalize("NFKC"));
+    const quantity = parseStocktakeQuantity(countedQuantity);
 
-    if (
-      countedQuantity.trim() === "" ||
-      !Number.isSafeInteger(quantity) ||
-      quantity < 0
-    ) {
+    if (quantity === null) {
       setError("棚卸数量には0以上の整数を入力してください。");
       return;
     }
 
+    savingRef.current = true;
     setSaving(true);
     setError("");
-
-    const target = selected;
-    const recordMemo = memo.trim();
-    let formallySaved = false;
-
     try {
-      await submitStocktakeRecord(target.id, quantity, recordMemo);
-      formallySaved = true;
-    } catch (saveError) {
-      const code =
-        saveError instanceof StocktakeRequestError
-          ? saveError.code
-          : "STOCKTAKE_RECORD_NETWORK_ERROR";
-      const detail =
-        saveError instanceof Error
-          ? saveError.message
-          : "棚卸入力を保存できませんでした。";
 
-      const recovery = await recoverAfterFailure({
-        code,
-        title: "棚卸入力の保存エラー",
-        message: detail,
-        route: `/stocktake/${sessionId}`,
-        sessionId,
-        detail: { inventoryInstanceId: target.id },
-        action: () => submitStocktakeRecord(target.id, quantity, recordMemo),
-      });
+      const target = selected;
+      const recordMemo = memo.trim();
+      let formallySaved = false;
 
-      if (recovery.success) {
+      try {
+        await submitStocktakeRecord(target.id, quantity, recordMemo);
         formallySaved = true;
-        setMessage("自動復旧して棚卸を正式に保存しました。");
-      } else {
-        try {
-          await saveInstant({
-            inventoryInstanceId: target.id,
-            countedQuantity: quantity,
-            memo: recordMemo || undefined,
-            errorCode: code,
-            errorReportId: recovery.reportId || undefined,
-          });
-          setSystemError({
-            code,
-            message: detail,
-            reportId: recovery.reportId,
-            provisional: true,
-          });
-          setMessage("簡易保存しました。次の商品を棚卸できます。");
-        } catch {
-          setSystemError({
-            code: "STOCKTAKE_LOCAL_SAVE_FAILED",
-            message: "正式保存と端末内の簡易保存の両方に失敗しました。この内容を控えて管理者へ連絡してください。",
-            reportId: recovery.reportId,
-            provisional: false,
-          });
-          return;
+      } catch (saveError) {
+        const code =
+          saveError instanceof StocktakeRequestError
+            ? saveError.code
+            : "STOCKTAKE_RECORD_NETWORK_ERROR";
+        const detail =
+          saveError instanceof Error
+            ? saveError.message
+            : "棚卸入力を保存できませんでした。";
+
+        const recovery = await recoverAfterFailure({
+          code,
+          title: "棚卸入力の保存エラー",
+          message: detail,
+          route: `/stocktake/${sessionId}`,
+          sessionId,
+          detail: { inventoryInstanceId: target.id },
+          action: () => submitStocktakeRecord(target.id, quantity, recordMemo),
+        });
+
+        if (recovery.success) {
+          formallySaved = true;
+          setMessage("自動復旧して棚卸を正式に保存しました。");
+        } else {
+          try {
+            await saveInstant({
+              inventoryInstanceId: target.id,
+              countedQuantity: quantity,
+              memo: recordMemo || undefined,
+              errorCode: code,
+              errorReportId: recovery.reportId || undefined,
+            });
+            setSystemError({
+              code,
+              message: detail,
+              reportId: recovery.reportId,
+              provisional: true,
+            });
+            setMessage("簡易保存しました。次の商品を棚卸できます。");
+          } catch {
+            setSystemError({
+              code: "STOCKTAKE_LOCAL_SAVE_FAILED",
+              message: "正式保存と端末内の簡易保存の両方に失敗しました。この内容を控えて管理者へ連絡してください。",
+              reportId: recovery.reportId,
+              provisional: false,
+            });
+            return;
+          }
         }
       }
-    }
 
-    try {
+      try {
 
-      const difference = quantity - selected.expectedQuantity;
+        const difference = quantity - target.expectedQuantity;
 
-      if (formallySaved) {
-        setMessage(
-          difference === 0
-            ? "一致で保存しました。次の商品を入力できます。"
-            : `差異 ${difference > 0 ? "+" : ""}${difference} で保存しました。`
-        );
+        if (formallySaved) {
+          setMessage(
+            difference === 0
+              ? `${target.item.name}：${quantity}${displayUnit(target.unit, target.item.defaultUnit)}、一致で保存しました。`
+              : `${target.item.name}：${quantity}${displayUnit(target.unit, target.item.defaultUnit)}、差異 ${difference > 0 ? "+" : ""}${difference} で保存しました。`
+          );
+        }
+
+        setSelected(null);
+        setCountedQuantity("");
+        setMemo("");
+        setKeyword("");
+
+        if (formallySaved) {
+          await Promise.all([
+            loadProgress(),
+            loadItems("", filter, majorCategory),
+          ]);
+        }
+      } catch {
+        setError("保存は完了しましたが、一覧の更新に失敗しました。再接続後に更新します。再入力は不要です。");
       }
-
-      setSelected(null);
-      setCountedQuantity("");
-      setMemo("");
-      setKeyword("");
-
-      if (formallySaved) {
-        await Promise.all([
-          loadProgress(),
-          loadItems("", filter, majorCategory),
-        ]);
-      }
-    } catch (saveError) {
-      setError(
-        saveError instanceof Error
-          ? saveError.message
-          : "棚卸入力を保存できませんでした。"
-      );
+    } catch (unexpectedError) {
+      setError(unexpectedError instanceof Error ? unexpectedError.message : "保存処理を完了できませんでした。入力内容を保持しています。");
     } finally {
+      savingRef.current = false;
       setSaving(false);
     }
   };
 
   const changeSessionStatus = async (action: SessionAction) => {
+    if (savingRef.current || draftRef.current?.dirty) {
+      setError("保存中、または未保存の入力があります。入力を保存するか解除してから棚卸状態を変更してください。");
+      return;
+    }
     setChangingStatus(true);
     setError("");
 
     try {
-      const response = await fetch(`/api/stocktake/session/${sessionId}`, {
+      const response = await fetchFresh(`/api/stocktake/session/${sessionId}`, {
         method: "PATCH",
         headers: {
           "Content-Type": "application/json",
@@ -681,17 +708,9 @@ export default function StocktakePage() {
     setMajorCategory(category);
     setKeyword("");
     setFilter("UNRECORDED");
-    setSelected(null);
-    setCountedQuantity("");
-    setMemo("");
     setMessage(`大分類「${category}」に絞り込みました。`);
     setError("");
   }, []);
-
-  const difference =
-    selected && countedQuantity.trim() !== ""
-      ? Number(countedQuantity.normalize("NFKC")) - selected.expectedQuantity
-      : null;
 
   if (loading) {
     return (
@@ -1109,142 +1128,19 @@ export default function StocktakePage() {
           </div>
 
           <aside id="stocktake-input-panel" className="order-first scroll-mt-4 xl:order-last xl:sticky xl:top-5 xl:h-fit">
-            <section className="rounded-3xl bg-white p-5 shadow-sm sm:p-6">
-              <h2 className="text-2xl font-black">棚卸入力</h2>
-
-              {!selected ? (
-                <div className="mt-5 rounded-2xl bg-slate-100 p-5 text-slate-600">
-                  商品カードを選ぶか、バーコードを読み取ってください。
-                </div>
-              ) : (
-                <div className="mt-5 space-y-5">
-                  <div>
-                    <p className="text-sm font-bold text-indigo-600">
-                      選択中の商品
-                    </p>
-                    <h3 className="mt-1 text-xl font-black">
-                      {selected.item.name}
-                    </h3>
-                    <p className="mt-2 text-slate-600">
-                      現在庫：{selected.expectedQuantity}
-                      {displayUnit(selected.unit, selected.item.defaultUnit)}
-                    </p>
-                  </div>
-
-                  <button
-                    type="button"
-                    aria-expanded={selectedDetailsOpen}
-                    onClick={() =>
-                      setSelectedDetailsOpen((current) => !current)
-                    }
-                    className="w-full rounded-2xl bg-slate-100 px-4 py-3 font-black text-indigo-700 transition hover:bg-indigo-50"
-                  >
-                    {selectedDetailsOpen
-                      ? "商品詳細を閉じる"
-                      : "商品詳細を見る"}
-                  </button>
-
-                  {isAdmin && <button type="button" disabled={saving} onClick={() => setEditingProduct(selected.item.id)} className="w-full rounded-xl border border-blue-300 p-3 font-bold text-blue-700">商品情報を編集する</button>}
-
-                  {selectedDetailsOpen && (
-                    <dl className="grid grid-cols-1 gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm sm:grid-cols-2">
-                      <div><dt className="font-bold text-slate-500">JANコード</dt><dd className="mt-1 break-words font-semibold">{selected.item.janCode || "-"}</dd></div>
-                      <div><dt className="font-bold text-slate-500">システムバーコード</dt><dd className="mt-1 break-words font-semibold">{selected.item.systemBarcode || "-"}</dd></div>
-                      <div><dt className="font-bold text-slate-500">管理コード</dt><dd className="mt-1 break-words font-semibold">{selected.item.managementCode || "-"}</dd></div>
-                      <div><dt className="font-bold text-slate-500">管理グループコード</dt><dd className="mt-1 break-words font-semibold">{selected.item.managementGroupCode || "-"}</dd></div>
-                      <div><dt className="font-bold text-slate-500">メーカー</dt><dd className="mt-1 break-words font-semibold">{selected.item.manufacturer || "-"}</dd></div>
-                      <div><dt className="font-bold text-slate-500">分類</dt><dd className="mt-1 break-words font-semibold">{[selected.item.majorCategory, selected.item.minorCategory].filter(Boolean).join(" / ") || "-"}</dd></div>
-                      <div><dt className="font-bold text-slate-500">保管場所</dt><dd className="mt-1 break-words font-semibold">{selected.storageLocation?.name || "-"}</dd></div>
-                      <div><dt className="font-bold text-slate-500">ロット番号</dt><dd className="mt-1 break-words font-semibold">{selected.lotNo || "-"}</dd></div>
-                      <div><dt className="font-bold text-slate-500">使用期限</dt><dd className="mt-1 break-words font-semibold">{selected.expirationDate || "-"}</dd></div>
-                    </dl>
-                  )}
-
-                  <div>
-                    <label
-                      htmlFor="stocktake-quantity"
-                      className="block font-bold text-slate-800"
-                    >
-                      棚卸数量
-                    </label>
-                    <input
-                      id="stocktake-quantity"
-                      type="text"
-                      onFocus={(event) => event.target.select()}
-                      onBlur={() => setCountedQuantity(countedQuantity.normalize("NFKC"))}
-                      onCompositionEnd={(event) => setCountedQuantity(event.currentTarget.value.normalize("NFKC"))}
-                      inputMode="numeric"
-                      value={countedQuantity}
-                      onChange={(event) =>
-                        setCountedQuantity(event.target.value)
-                      }
-                      disabled={!canOperate || saving}
-                      className="mt-2 w-full rounded-2xl border-2 border-indigo-500 px-4 py-4 text-3xl font-black outline-none disabled:bg-slate-100"
-                    />
-                    <p className="mt-2 text-sm text-slate-500">
-                      {`単位：${displayUnit(selected.unit, selected.item.defaultUnit)}`}
-                    </p>
-                  </div>
-
-                  {difference !== null && Number.isFinite(difference) && (
-                    <div
-                      className={`rounded-2xl px-4 py-4 font-black ${
-                        difference === 0
-                          ? "bg-emerald-100 text-emerald-700"
-                          : "bg-red-100 text-red-700"
-                      }`}
-                    >
-                      差異：{difference > 0 ? "+" : ""}
-                      {difference}
-                      {displayUnit(selected.unit, selected.item.defaultUnit)}
-                    </div>
-                  )}
-
-                  <div>
-                    <label
-                      htmlFor="stocktake-memo"
-                      className="block font-bold text-slate-800"
-                    >
-                      メモ
-                    </label>
-                    <textarea
-                      id="stocktake-memo"
-                      rows={3}
-                      value={memo}
-                      onChange={(event) => setMemo(event.target.value)}
-                      disabled={!canOperate || saving}
-                      placeholder="必要な場合のみ入力"
-                      className="mt-2 w-full rounded-2xl border border-slate-200 px-4 py-3 outline-none focus:border-indigo-500 disabled:bg-slate-100"
-                    />
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-3">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setSelected(null);
-                        setCountedQuantity("");
-                        setMemo("");
-                        setSelectedDetailsOpen(false);
-                      }}
-                      disabled={saving}
-                      className="rounded-2xl bg-slate-100 px-4 py-4 font-black text-slate-700"
-                    >
-                      戻る
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={() => void saveRecord()}
-                      disabled={!canOperate || saving}
-                      className="rounded-2xl bg-indigo-600 px-4 py-4 font-black text-white transition hover:bg-indigo-500 disabled:opacity-50"
-                    >
-                      {saving ? "保存中…" : "保存して次へ"}
-                    </button>
-                  </div>
-                </div>
-              )}
-            </section>
+            <StocktakeInputPanel
+              selected={selected}
+              quantity={countedQuantity}
+              memo={memo}
+              onMemoChange={setMemo}
+              saving={saving}
+              disabled={!canOperate}
+              inputRef={normalQuantityRef}
+              onQuantityChange={setCountedQuantity}
+              onSave={() => void saveRecord()}
+              onCancel={() => { setSelected(null); setCountedQuantity(""); setMemo(""); }}
+              onEditProduct={isAdmin && selected ? () => setEditingProduct(selected.item.id) : undefined}
+            />
           </aside>
         </div>
       </div>
@@ -1267,6 +1163,7 @@ export default function StocktakePage() {
           title="連続スキャン中"
           notice="保存後、そのまま次の商品を読み取れます。終了するまでカメラは閉じません。"
           closeOnDetect={false}
+          paused={Boolean(selected) || saving || !canOperate}
           onClose={() => setContinuousCameraOpen(false)}
           onDetected={(barcode) => {
             if (selected || saving) {
@@ -1284,6 +1181,8 @@ export default function StocktakePage() {
             quantity={countedQuantity}
             saving={saving}
             disabled={!canOperate}
+            memo={memo}
+            onMemoChange={setMemo}
             inputRef={continuousQuantityRef}
             onQuantityChange={setCountedQuantity}
             onSave={() => void saveRecord()}
