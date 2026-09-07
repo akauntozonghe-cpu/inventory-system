@@ -42,6 +42,7 @@ export default function BarcodeCamera({
   const [cameraError, setCameraError] = useState("");
   const [scanConfirmed, setScanConfirmed] = useState(false);
   const [soundEnabled, setSoundEnabled] = useState(true);
+  const [showFullFrame, setShowFullFrame] = useState(false);
 
   useEffect(() => { setSoundEnabled(scanSoundEnabled()); primeScanAudio(); }, []);
   const toggleSound = async () => {
@@ -215,13 +216,13 @@ export default function BarcodeCamera({
     <div className="fixed inset-0 z-[110] overflow-y-auto bg-slate-950">
       {scanConfirmed && <div className="pointer-events-none fixed inset-0 z-[140] grid place-items-center border-[10px] border-emerald-400 bg-emerald-400/25" role="status" aria-live="assertive"><div className="rounded-3xl bg-emerald-500 px-8 py-6 text-center text-white shadow-2xl"><p className="text-4xl font-black">✓ 読取完了</p><p className="mt-2 max-w-xs break-all text-lg font-bold">{lastBarcode}</p></div></div>}
       <div className="mx-auto min-h-screen max-w-4xl bg-slate-950 text-white">
-        <header className="flex items-start justify-between gap-4 border-b border-slate-800 px-5 py-5 sm:px-7">
+        <header className="flex items-start justify-between gap-3 border-b border-slate-800 px-3 py-3 sm:px-7">
           <div>
             <p className="text-sm font-bold text-indigo-300">
               {closeOnDetect ? "JAN・QR読取" : "連続スキャン"}
             </p>
 
-            <h1 className="mt-1 text-2xl font-black sm:text-3xl">{title}</h1>
+            <h1 className="mt-1 text-xl font-black sm:text-3xl">{title}</h1>
 
             {notice && (
               <p className="mt-2 text-sm text-slate-300">{notice}</p>
@@ -238,20 +239,23 @@ export default function BarcodeCamera({
           </button>
         </header>
 
-        <main className="space-y-5 p-5 sm:p-7">
-          <div className="sticky top-2 z-30 flex justify-end">
-            <button type="button" onClick={() => void toggleSound()} className={`rounded-full px-4 py-2 text-sm font-black shadow-lg ${soundEnabled ? "bg-emerald-500 text-white" : "bg-white text-slate-900"}`}>
-              {soundEnabled ? "読取音 ON（OFFにする）" : "読取音 OFF（ONにする）"}
+        <main className="space-y-3 px-1 py-2 sm:p-5">
+          <div className="flex flex-wrap items-center justify-between gap-2 px-2">
+            <button type="button" aria-pressed={showFullFrame} onClick={() => setShowFullFrame(value => !value)} className="min-h-11 rounded-xl bg-slate-700 px-3 py-2 text-sm font-bold text-white">
+              {showFullFrame ? "大きく表示する" : "映像全体を表示する"}
+            </button>
+            <button type="button" onClick={() => void toggleSound()} className={`min-h-11 rounded-xl px-3 py-2 text-sm font-black shadow-lg ${soundEnabled ? "bg-emerald-500 text-white" : "bg-white text-slate-900"}`}>
+              {soundEnabled ? "読取音 ON" : "読取音 OFF"}
             </button>
           </div>
-          <section className="rounded-3xl bg-black p-3 shadow-2xl">
-            <div className="relative aspect-[4/3] overflow-hidden rounded-2xl border-4 border-indigo-400 bg-black sm:aspect-video">
+          <section className="rounded-xl bg-black shadow-2xl">
+            <div className="relative h-[60dvh] min-h-64 max-h-[720px] overflow-hidden rounded-xl border-2 border-indigo-400 bg-black">
               <video
                 ref={videoRef}
                 autoPlay
                 muted
                 playsInline
-                className="h-full w-full object-contain"
+                className={`h-full w-full ${showFullFrame ? "object-contain" : "object-cover"}`}
               />
 
               <div className="pointer-events-none absolute inset-[7%] rounded-2xl border-4 border-white/90">
