@@ -215,7 +215,7 @@ export default function ItemTable({ items, reload, isAdmin, onEdit, filterKey }:
       <section className="space-y-4">
         <label className="block rounded-xl bg-white p-3 text-sm font-bold">印刷サイズ
           <select value={labelScale} onChange={(event) => setLabelScale(Number(event.target.value) as LabelScale)} className="ml-3 rounded-lg border p-2">
-            <option value={0.8}>小型 36×26mm（JAN 80%）</option><option value={1}>標準 42×32mm（JAN 100%）</option>
+            <option value={0.8}>商品用 32×26mm（JAN 80%）</option><option value={1}>標準 40×32mm（JAN 100%）</option>
           </select>
         </label>
         {(message || error) && (

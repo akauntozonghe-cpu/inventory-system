@@ -33,7 +33,7 @@ export function barcodeLabel(value: string, scale: LabelScale = 0.8) {
       ? [...value.slice(0, 4)].map((n, i) => digit(n, left + 6.5 + i * 7)).join("") + [...value.slice(4)].map((n, i) => digit(n, left + 39.5 + i * 7)).join("")
       : digit(value, modules / 2);
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${width.toFixed(3)}mm" height="${height.toFixed(3)}mm" viewBox="0 0 ${modules} ${height / x}" role="img" aria-label="${value}"><rect width="100%" height="100%" fill="white"/><g fill="black" shape-rendering="crispEdges">${bars}</g><g fill="black" font-family="Arial, sans-serif" font-size="8.3">${humanReadable}</g></svg>`;
-  return { svg, bits, width, height, quietLeft: left * x, quietRight: right * x, moduleWidth: x, labelWidth: Math.max(scale === 0.8 ? 36 : 42, Math.ceil(width + 4)), labelHeight: scale === 0.8 ? 26 : 32 };
+  return { svg, bits, width, height, quietLeft: left * x, quietRight: right * x, moduleWidth: x, labelWidth: Math.max(scale === 0.8 ? 32 : 40, Math.ceil(width + 2)), labelHeight: scale === 0.8 ? 26 : 32 };
 }
 
 export function barcodePrintDocument(items: Array<{ name: string; barcode: string }>, layout: "A4" | "LABEL" = "A4", scale: LabelScale = 0.8) {

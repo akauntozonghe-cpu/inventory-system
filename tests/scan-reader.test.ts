@@ -6,6 +6,13 @@ import { createProductReader, createScanGate } from "../src/lib/scan-reader";
 import { barcodeLabel } from "../src/lib/barcode-label";
 
 describe("shared JAN and QR reader", () => {
+  it("excludes actual QR images in continuous product mode", async () => {
+    const input = await QRCode.toBuffer("4901234567894", { width: 320 });
+    const { data, info } = await sharp(input).greyscale().raw().toBuffer({ resolveWithObject: true });
+    const bitmap = new BinaryBitmap(new HybridBinarizer(new RGBLuminanceSource(new Uint8ClampedArray(data), info.width, info.height)));
+    expect(() => createProductReader(false).decodeBitmap(bitmap)).toThrow();
+    expect(createProductReader().decodeBitmap(bitmap).getText()).toBe("4901234567894");
+  });
   it("does not permanently suppress a different label first seen during the throttle", () => {
     const accept = createScanGate();
     expect(accept("A", 0, false)).toBe(true);

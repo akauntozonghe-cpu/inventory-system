@@ -26,18 +26,18 @@ describe("product barcode labels", () => {
     expect(() => barcodeLabel("4901234567890")).toThrow("検査数字");
     expect(() => barcodeLabel("123")).toThrow("8桁または13桁");
   });
-  it("paginates 51 small JAN labels into two A4 sheets without browser shrinking", () => {
-    const html = barcodePrintDocument(Array.from({ length: 51 }, () => ({ name: '<script>alert("x")</script>', barcode: "4901234567894" })));
+  it("paginates 61 small JAN labels into two A4 sheets without browser shrinking", () => {
+    const html = barcodePrintDocument(Array.from({ length: 61 }, () => ({ name: '<script>alert("x")</script>', barcode: "4901234567894" })));
     expect(html.match(/class="sheet"/g)).toHaveLength(2);
-    expect(html.match(/class="label"/g)).toHaveLength(51);
+    expect(html.match(/class="label"/g)).toHaveLength(61);
     expect(html).not.toContain('<script>alert');
-    expect(html).toContain('width:36mm;height:26mm');
+    expect(html).toContain('width:32mm;height:26mm');
     expect(html).toContain('width="29.832mm" height="20.744mm"');
   });
   it("uses one page per label with the same physical barcode as A4", () => {
     const html = barcodePrintDocument([{ name: "商品", barcode: "4901234567894" }, { name: "商品", barcode: "4901234567894" }], "LABEL");
     expect(html.match(/class="sheet"/g)).toHaveLength(2);
-    expect(html).toContain('size:36mm 26mm');
+    expect(html).toContain('size:32mm 26mm');
   });
   it("keeps legacy SYS labels wide enough instead of crushing CODE128", () => {
     const label = barcodeLabel("SYS-AB12-CD3456");

@@ -239,7 +239,7 @@ export default function SystemBarcodeLabel({
         <div className="mt-5 rounded-xl border border-slate-200 bg-slate-50 p-4">
           <label className="mb-3 block text-sm font-bold">ラベルサイズ
             <select value={scale} onChange={(event) => setScale(Number(event.target.value) as LabelScale)} className="ml-3 rounded-lg border p-2">
-              <option value={0.8}>小型 36×26mm（JAN 80%）</option><option value={1}>標準 42×32mm（JAN 100%）</option>
+              <option value={0.8}>商品用 32×26mm（JAN 80%）</option><option value={1}>標準 40×32mm（JAN 100%）</option>
             </select>
           </label>
           <p className="mb-3 text-sm">JANは規定の余白・高さで印刷します。旧SYSコードは内容に応じて横幅が広がります。</p>

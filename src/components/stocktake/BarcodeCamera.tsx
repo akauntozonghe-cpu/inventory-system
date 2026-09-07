@@ -11,6 +11,7 @@ import {
 
 type BarcodeCameraProps = {
   title?: string;
+  includeQr?: boolean;
   notice?: string;
   closeOnDetect?: boolean;
   paused?: boolean;
@@ -21,6 +22,7 @@ type BarcodeCameraProps = {
 
 export default function BarcodeCamera({
   title = "JAN・QRを読み取る",
+  includeQr = true,
   notice,
   closeOnDetect = true,
   paused = false,
@@ -91,7 +93,7 @@ export default function BarcodeCamera({
       try {
         stoppedRef.current = false;
 
-        const reader = createProductReader();
+        const reader = createProductReader(includeQr);
 
         readerRef.current = reader;
 
@@ -178,7 +180,7 @@ export default function BarcodeCamera({
         if (mounted) {
           setStatus(
             closeOnDetect
-              ? "JAN・QRを枠内に合わせてください"
+              ? includeQr ? "JAN・QRを枠内に合わせてください" : "JANを枠内に合わせてください"
               : "連続スキャン中"
           );
         }
@@ -200,7 +202,7 @@ export default function BarcodeCamera({
       stopCamera();
 
     };
-  }, [closeOnDetect]);
+  }, [closeOnDetect, includeQr]);
 
   const handleClose = () => {
     try {

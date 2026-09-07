@@ -4,6 +4,7 @@ import { useLiveRefresh } from "@/hooks/useLiveRefresh";
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import QRCode from "qrcode";
+import { qrPrintDocument } from "@/lib/qr-print";
 
 type ClassificationPayload = { classifications?: Array<{ kind: string; name: string; labelCode?: string }> };
 
@@ -13,13 +14,6 @@ function createQrValue(category: string, labelCode?: string) {
     : `INVENTORY_OS:CATEGORY:MAJOR:${encodeURIComponent(category)}`;
 }
 
-function escapeHtml(value: string) {
-  return value
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
-}
 
 function readMessage(data: unknown, fallback: string) {
   if (
@@ -114,8 +108,8 @@ export default function CategoryQrPage() {
           uniqueCategories.map(async (category) => {
             const image = await QRCode.toDataURL(createQrValue(category, codes[category]), {
               errorCorrectionLevel: "M",
-              width: 320,
-              margin: 2,
+              width: 600,
+              margin: 4,
             });
 
             return [category, image] as const;
@@ -143,7 +137,7 @@ export default function CategoryQrPage() {
     const data = await response.json() as ClassificationPayload;
     const rows = (data.classifications ?? []).filter((row) => row.kind === "MAJOR");
     const names = rows.map((row) => row.name).sort((a,b) => a.localeCompare(b, "ja"));
-    const images = await Promise.all(rows.map(async (row) => [row.name, await QRCode.toDataURL(createQrValue(row.name, row.labelCode), { errorCorrectionLevel: "M", width: 320, margin: 2 })] as const));
+    const images = await Promise.all(rows.map(async (row) => [row.name, await QRCode.toDataURL(createQrValue(row.name, row.labelCode), { errorCorrectionLevel: "M", width: 600, margin: 4 })] as const));
     setCategories(names); setQrImages(Object.fromEntries(images));
     setSelectedCategories((current) => current.filter((name) => names.includes(name)));
   });
@@ -178,33 +172,8 @@ export default function CategoryQrPage() {
       return;
     }
 
-    const labels = selected
-      .map((category) => {
-        const image = qrImages[category];
-
-        if (!image) {
-          return "";
-        }
-
-        return `
-          <article class="label">
-            <p class="caption">INVENTORY OS / 大分類QR</p>
-            <h1>${escapeHtml(category)}</h1>
-            <img src="${image}" alt="${escapeHtml(category)} の大分類QR" />
-            <p class="instruction">
-              このQRを読み取ると、商品一覧を「${escapeHtml(
-                category
-              )}」に絞り込みます。
-            </p>
-          </article>
-        `;
-      })
-      .join("");
-
-    if (!labels) {
-      setMessage("QRラベルを作成できませんでした。");
-      return;
-    }
+    const labels = selected.filter(category => qrImages[category]).map(category => ({ name: category, image: qrImages[category] }));
+    if (!labels.length) { setMessage("QRラベルを作成できませんでした。"); return; }
 
     const printWindow = window.open("", "_blank", "width=900,height=700");
 
@@ -215,96 +184,7 @@ export default function CategoryQrPage() {
       return;
     }
 
-    printWindow.document.write(`
-      <!doctype html>
-      <html lang="ja">
-        <head>
-          <meta charset="utf-8" />
-          <title>大分類QRラベル</title>
-          <style>
-            @page {
-              size: A4;
-              margin: 8mm;
-            }
-
-            * {
-              box-sizing: border-box;
-            }
-
-            body {
-              margin: 0;
-              color: #111827;
-              font-family: Arial, "Noto Sans JP", sans-serif;
-            }
-
-            .grid {
-              display: grid;
-              grid-template-columns: repeat(2, 1fr);
-              grid-auto-rows: 86mm;
-              gap: 4mm;
-            }
-
-            .label {
-              height: 86mm;
-              overflow: hidden;
-              padding: 4mm;
-              border: 1px solid #cbd5e1;
-              border-radius: 3mm;
-              text-align: center;
-              break-inside: avoid;
-              page-break-inside: avoid;
-            }
-
-            .label:nth-child(6n) {
-              break-after: page;
-              page-break-after: always;
-            }
-
-            .caption {
-              margin: 0;
-              color: #475569;
-              font-size: 8pt;
-              font-weight: 700;
-            }
-
-            h1 {
-              margin: 3mm 0;
-              font-size: 17pt;
-              word-break: break-word;
-            }
-
-            img {
-              width: 50mm;
-              height: 50mm;
-              image-rendering: pixelated;
-            }
-
-            .instruction {
-              margin: 2mm 0 0;
-              color: #475569;
-              font-size: 8pt;
-            }
-
-            @media print {
-              body {
-                print-color-adjust: exact;
-                -webkit-print-color-adjust: exact;
-              }
-            }
-          </style>
-        </head>
-        <body>
-          <main class="grid">${labels}</main>
-          <script>
-            window.onload = () => {
-              window.print();
-              window.onafterprint = () => window.close();
-            };
-          </script>
-        </body>
-      </html>
-    `);
-
+    printWindow.document.write(qrPrintDocument(labels));
     printWindow.document.close();
   };
 
