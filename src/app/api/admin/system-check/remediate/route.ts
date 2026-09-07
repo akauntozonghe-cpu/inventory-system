@@ -1,20 +1,9 @@
+import { publicErrorMessage as getErrorMessage } from "@/lib/public-error";
 import { repairProductLinks } from "@/lib/product-integrity";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getAdminElevation, requireAdmin } from "@/lib/auth";
 
-function getErrorMessage(value: unknown, fallback: string) {
-  if (
-    value &&
-    typeof value === "object" &&
-    "message" in value &&
-    typeof value.message === "string"
-  ) {
-    return value.message;
-  }
-
-  return fallback;
-}
 
 function createSystemBarcode() {
   const timestamp = Date.now().toString(36).toUpperCase();
@@ -242,7 +231,7 @@ export async function PATCH(request: NextRequest) {
         select: {
           id: true,
           title: true,
-          status: true,
+          status: true, updatedAt: true,
         },
       });
 
@@ -270,7 +259,7 @@ export async function PATCH(request: NextRequest) {
         await prisma.$transaction([
           prisma.stocktakeSession.update({
             where: {
-              id: session.id,
+              id: session.id, status: session.status, updatedAt: session.updatedAt,
             },
             data: {
               status: "PAUSED",
@@ -316,7 +305,7 @@ export async function PATCH(request: NextRequest) {
         await prisma.$transaction([
           prisma.stocktakeSession.update({
             where: {
-              id: session.id,
+              id: session.id, status: session.status, updatedAt: session.updatedAt,
             },
             data: {
               status: "IN_PROGRESS",
@@ -361,7 +350,7 @@ export async function PATCH(request: NextRequest) {
       await prisma.$transaction([
         prisma.stocktakeSession.update({
           where: {
-            id: session.id,
+            id: session.id, status: session.status, updatedAt: session.updatedAt,
           },
           data: {
             status: "CANCELLED",
@@ -511,10 +500,7 @@ export async function PATCH(request: NextRequest) {
     return NextResponse.json(
       {
         code: "SYSTEM_REMEDIATION_FAILED",
-        message: getErrorMessage(
-          error,
-          "管理者による復旧操作を実行できませんでした。"
-        ),
+        message: "復旧操作を完了できませんでした。状態が他端末で変わった可能性があります。再点検してから実行してください。",
       },
       { status: 500 }
     );

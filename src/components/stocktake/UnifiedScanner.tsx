@@ -42,7 +42,7 @@ export default function UnifiedScanner({ onProduct, onCategory, onLocation, onCl
       if (active.current) setBusy(false);
     }
   };
-  return <BarcodeCamera includeQr={!continuous} title={continuous ? "JANを連続で読み取る" : "JAN・大分類QRを読み取る"} notice={continuous ? "JAN・商品バーコード専用です。数量を保存して次の商品へ進みます。大分類QRは通常の読取で使ってください。" : "JANは商品検索、大分類QRは分類の絞り込みに使います。QR全体を枠内に入れてください。"} closeOnDetect={false} paused={paused || busy} onClose={close} onDetected={raw => void detect(raw)}>
+  return <BarcodeCamera continuous={continuous} pauseMessage={busy ? "商品・ラベルを確認しています…" : "数量入力中です。保存すると読取を再開します。"} includeQr={!continuous} title={continuous ? "JANを連続で読み取る" : "JAN・大分類QRを読み取る"} notice={continuous ? "JAN・商品バーコード専用です。数量を保存して次の商品へ進みます。大分類QRは通常の読取で使ってください。" : "JANは商品検索、大分類QRは分類の絞り込みに使います。QR全体を枠内に入れてください。"} closeOnDetect={false} paused={paused || busy} onClose={close} onDetected={raw => void detect(raw)}>
     {busy && <p role="status" className="rounded-xl bg-white p-4 font-bold text-slate-900">読み取った内容を確認しています…</p>}
     {error && <p role="alert" className="rounded-xl bg-white p-4 font-bold text-red-700">{error}</p>}
     {children}

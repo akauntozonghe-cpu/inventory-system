@@ -277,7 +277,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json(
       {
-        code,
+        code: Object.hasOwn(messageByCode, code) ? code : "INVENTORY_OPERATION_FAILED",
         message:
           messageByCode[code] ??
           "在庫の登録に失敗しました。",

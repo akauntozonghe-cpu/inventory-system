@@ -1,3 +1,4 @@
+import { publicErrorMessage as errorMessage } from "@/lib/public-error";
 import { NextRequest, NextResponse } from "next/server";
 import { ItemService } from "@/services/ItemService";
 import { createAdminActionLog } from "@/lib/error-report";
@@ -7,9 +8,6 @@ import {
   requireAdmin,
 } from "@/lib/auth";
 
-function errorMessage(error: unknown, fallback: string) {
-  return error instanceof Error ? error.message : fallback;
-}
 
 export async function GET(request: NextRequest) {
   const user = getLoggedInUser(request);
@@ -49,7 +47,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json(
       {
         code: "ITEM_LIST_500",
-        message: errorMessage(error, "商品一覧を取得できませんでした。"),
+        message: "商品一覧を取得できませんでした。通信を確認して再試行してください。",
       },
       { status: 500 }
     );

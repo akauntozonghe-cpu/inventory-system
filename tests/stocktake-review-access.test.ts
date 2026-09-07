@@ -23,6 +23,11 @@ const getResult = () => result(new NextRequest("http://localhost/api/stocktake/s
 const saveRecord = () => save(new NextRequest("http://localhost/api/stocktake/record", { method: "POST", body: JSON.stringify({ sessionId: "s", inventoryInstanceId: "i", countedQuantity: 7 }) }));
 
 describe("continued input after review is reopened", () => {
+  it.each([null, "", true, -1, 2147483648])("rejects invalid quantity instead of converting it to zero: %s", async value => {
+    const response = await save(new NextRequest("http://localhost/api/stocktake/record", { method: "POST", body: JSON.stringify({ sessionId: "s", inventoryInstanceId: "i", countedQuantity: value }) }));
+    expect(response.status).toBe(400);
+    expect(state.db.$transaction).not.toHaveBeenCalled();
+  });
   beforeEach(() => {
     vi.clearAllMocks(); state.admin = true;
     state.db.stocktakeSession.findUnique.mockResolvedValue(session);

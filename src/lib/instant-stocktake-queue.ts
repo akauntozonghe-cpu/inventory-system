@@ -33,6 +33,14 @@ function requestToPromise<T>(request: IDBRequest<T>) {
   });
 }
 
+export function transactionComplete(transaction: IDBTransaction) {
+  return new Promise<void>((resolve, reject) => {
+    transaction.oncomplete = () => resolve();
+    transaction.onabort = () => reject(transaction.error ?? new Error("端末内への保存を確定できませんでした。"));
+    transaction.onerror = () => reject(transaction.error ?? new Error("端末内への保存に失敗しました。"));
+  });
+}
+
 function openDatabase() {
   return new Promise<IDBDatabase>((resolve, reject) => {
     const request = window.indexedDB.open(DATABASE_NAME, DATABASE_VERSION);
@@ -104,9 +112,10 @@ export async function saveInstantStocktakeRecord(
     };
 
     const transaction = database.transaction(STORE_NAME, "readwrite");
+    const committed = transactionComplete(transaction);
     const store = transaction.objectStore(STORE_NAME);
 
-    await requestToPromise(store.put(record));
+    await Promise.all([requestToPromise(store.put(record)), committed]);
 
     return record;
   } finally {
@@ -129,7 +138,7 @@ export async function getInstantStocktakeRecords(sessionId?: string) {
     const store = transaction.objectStore(STORE_NAME);
 
     const records = (await requestToPromise(
-      store.getAll()
+      sessionId ? store.index("sessionId").getAll(sessionId) : store.getAll()
     )) as InstantStocktakeRecord[];
 
     const filtered = sessionId
@@ -156,9 +165,10 @@ export async function removeInstantStocktakeRecord(id: string) {
 
   try {
     const transaction = database.transaction(STORE_NAME, "readwrite");
+    const committed = transactionComplete(transaction);
     const store = transaction.objectStore(STORE_NAME);
 
-    await requestToPromise(store.delete(id));
+    await Promise.all([requestToPromise(store.delete(id)), committed]);
   } finally {
     database.close();
   }
@@ -179,6 +189,7 @@ export async function markInstantStocktakeRetry(
 
   try {
     const transaction = database.transaction(STORE_NAME, "readwrite");
+    const committed = transactionComplete(transaction);
     const store = transaction.objectStore(STORE_NAME);
 
     const updatedRecord: InstantStocktakeRecord = {
@@ -187,7 +198,7 @@ export async function markInstantStocktakeRetry(
       lastErrorCode: errorCode,
     };
 
-    await requestToPromise(store.put(updatedRecord));
+    await Promise.all([requestToPromise(store.put(updatedRecord)), committed]);
   } finally {
     database.close();
   }

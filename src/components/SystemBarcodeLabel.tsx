@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import BarcodePrintOptions from "@/components/BarcodePrintOptions";
 import { barcodeLabel, barcodePrintDocument, type LabelScale } from "@/lib/barcode-label";
 
 type SystemBarcodeLabelProps = {
@@ -48,6 +49,7 @@ export default function SystemBarcodeLabel({
   const [message, setMessage] = useState("");
   const [printLayout, setPrintLayout] = useState<PrintLayout>("A4");
   const [printCopies, setPrintCopies] = useState(1);
+  const [includeLabelName, setIncludeLabelName] = useState(false);
   const [scale, setScale] = useState<LabelScale>(0.8);
   const [barcodeError, setBarcodeError] = useState("");
 
@@ -174,7 +176,7 @@ export default function SystemBarcodeLabel({
 
     try {
       const copies = Number.isFinite(printCopies) ? Math.min(Math.max(Math.trunc(printCopies), 1), 100) : 1;
-      const html = barcodePrintDocument(Array.from({ length: copies }, () => ({ name: itemName, barcode })), printLayout, scale);
+      const html = barcodePrintDocument(Array.from({ length: copies }, () => ({ name: itemName, barcode })), printLayout, scale, includeLabelName);
       const printWindow = window.open("", "_blank", "width=900,height=700");
       if (!printWindow) throw new Error("印刷画面を開けませんでした。ポップアップを許可してください。");
       printWindow.document.write(html);
@@ -237,11 +239,9 @@ export default function SystemBarcodeLabel({
 
       {barcode && (
         <div className="mt-5 rounded-xl border border-slate-200 bg-slate-50 p-4">
-          <label className="mb-3 block text-sm font-bold">ラベルサイズ
-            <select value={scale} onChange={(event) => setScale(Number(event.target.value) as LabelScale)} className="ml-3 rounded-lg border p-2">
-              <option value={0.8}>商品用 32×26mm（JAN 80%）</option><option value={1}>標準 40×32mm（JAN 100%）</option>
-            </select>
-          </label>
+          <div className="mb-3 text-sm font-bold">ラベルサイズ
+            <BarcodePrintOptions scale={scale} onScale={setScale} includeName={includeLabelName} onIncludeName={setIncludeLabelName} />
+          </div>
           <p className="mb-3 text-sm">JANは規定の余白・高さで印刷します。旧SYSコードは内容に応じて横幅が広がります。</p>
           <div className="mb-4 grid gap-3 sm:grid-cols-2">
             <label className="text-sm font-bold text-slate-700">

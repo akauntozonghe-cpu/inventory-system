@@ -1,3 +1,4 @@
+import { Prisma } from "@prisma/client";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { hashPassword } from "@/lib/auth";
@@ -51,11 +52,14 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const user = await prisma.appUser.create({
+    const passwordHash = await hashPassword(password);
+    const user = await prisma.$transaction(async tx => {
+      if (await tx.appUser.count() > 0) throw new Error("SETUP_ALREADY_COMPLETE");
+      return tx.appUser.create({
       data: {
         username,
         displayName,
-        passwordHash: await hashPassword(password),
+        passwordHash,
         role: "ADMIN",
         mustChangePassword: false,
       },
@@ -67,9 +71,11 @@ export async function POST(request: NextRequest) {
       },
     });
 
+    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
     return NextResponse.json(user, { status: 201 });
   } catch (error) {
     console.error(error);
+    if (error instanceof Error && error.message === "SETUP_ALREADY_COMPLETE" || error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2034") return NextResponse.json({ message: "初回設定の状態が変わりました。ログイン画面から確認してください。" }, { status: 409 });
 
     return NextResponse.json(
       {

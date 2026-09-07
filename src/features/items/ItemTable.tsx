@@ -6,6 +6,7 @@ import { usePagedItems } from "@/hooks/usePagedItems";
 import Modal from "@/components/common/Modal";
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
+import BarcodePrintOptions from "@/components/BarcodePrintOptions";
 import { barcodePrintDocument, type LabelScale } from "@/lib/barcode-label";
 import type { Item } from "./types";
 
@@ -61,6 +62,7 @@ export default function ItemTable({ items, reload, isAdmin, onEdit, filterKey }:
   const [reason, setReason] = useState("");
   const [confirmed, setConfirmed] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [includeLabelName, setIncludeLabelName] = useState(false);
   const [labelScale, setLabelScale] = useState<LabelScale>(0.8);
 
   useEffect(() => {
@@ -191,7 +193,7 @@ export default function ItemTable({ items, reload, isAdmin, onEdit, filterKey }:
 
     try {
       const labels = targets.filter((item) => item.janCode || item.systemBarcode).map((item) => ({ name: item.name, barcode: (item.janCode || item.systemBarcode)! }));
-      const html = barcodePrintDocument(labels, "A4", labelScale);
+      const html = barcodePrintDocument(labels, "A4", labelScale, includeLabelName);
       const printWindow = window.open("", "_blank", "width=900,height=700");
       if (!printWindow) throw new Error("印刷画面を開けませんでした。ポップアップを許可してください。");
       printWindow.document.write(html);
@@ -213,11 +215,9 @@ export default function ItemTable({ items, reload, isAdmin, onEdit, filterKey }:
   return (
     <>
       <section className="space-y-4">
-        <label className="block rounded-xl bg-white p-3 text-sm font-bold">印刷サイズ
-          <select value={labelScale} onChange={(event) => setLabelScale(Number(event.target.value) as LabelScale)} className="ml-3 rounded-lg border p-2">
-            <option value={0.8}>商品用 32×26mm（JAN 80%）</option><option value={1}>標準 40×32mm（JAN 100%）</option>
-          </select>
-        </label>
+        <div className="block rounded-xl bg-white p-3 text-sm font-bold">印刷サイズ
+          <BarcodePrintOptions scale={labelScale} onScale={setLabelScale} includeName={includeLabelName} onIncludeName={setIncludeLabelName} />
+        </div>
         {(message || error) && (
           <div
             className={`rounded-2xl p-4 font-bold ${

@@ -1,6 +1,8 @@
 import { NextResponse, type NextRequest } from "next/server";
 import {
   AUTH_COOKIE,
+  ADMIN_ELEVATION_COOKIE,
+  getAdminElevation,
   hasAdminAccess,
   verifySessionToken,
 } from "@/lib/auth";
@@ -126,7 +128,7 @@ export async function proxy(request: NextRequest) {
 
   const liveUser = await prisma.appUser.findUnique({
     where: { id: user.id },
-    select: { isActive: true, role: true, featurePermissions: true },
+    select: { isActive: true, role: true, featurePermissions: true, mustChangePassword: true },
   });
 
   if (!liveUser?.isActive) {
@@ -142,6 +144,22 @@ export async function proxy(request: NextRequest) {
     const response = NextResponse.redirect(loginUrl);
     response.cookies.delete(AUTH_COOKIE);
     return response;
+  }
+
+  if (user.role !== liveUser.role || user.mustChangePassword !== liveUser.mustChangePassword) {
+    const response = pathname.startsWith("/api/")
+      ? NextResponse.json({ code: "AUTH_SESSION_CHANGED", message: "権限・認証設定が変更されました。ログインし直してください。" }, { status: 401 })
+      : NextResponse.redirect(new URL("/login", request.url));
+    response.cookies.delete(AUTH_COOKIE); response.cookies.delete(ADMIN_ELEVATION_COOKIE);
+    return response;
+  }
+  const elevation = getAdminElevation(request);
+  if (elevation) {
+    const sponsor = await prisma.appUser.findUnique({ where: { id: elevation.adminUserId }, select: { isActive: true, role: true } });
+    if (!sponsor?.isActive || sponsor.role !== "ADMIN" || elevation.authenticatedByUserId !== user.id) {
+      const response = NextResponse.json({ code: "ADMIN_ELEVATION_REVOKED", message: "一時管理者認証が無効になりました。必要な操作では再認証してください。" }, { status: 403 });
+      response.cookies.delete(ADMIN_ELEVATION_COOKIE); return response;
+    }
   }
 
   const operationSetting = await prisma.systemOperationSetting.findUnique({

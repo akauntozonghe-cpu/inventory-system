@@ -1,7 +1,9 @@
 "use client";
 
+import { useLiveRefresh } from "@/hooks/useLiveRefresh";
+import { fetchFresh } from "@/lib/fetch-fresh";
 import Link from "next/link";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import FeedbackToast from "@/components/common/FeedbackToast";
 import { recoverAfterFailure } from "@/lib/client-error-recovery";
 
@@ -29,6 +31,7 @@ class MarketplaceRequestError extends Error {
 }
 
 export default function PersonalMarketplacePage() {
+  const refreshSequence = useRef(0);
   const [data, setData] = useState<Payload>({ listings: [], inventories: [] });
   const [loading, setLoading] = useState(true);
   const [working, setWorking] = useState("");
@@ -46,22 +49,27 @@ export default function PersonalMarketplacePage() {
   const selectedInventory = data.inventories.find((entry) => entry.id === inventoryId);
 
   const fetchMarketplace = useCallback(async () => {
-    const response = await fetch("/api/admin/marketplace/listings", { cache: "no-store" });
+    const response = await fetchFresh("/api/admin/marketplace/listings", { cache: "no-store" });
     const payload: unknown = await response.json().catch(() => null);
     if (!response.ok) throw new MarketplaceRequestError(messageOf(payload, "フリマ情報を取得できませんでした。"), codeOf(payload, "MARKETPLACE_LIST_FAILED"));
     return payload as Payload;
   }, []);
 
   const load = useCallback(async (silent = false) => {
+    const sequence = ++refreshSequence.current;
     if (!silent) setLoading(true);
     try {
-      setData(await fetchMarketplace());
+      const next = await fetchMarketplace();
+      if (sequence !== refreshSequence.current) return;
+      setData(next);
       setError(null);
     } catch (caught) {
+      if (sequence !== refreshSequence.current) return;
       const code = caught instanceof MarketplaceRequestError ? caught.code : "MARKETPLACE_LIST_FAILED";
       const message = caught instanceof Error ? caught.message : "フリマ情報を取得できませんでした。";
       setError({ message, code, reportId: null, status: "RECOVERING" });
       const recovered = await recoverAfterFailure({ code, title: "フリマ情報取得エラー", message, route: "/marketplace", detail: { operation: "LIST" }, action: fetchMarketplace });
+      if (sequence !== refreshSequence.current) return;
       if (recovered.success && recovered.value) {
         setData(recovered.value);
         setError(null);
@@ -75,13 +83,12 @@ export default function PersonalMarketplacePage() {
   }, [fetchMarketplace]);
 
   useEffect(() => { void load(); }, [load]);
-  useEffect(() => {
-    if (error) return;
-    const timer = window.setInterval(() => void load(true), 15_000);
-    return () => window.clearInterval(timer);
-  }, [error, load]);
-
-  useEffect(() => {
+  const liveFailed = useLiveRefresh(async () => {
+    const sequence = ++refreshSequence.current;
+    const next = await fetchMarketplace();
+    if (sequence === refreshSequence.current) setData(next);
+  });
+useEffect(() => {
     if (!selectedInventory) return;
     setTitle((current) => current || selectedInventory.item.name);
   }, [selectedInventory]);
@@ -96,7 +103,7 @@ export default function PersonalMarketplacePage() {
   const createDraft = async () => {
     setWorking("create"); setError(null);
     try {
-      const response = await fetch("/api/admin/marketplace/listings", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ inventoryInstanceId: inventoryId, channel, title, description, itemCondition: condition, price: Number(price), listedQuantity: Number(quantity), shippingMethod, shippingCost: Number(shippingCost) }) });
+      const response = await fetchFresh("/api/admin/marketplace/listings", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ inventoryInstanceId: inventoryId, channel, title, description, itemCondition: condition, price: Number(price), listedQuantity: Number(quantity), shippingMethod, shippingCost: Number(shippingCost) }) });
       const payload: unknown = await response.json().catch(() => null);
       if (!response.ok) throw new Error(messageOf(payload, "出品準備を作成できませんでした。"));
       setNotice(messageOf(payload, "出品準備へ追加しました。"));
@@ -109,7 +116,7 @@ export default function PersonalMarketplacePage() {
   const update = async (id: string, body: Record<string, unknown>) => {
     setWorking(id); setError(null);
     try {
-      const response = await fetch("/api/admin/marketplace/listings", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id, ...body }) });
+      const response = await fetchFresh("/api/admin/marketplace/listings", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id, ...body }) });
       const payload: unknown = await response.json().catch(() => null);
       if (!response.ok) throw new Error(messageOf(payload, "更新できませんでした。"));
       setNotice(messageOf(payload, "更新しました。")); await load(true);
@@ -123,7 +130,8 @@ export default function PersonalMarketplacePage() {
     setNotice("出品用のタイトル・説明・価格をコピーしました。");
   };
 
-  if (loading) return <main className="min-h-screen bg-violet-50 p-8 text-center font-bold text-slate-600">個人フリマ管理を準備しています…</main>;
+  if (loading) return <main className="min-h-screen bg-violet-50 p-8 text-center font-bold text-slate-600">
+      {liveFailed && <p role="status" className="rounded-xl bg-amber-50 p-3 text-amber-900">更新の確認が遅れています。通信が戻ると再取得します。</p>}個人フリマ管理を準備しています…</main>;
 
   return (
     <main className="min-h-screen bg-violet-50 p-4 text-slate-950 sm:p-8">

@@ -1,6 +1,7 @@
 "use client";
 import { fetchFresh } from "@/lib/fetch-fresh";
 
+import CompactFilter from "@/components/common/CompactFilter";
 import Link from "next/link";
 import {
   useCallback,
@@ -423,40 +424,7 @@ export default function ItemPage() {
             </div>
           )}
 
-          <div className="mt-4 flex flex-wrap gap-2">
-            <button
-              type="button"
-              onClick={() => setMajorCategory("")}
-              className={`rounded-full px-4 py-2 text-sm font-bold ${
-                !majorCategory
-                  ? "bg-slate-900 text-white"
-                  : "bg-slate-100 text-slate-700"
-              }`}
-            >
-              すべて（{items.length}件）
-            </button>
-
-            {categories.map((category) => {
-              const count = items.filter(
-                (item) => item.majorCategory?.trim() === category
-              ).length;
-
-              return (
-                <button
-                  key={category}
-                  type="button"
-                  onClick={() => setMajorCategory(category)}
-                  className={`rounded-full px-4 py-2 text-sm font-bold ${
-                    majorCategory === category
-                      ? "bg-blue-600 text-white"
-                      : "bg-slate-100 text-slate-700"
-                  }`}
-                >
-                  {category}（{count}件）
-                </button>
-              );
-            })}
-          </div>
+          <CompactFilter label="大分類" value={majorCategory} onChange={setMajorCategory} options={[{ value: "", label: "すべて" }, ...categories.map(category => ({ value: category, label: category }))]} />
 
           {majorCategory && (
             <div className="mt-4 flex items-center justify-between gap-4 rounded-xl bg-indigo-50 px-4 py-3">

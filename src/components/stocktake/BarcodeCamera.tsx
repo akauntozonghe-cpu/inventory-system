@@ -12,6 +12,8 @@ import {
 type BarcodeCameraProps = {
   title?: string;
   includeQr?: boolean;
+  continuous?: boolean;
+  pauseMessage?: string;
   notice?: string;
   closeOnDetect?: boolean;
   paused?: boolean;
@@ -23,6 +25,8 @@ type BarcodeCameraProps = {
 export default function BarcodeCamera({
   title = "JAN・QRを読み取る",
   includeQr = true,
+  continuous = false,
+  pauseMessage = "数量入力中です。保存すると読取を再開します。",
   notice,
   closeOnDetect = true,
   paused = false,
@@ -179,9 +183,7 @@ export default function BarcodeCamera({
 
         if (mounted) {
           setStatus(
-            closeOnDetect
-              ? includeQr ? "JAN・QRを枠内に合わせてください" : "JANを枠内に合わせてください"
-              : "連続スキャン中"
+            includeQr ? "JAN・QR全体を枠内に合わせてください" : "JANを横長の枠に合わせてください"
           );
         }
       } catch (error) {
@@ -216,12 +218,12 @@ export default function BarcodeCamera({
 
   return (
     <div className="fixed inset-0 z-[110] overflow-y-auto bg-slate-950">
-      {scanConfirmed && <div className="pointer-events-none fixed inset-0 z-[140] grid place-items-center border-[10px] border-emerald-400 bg-emerald-400/25" role="status" aria-live="assertive"><div className="rounded-3xl bg-emerald-500 px-8 py-6 text-center text-white shadow-2xl"><p className="text-4xl font-black">✓ 読取完了</p><p className="mt-2 max-w-xs break-all text-lg font-bold">{lastBarcode}</p></div></div>}
+      {scanConfirmed && !continuous && <div className="pointer-events-none fixed inset-0 z-[140] grid place-items-center border-[10px] border-emerald-400 bg-emerald-400/25" role="status" aria-live="assertive"><div className="rounded-3xl bg-emerald-500 px-8 py-6 text-center text-white shadow-2xl"><p className="text-4xl font-black">✓ 読取完了</p><p className="mt-2 max-w-xs break-all text-lg font-bold">{lastBarcode}</p></div></div>}
       <div className="mx-auto min-h-screen max-w-4xl bg-slate-950 text-white">
         <header className="flex items-start justify-between gap-3 border-b border-slate-800 px-3 py-3 sm:px-7">
           <div>
             <p className="text-sm font-bold text-indigo-300">
-              {closeOnDetect ? "JAN・QR読取" : "連続スキャン"}
+              {continuous ? "商品を続けて数える" : includeQr ? "JAN・QR読取" : "商品バーコード読取"}
             </p>
 
             <h1 className="mt-1 text-xl font-black sm:text-3xl">{title}</h1>
@@ -229,7 +231,7 @@ export default function BarcodeCamera({
             {notice && (
               <p className="mt-2 text-sm text-slate-300">{notice}</p>
             )}
-            {paused && <p role="status" className="mt-2 font-bold text-amber-200">数量入力中は読取を休止しています。保存すると再開します。</p>}
+            {paused && <p role="status" className="mt-2 font-bold text-amber-200">{pauseMessage}</p>}
           </div>
 
           <button
@@ -251,7 +253,7 @@ export default function BarcodeCamera({
             </button>
           </div>
           <section className="rounded-xl bg-black shadow-2xl">
-            <div className="relative h-[60dvh] min-h-64 max-h-[720px] overflow-hidden rounded-xl border-2 border-indigo-400 bg-black">
+            <div className={`relative ${continuous ? "h-[32dvh] min-h-44 max-h-80" : "h-[60dvh] min-h-64 max-h-[720px]"} overflow-hidden rounded-xl border-2 border-indigo-400 bg-black`}>
               <video
                 ref={videoRef}
                 autoPlay
@@ -260,7 +262,7 @@ export default function BarcodeCamera({
                 className={`h-full w-full ${showFullFrame ? "object-contain" : "object-cover"}`}
               />
 
-              <div className="pointer-events-none absolute inset-[7%] rounded-2xl border-4 border-white/90">
+              <div className={`pointer-events-none absolute ${continuous ? "inset-x-[7%] inset-y-[30%]" : "inset-[7%]"} rounded-2xl border-4 border-white/90`}>
                 <div className="absolute -left-1 -top-1 h-9 w-9 rounded-tl-xl border-l-8 border-t-8 border-indigo-400" />
                 <div className="absolute -right-1 -top-1 h-9 w-9 rounded-tr-xl border-r-8 border-t-8 border-indigo-400" />
                 <div className="absolute -bottom-1 -left-1 h-9 w-9 rounded-bl-xl border-b-8 border-l-8 border-indigo-400" />
@@ -269,7 +271,7 @@ export default function BarcodeCamera({
             </div>
           </section>
 
-          <section className={`rounded-3xl p-5 text-center text-slate-950 shadow-xl transition-colors ${scanConfirmed ? "bg-emerald-100 ring-4 ring-emerald-400" : "bg-white"}`}>
+          {(!continuous || cameraError) && <section className={`rounded-3xl p-5 text-center text-slate-950 shadow-xl transition-colors ${scanConfirmed ? "bg-emerald-100 ring-4 ring-emerald-400" : "bg-white"}`}>
             {cameraError ? (
               <>
                 <p className="font-black text-red-600">
@@ -282,12 +284,12 @@ export default function BarcodeCamera({
             ) : (
               <>
                 <p className="text-sm font-bold text-indigo-600">
-                  {closeOnDetect ? "読み取り待機中" : "連続スキャン中"}
+                  {continuous ? "連続スキャン中" : "読み取り待機中"}
                 </p>
 
                 <p className="mt-2 text-lg font-black">{status}</p>
 
-                {!closeOnDetect && (
+                {continuous && (
                   <p className="mt-3 text-sm text-slate-500">
                     数量を保存後、そのまま次の商品を読み取れます。
                   </p>
@@ -300,7 +302,8 @@ export default function BarcodeCamera({
                 )}
               </>
             )}
-          </section>
+          </section>}
+          {continuous && scanConfirmed && <p role="status" className="px-3 text-lg font-bold text-emerald-300">✓ {lastBarcode}</p>}
 
           {children}
         </main>

@@ -1,3 +1,4 @@
+import { publicErrorMessage as getErrorMessage } from "@/lib/public-error";
 import { countProductLinkProblems } from "@/lib/product-integrity";
 import { unitValidationMessage } from "@/lib/unit";
 import { NextRequest, NextResponse } from "next/server";
@@ -13,18 +14,6 @@ type ManualCheckInput = {
   detail?: string;
 };
 
-function getErrorMessage(value: unknown, fallback: string) {
-  if (
-    value &&
-    typeof value === "object" &&
-    "message" in value &&
-    typeof value.message === "string"
-  ) {
-    return value.message;
-  }
-
-  return fallback;
-}
 
 function calculateRunStatus(
   checks: Array<{ status: CheckStatus }>

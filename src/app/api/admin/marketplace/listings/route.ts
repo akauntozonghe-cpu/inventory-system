@@ -119,7 +119,7 @@ export async function GET(request: NextRequest) {
   }
 }
 
-export async function POST(request: NextRequest) {
+async function createListing(request: NextRequest) {
   const auth = requireLogin(request);
   if (auth.response || !auth.user) return auth.response;
   const body = await request.json().catch(() => null) as Record<string, unknown> | null;
@@ -130,14 +130,10 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ code: "MARKETPLACE_INPUT_INVALID", message: "商品、価格、出品数を正しく入力してください。" }, { status: 400 });
   }
 
-  const inventory = await prisma.inventoryInstance.findUnique({ where: { id: inventoryInstanceId }, include: { item: true } });
-  const reserved = await prisma.marketplaceListing.aggregate({ where: { inventoryInstanceId, status: { in: ["DRAFT", "READY", "LISTED"] } }, _sum: { listedQuantity: true } });
-  const available = (inventory?.quantity ?? 0) - (reserved._sum.listedQuantity ?? 0);
-  if (!inventory || available < listedQuantity) {
-    return NextResponse.json({ code: "MARKETPLACE_STOCK_SHORTAGE", message: `保管利用可能数は${Math.max(available, 0)}点です。既存の併売引当を確認してください。` }, { status: 409 });
-  }
-
   const listing = await prisma.$transaction(async (tx) => {
+    const inventory = await tx.inventoryInstance.findUnique({ where: { id: inventoryInstanceId }, include: { item: true } });
+    const reserved = await tx.marketplaceListing.aggregate({ where: { inventoryInstanceId, status: { in: ["DRAFT", "READY", "LISTED"] } }, _sum: { listedQuantity: true } });
+    if (!inventory || inventory.item.isArchived || inventory.status === "廃止" || inventory.quantity - (reserved._sum.listedQuantity ?? 0) < listedQuantity) throw new Error("MARKETPLACE_STOCK_SHORTAGE");
     const created = await tx.marketplaceListing.create({
       data: {
         inventoryInstanceId,
@@ -163,11 +159,11 @@ export async function POST(request: NextRequest) {
     await tx.inventoryInstance.update({ where: { id: inventoryInstanceId }, data: { allocationType: "flea_market" }, select: { id: true } });
     await tx.adminActionLog.create({ data: { adminUserId: auth.user.id, action: "PERSONAL_MARKETPLACE_DRAFT_CREATE", route: "/marketplace", detail: { listingId: created.id, itemName: inventory.item.name, channel: created.channel } } });
     return created;
-  });
+  }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
   return NextResponse.json({ listing, message: "出品準備へ追加しました。" }, { status: 201 });
 }
 
-export async function PATCH(request: NextRequest) {
+async function changeListing(request: NextRequest) {
   const auth = requireLogin(request);
   if (auth.response || !auth.user) return auth.response;
   const body = await request.json().catch(() => null) as Record<string, unknown> | null;
@@ -180,7 +176,7 @@ export async function PATCH(request: NextRequest) {
 
   if (action === "UPDATE_DETAILS") {
     const listing = await prisma.marketplaceListing.update({
-      where: { id },
+      where: { id, updatedAt: existing.updatedAt },
       data: {
         title: text(body?.title, 200) || existing.title,
         description: text(body?.description, 4000) || null,
@@ -197,13 +193,14 @@ export async function PATCH(request: NextRequest) {
   }
 
   if (action === "UPDATE_SHIPPING") {
+    if (existing.status !== "SOLD") return NextResponse.json({ code: "MARKETPLACE_NOT_SOLD", message: "売却を確定してから発送状態を変更してください。" }, { status: 409 });
     const shippingStatus = text(body?.shippingStatus, 30);
     if (!SHIPPING_STATUSES.includes(shippingStatus as typeof SHIPPING_STATUSES[number])) {
       return NextResponse.json({ code: "MARKETPLACE_SHIPPING_STATUS_INVALID", message: "発送状態が正しくありません。" }, { status: 400 });
     }
     const now = new Date();
     const listing = await prisma.marketplaceListing.update({
-      where: { id },
+      where: { id, updatedAt: existing.updatedAt },
       data: {
         shippingStatus,
         trackingNumber: text(body?.trackingNumber, 100) || existing.trackingNumber,
@@ -226,12 +223,16 @@ export async function PATCH(request: NextRequest) {
   }
 
   const result = await prisma.$transaction(async (tx) => {
+    const claimed = await tx.marketplaceListing.updateMany({ where: { id, status: existing.status, updatedAt: existing.updatedAt }, data: { updatedAt: new Date() } });
+    if (claimed.count !== 1) throw new Error("MARKETPLACE_CHANGED");
+    await tx.adminActionLog.create({ data: { adminUserId: auth.user.id, action: status === "SOLD" ? "PERSONAL_MARKETPLACE_SALE_APPLY" : "PERSONAL_MARKETPLACE_STATUS_UPDATE", route: "/marketplace", detail: { listingId: id, status } } });
     if (status === "SOLD") {
       const soldQuantity = positiveInt(body?.soldQuantity) ?? existing.listedQuantity;
-      if (soldQuantity > existing.inventoryInstance.quantity) throw new Error("MARKETPLACE_STOCK_SHORTAGE");
+      if (soldQuantity > existing.listedQuantity || soldQuantity > existing.inventoryInstance.quantity) throw new Error("MARKETPLACE_STOCK_SHORTAGE");
       const before = existing.inventoryInstance.quantity;
       const after = before - soldQuantity;
-      await tx.inventoryInstance.update({ where: { id: existing.inventoryInstanceId }, data: { quantity: after, actualQuantity: existing.inventoryInstance.actualQuantity === null ? null : Math.max(existing.inventoryInstance.actualQuantity - soldQuantity, 0) }, select: { id: true } });
+      const changed = await tx.inventoryInstance.updateMany({ where: { id: existing.inventoryInstanceId, quantity: before, updatedAt: existing.inventoryInstance.updatedAt }, data: { quantity: after, actualQuantity: existing.inventoryInstance.actualQuantity === null ? null : Math.max(existing.inventoryInstance.actualQuantity - soldQuantity, 0) } });
+      if (changed.count !== 1) throw new Error("MARKETPLACE_CHANGED");
       await tx.inventoryHistory.create({ data: { inventoryInstanceId: existing.inventoryInstanceId, changeQuantity: -soldQuantity, action: `個人フリマ販売：${existing.channel}` } });
       await tx.inventoryEvent.create({ data: { inventoryInstanceId: existing.inventoryInstanceId, eventType: "ISSUE", quantityBefore: before, quantityChange: -soldQuantity, quantityAfter: after, reason: "個人フリマ販売", detail: { marketplaceListingId: id, channel: existing.channel, externalListingId: existing.externalListingId }, performedByUserId: auth.user.id } });
       const siblingResult = await tx.marketplaceListing.updateMany({ where: { inventoryInstanceId: existing.inventoryInstanceId, id: { not: id }, status: { in: ["DRAFT", "READY", "LISTED"] } }, data: { status: "CANCELLED", notes: "他の販売先で売却されたため取り下げ確認が必要です。" } });
@@ -247,6 +248,14 @@ export async function PATCH(request: NextRequest) {
   }).catch((error) => error instanceof Error && error.message === "MARKETPLACE_STOCK_SHORTAGE" ? null : Promise.reject(error));
 
   if (!result) return NextResponse.json({ code: "MARKETPLACE_STOCK_SHORTAGE", message: "販売数が現在庫を超えています。最新の在庫を確認してください。" }, { status: 409 });
-  await prisma.adminActionLog.create({ data: { adminUserId: auth.user.id, action: status === "SOLD" ? "PERSONAL_MARKETPLACE_SALE_APPLY" : "PERSONAL_MARKETPLACE_STATUS_UPDATE", route: "/marketplace", detail: { listingId: id, status } } });
   return NextResponse.json({ listing: result, message: status === "SOLD" ? "売却を在庫へ反映し、併売中の出品を停止扱いにしました。" : "出品状態を更新しました。" });
 }
+
+function mutationError(error: unknown) {
+  const conflict = error instanceof Error && /MARKETPLACE_(?:CHANGED|STOCK_SHORTAGE)/.test(error.message)
+    || error instanceof Prisma.PrismaClientKnownRequestError && ["P2034", "P2025"].includes(error.code);
+  console.error("MARKETPLACE_MUTATION_FAILED", error);
+  return NextResponse.json({ code: conflict ? "MARKETPLACE_CONFLICT" : "MARKETPLACE_UPDATE_FAILED", message: conflict ? "在庫または出品状態が変わりました。最新の内容を確認してから再操作してください。" : "出品情報を更新できませんでした。再読み込みして状態を確認してください。" }, { status: conflict ? 409 : 500 });
+}
+export async function POST(request: NextRequest) { try { return await createListing(request); } catch (error) { return mutationError(error); } }
+export async function PATCH(request: NextRequest) { try { return await changeListing(request); } catch (error) { return mutationError(error); } }

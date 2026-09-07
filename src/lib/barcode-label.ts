@@ -36,10 +36,10 @@ export function barcodeLabel(value: string, scale: LabelScale = 0.8) {
   return { svg, bits, width, height, quietLeft: left * x, quietRight: right * x, moduleWidth: x, labelWidth: Math.max(scale === 0.8 ? 32 : 40, Math.ceil(width + 2)), labelHeight: scale === 0.8 ? 26 : 32 };
 }
 
-export function barcodePrintDocument(items: Array<{ name: string; barcode: string }>, layout: "A4" | "LABEL" = "A4", scale: LabelScale = 0.8) {
+export function barcodePrintDocument(items: Array<{ name: string; barcode: string }>, layout: "A4" | "LABEL" = "A4", scale: LabelScale = 0.8, includeName = true) {
   if (!items.length) throw new Error("印刷する商品を選択してください。");
   const labels = items.map((item) => ({ ...barcodeLabel(item.barcode, scale), name: item.name }));
-  const labelHeight = labels[0].labelHeight;
+  const labelHeight = includeName ? labels[0].labelHeight : Math.ceil(Math.max(...labels.map(label => label.height)) + 2);
   const pageWidth = layout === "A4" ? 194 : Math.max(...labels.map((label) => label.labelWidth));
   const pageHeight = layout === "A4" ? 281 : labelHeight;
   const pages: string[][] = [[]];
@@ -48,7 +48,7 @@ export function barcodePrintDocument(items: Array<{ name: string; barcode: strin
     if (label.labelWidth > pageWidth) throw new Error("このコードは用紙の幅を超えています。コードを確認してください。");
     if (rowWidth && rowWidth + 2 + label.labelWidth > pageWidth) { rowWidth = 0; rowTop += labelHeight + 2; }
     if (rowTop + labelHeight > pageHeight) { pages.push([]); rowTop = 0; rowWidth = 0; }
-    pages[pages.length - 1].push(`<article class="label" style="width:${label.labelWidth}mm;height:${labelHeight}mm"><p>${escapeLabelText(label.name)}</p>${label.svg}</article>`);
+    pages[pages.length - 1].push(`<article class="label" style="width:${label.labelWidth}mm;height:${labelHeight}mm">${includeName ? `<p>${escapeLabelText(label.name)}</p>` : ""}${label.svg}</article>`);
     rowWidth += (rowWidth ? 2 : 0) + label.labelWidth;
     if (layout === "LABEL") { rowWidth = pageWidth; }
   }

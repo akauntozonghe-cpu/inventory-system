@@ -1,20 +1,9 @@
+import { publicErrorMessage as getErrorMessage } from "@/lib/public-error";
 import { recordsForConfirmation } from "@/lib/stocktake-reopening";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getLoggedInUser, hasAdminAccess } from "@/lib/auth";
 
-function getErrorMessage(value: unknown, fallback: string) {
-  if (
-    value &&
-    typeof value === "object" &&
-    "message" in value &&
-    typeof value.message === "string"
-  ) {
-    return value.message;
-  }
-
-  return fallback;
-}
 
 export async function POST(
   request: NextRequest,

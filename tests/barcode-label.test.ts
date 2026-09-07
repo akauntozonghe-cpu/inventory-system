@@ -4,6 +4,13 @@ import sharp from "sharp";
 import { barcodeLabel, barcodePrintDocument } from "../src/lib/barcode-label";
 
 describe("product barcode labels", () => {
+  it("reduces paper height without shortening the JAN symbol", () => {
+    const html = barcodePrintDocument([{ name: "商品名", barcode: "4901234567894" }], "LABEL", 0.8, false);
+    expect(html).toContain("size:32mm 23mm");
+    expect(html).toContain('height="20.744mm"');
+    expect(html).not.toContain("<p>商品名</p>");
+    expect(html).toContain('aria-label="4901234567894"');
+  });
   it.each([0.8, 1] as const)("retains GS1 dimensions and quiet zones at %s", (scale) => {
     const label = barcodeLabel("4901234567894", scale);
     expect(label.width).toBeCloseTo(37.29 * scale);

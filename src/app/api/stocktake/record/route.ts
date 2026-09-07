@@ -1,3 +1,4 @@
+import { parseStocktakeQuantity } from "@/lib/stocktake-quantity";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getLoggedInUser, hasAdminAccess } from "@/lib/auth";
@@ -33,7 +34,7 @@ export async function POST(request: NextRequest) {
 
     const sessionId = getText(body.sessionId, 100);
     const inventoryInstanceId = getText(body.inventoryInstanceId, 100);
-    const countedQuantity = Number(body.countedQuantity);
+    const countedQuantity = typeof body.countedQuantity === "number" || typeof body.countedQuantity === "string" ? parseStocktakeQuantity(String(body.countedQuantity)) : null;
     const memo = getText(body.memo, 1000) || null;
 
     if (!sessionId || !inventoryInstanceId) {
@@ -46,7 +47,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    if (!Number.isInteger(countedQuantity) || countedQuantity < 0) {
+    if (countedQuantity === null || countedQuantity > 2147483647) {
       return NextResponse.json(
         {
           code: "STOCKTAKE_RECORD_QUANTITY_400",
