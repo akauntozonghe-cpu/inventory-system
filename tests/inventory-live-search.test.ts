@@ -14,6 +14,17 @@ import { GET } from "../src/app/api/inventory/search/route";
 const item = { id: "new-item", janCode: "4901234567890", systemBarcode: null, managementCode: null, managementGroupCode: null, name: "他端末の新商品", majorCategory: "食品", minorCategory: null, manufacturer: null, defaultUnit: "個" };
 const inventory = { id: "new-inventory", quantity: 8, item, managementCode: null, managementGroupCode: null, majorCategory: null, minorCategory: null, storageLocation: { id: "shelf", name: "棚A" } };
 describe("live stocktake search", () => {
+  it("does not rewrite an already enrolled target during a scan", async () => {
+    db.inventoryInstance.findMany.mockResolvedValue([{ ...inventory, stocktakeTargets: [{ sessionId: "session" }] }]);
+    const response = await GET(new NextRequest("http://localhost/api/inventory/search?sessionId=session&exact=true&filter=ALL&q=4901234567890"));
+    expect((await response.json())[0].id).toBe(inventory.id);
+    expect(db.stocktakeTarget.createMany).not.toHaveBeenCalled();
+  });
+  it("limits database retrieval to the session's classification", async () => {
+    db.stocktakeSession.findUnique.mockResolvedValue({ id: "session", operatorUserId: "worker", status: "IN_PROGRESS", scopeType: "MAJOR_CATEGORY", scopeValue: "食品" });
+    await GET(new NextRequest("http://localhost/api/inventory/search?sessionId=session&exact=true&filter=ALL&q=4901234567890"));
+    expect(db.inventoryInstance.findMany.mock.calls[0][0].where.AND).toEqual([{ item: { is: { majorCategory: "食品" } } }]);
+  });
   it("同じJANの別ロットを正常な複数候補として返し、管理No.を混同しない", async () => {
     const lots = [{ ...inventory, id: "lot-a", lotNo: "A" }, { ...inventory, id: "lot-b", lotNo: "B" }];
     db.inventoryInstance.findMany.mockResolvedValue(lots);

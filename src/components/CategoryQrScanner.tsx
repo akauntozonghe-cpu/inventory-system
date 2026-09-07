@@ -1,4 +1,5 @@
 "use client";
+import { fetchFresh } from "@/lib/fetch-fresh";
 import { playScanBeep } from "@/lib/scan-feedback";
 
 import { useEffect, useRef, useState } from "react";
@@ -112,7 +113,7 @@ export default function CategoryQrScanner({
         hints.set(DecodeHintType.POSSIBLE_FORMATS, [BarcodeFormat.QR_CODE]);
 
         const reader = new BrowserMultiFormatReader(hints, {
-          delayBetweenScanAttempts: 300,
+          delayBetweenScanAttempts: 60,
           delayBetweenScanSuccess: 800,
         });
 
@@ -154,16 +155,10 @@ export default function CategoryQrScanner({
               detectedRef.current = true;
               setStatus(labelCode ? "分類マスターと照合しています…" : `読み取りました：${category}`);
 
-              try {
-                controlsRef.current?.stop();
-              } catch {
-                // 停止済みなら何もしない
-              }
-
-              window.setTimeout(() => {
+              {
                 if (!active) return;
                 if (!labelCode) { playScanBeep(rawValue); onDetectedRef.current(category); return; }
-                void fetch(`/api/classifications/resolve?labelCode=${encodeURIComponent(labelCode)}`, { cache: "no-store" })
+                void fetchFresh(`/api/classifications/resolve?labelCode=${encodeURIComponent(labelCode)}`)
                   .then(async (response) => {
                     const payload = await response.json().catch(() => null) as { classification?: { name?: string }; message?: string } | null;
                     const currentName = payload?.classification?.name?.trim();
@@ -171,7 +166,7 @@ export default function CategoryQrScanner({
                     if (active) { playScanBeep(rawValue); onDetectedRef.current(currentName); }
                   })
                   .catch((resolveError) => { if (active) { detectedRef.current = false; setError(resolveError instanceof Error ? resolveError.message : "分類ラベルを確認できませんでした。"); } });
-              }, 350);
+              }
 
               return;
             }
@@ -186,6 +181,7 @@ export default function CategoryQrScanner({
           }
         );
 
+        if (!active) { controls.stop(); return; }
         controlsRef.current = controls;
 
         if (active) {

@@ -90,6 +90,10 @@ export async function GET(request: NextRequest) {
       );
     }
 
+    const scopeWhere: Prisma.InventoryInstanceWhereInput = session.scopeType === "ALL" ? {}
+      : !session.scopeValue ? { id: { in: [] } }
+      : session.scopeType === "LOCATION" ? { storageLocation: { is: { name: session.scopeValue } } }
+      : { item: { is: { [session.scopeType === "MAJOR_CATEGORY" ? "majorCategory" : "minorCategory"]: session.scopeValue } } };
     const inventoryFilters: Prisma.InventoryInstanceWhereInput[] = [];
     const normalizedKeyword = normalizeCode(keyword);
 
@@ -100,11 +104,12 @@ export async function GET(request: NextRequest) {
     if ((exact && normalizedKeyword) || session.status === "IN_PROGRESS") {
       // 棚卸開始後に登録・変更された商品も、読取時点の最新DBから対象へ反映する。
       const currentInventories = await withDatabaseRetry(() => prisma.inventoryInstance.findMany({
-        where: { status: { not: "廃止" }, item: { isArchived: false },
+        where: { status: { not: "廃止" }, item: { isArchived: false }, AND: [scopeWhere],
           ...(inventoryInstanceId ? { id: inventoryInstanceId } : {}),
           ...(!exact ? { stocktakeTargets: { none: { sessionId } } } : {}),
         },
         select: {
+          stocktakeTargets: { where: { sessionId }, select: { sessionId: true } },
           id: true, quantity: true, managementCode: true, managementGroupCode: true, majorCategory: true, minorCategory: true,
           storageLocation: { select: { name: true } },
           item: { select: { janCode: true, systemBarcode: true, managementCode: true, managementGroupCode: true, majorCategory: true, minorCategory: true } },
@@ -115,9 +120,10 @@ export async function GET(request: NextRequest) {
         return (!exact || codes.includes(normalizedKeyword)) && matchesSessionScope(inventory, session);
       });
       if (exact) inventoryFilters.push({ id: { in: currentMatches.map((inventory) => inventory.id) } });
-      if (currentMatches.length > 0 && session.status === "IN_PROGRESS") {
+      const newTargets = currentMatches.filter(inventory => !inventory.stocktakeTargets?.length);
+      if (newTargets.length > 0 && session.status === "IN_PROGRESS") {
         await withDatabaseRetry(() => prisma.stocktakeTarget.createMany({
-          data: currentMatches.map((inventory) => ({ sessionId, inventoryInstanceId: inventory.id, expectedQuantity: inventory.quantity })),
+          data: newTargets.map((inventory) => ({ sessionId, inventoryInstanceId: inventory.id, expectedQuantity: inventory.quantity })),
           skipDuplicates: true,
         }));
       }

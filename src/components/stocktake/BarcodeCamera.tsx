@@ -2,10 +2,9 @@
 import { playScanBeep, primeScanAudio, scanSoundEnabled, setScanSoundEnabled } from "@/lib/scan-feedback";
 
 import { useEffect, useRef, useState } from "react";
+import { createProductReader, createScanGate } from "@/lib/scan-reader";
 import { BrowserMultiFormatReader } from "@zxing/browser";
 import {
-  BarcodeFormat,
-  DecodeHintType,
   NotFoundException,
 } from "@zxing/library";
 
@@ -20,7 +19,7 @@ type BarcodeCameraProps = {
 };
 
 export default function BarcodeCamera({
-  title = "バーコードを読み取る",
+  title = "JAN・QRを読み取る",
   notice,
   closeOnDetect = true,
   paused = false,
@@ -31,12 +30,11 @@ export default function BarcodeCamera({
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const controlsRef = useRef<{ stop: () => void } | null>(null);
   const readerRef = useRef<BrowserMultiFormatReader | null>(null);
-  const detectedAtRef = useRef(0);
+  const scanGateRef = useRef(createScanGate());
   const stoppedRef = useRef(false);
   const onDetectedRef = useRef(onDetected);
   const onCloseRef = useRef(onClose);
   const pausedRef = useRef(paused);
-  const lastSeenRef = useRef({ code: "", at: 0 });
 
   const [status, setStatus] = useState("カメラを起動しています…");
   const [lastBarcode, setLastBarcode] = useState("");
@@ -91,25 +89,7 @@ export default function BarcodeCamera({
       try {
         stoppedRef.current = false;
 
-        const hints = new Map<DecodeHintType, BarcodeFormat[]>();
-        hints.set(DecodeHintType.TRY_HARDER, true as never);
-        hints.set(DecodeHintType.POSSIBLE_FORMATS, [
-          BarcodeFormat.EAN_13,
-          BarcodeFormat.EAN_8,
-          BarcodeFormat.UPC_A,
-          BarcodeFormat.UPC_E,
-          BarcodeFormat.CODE_128,
-          BarcodeFormat.CODE_39,
-          BarcodeFormat.CODE_93,
-          BarcodeFormat.ITF,
-          BarcodeFormat.CODABAR,
-          BarcodeFormat.QR_CODE,
-        ]);
-
-        const reader = new BrowserMultiFormatReader(hints, {
-          delayBetweenScanAttempts: 60,
-          delayBetweenScanSuccess: 500,
-        });
+        const reader = createProductReader();
 
         readerRef.current = reader;
 
@@ -155,13 +135,8 @@ export default function BarcodeCamera({
 
             const now = Date.now();
 
-            const duplicate = barcode === lastSeenRef.current.code && now - lastSeenRef.current.at < 1200;
-            lastSeenRef.current = { code: barcode, at: now };
-            if (pausedRef.current || duplicate || now - detectedAtRef.current < 250) {
-              return;
-            }
+            if (!scanGateRef.current(barcode, now, pausedRef.current)) return;
 
-            detectedAtRef.current = now;
             setLastBarcode(barcode);
             setStatus(`読み取りました：${barcode}`);
             confirmScan(barcode);
@@ -169,11 +144,7 @@ export default function BarcodeCamera({
             if (closeOnDetect) {
               stopCamera();
 
-              window.setTimeout(() => {
-                if (mounted) {
-                  onDetectedRef.current(barcode);
-                }
-              }, 250);
+              onDetectedRef.current(barcode);
 
               return;
             }
@@ -182,6 +153,7 @@ export default function BarcodeCamera({
           }
         );
 
+        if (!mounted || stoppedRef.current) { controls.stop(); return; }
         controlsRef.current = controls;
 
         // 同じ読取エンジン・解像度・連続AFを単品/連続の両方で使う。
@@ -205,7 +177,7 @@ export default function BarcodeCamera({
         if (mounted) {
           setStatus(
             closeOnDetect
-              ? "バーコードを枠内に合わせてください"
+              ? "JAN・QRを枠内に合わせてください"
               : "連続スキャン中"
           );
         }
@@ -246,7 +218,7 @@ export default function BarcodeCamera({
         <header className="flex items-start justify-between gap-4 border-b border-slate-800 px-5 py-5 sm:px-7">
           <div>
             <p className="text-sm font-bold text-indigo-300">
-              {closeOnDetect ? "バーコード読取" : "連続スキャン"}
+              {closeOnDetect ? "JAN・QR読取" : "連続スキャン"}
             </p>
 
             <h1 className="mt-1 text-2xl font-black sm:text-3xl">{title}</h1>
@@ -282,7 +254,7 @@ export default function BarcodeCamera({
                 className="h-full w-full object-cover"
               />
 
-              <div className="pointer-events-none absolute inset-x-[7%] inset-y-[28%] rounded-2xl border-4 border-white/90">
+              <div className="pointer-events-none absolute inset-x-[7%] inset-y-[15%] rounded-2xl border-4 border-white/90">
                 <div className="absolute -left-1 -top-1 h-9 w-9 rounded-tl-xl border-l-8 border-t-8 border-indigo-400" />
                 <div className="absolute -right-1 -top-1 h-9 w-9 rounded-tr-xl border-r-8 border-t-8 border-indigo-400" />
                 <div className="absolute -bottom-1 -left-1 h-9 w-9 rounded-bl-xl border-b-8 border-l-8 border-indigo-400" />
