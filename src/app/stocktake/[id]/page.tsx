@@ -15,6 +15,7 @@ import {
   useState,
 } from "react";
 import { useParams, useRouter } from "next/navigation";
+import { resolveScan } from "@/lib/resolve-scan";
 import BarcodeCamera from "@/components/stocktake/BarcodeCamera";
 import CategoryQrScanner from "@/components/CategoryQrScanner";
 import StocktakeLotPicker from "@/components/stocktake/StocktakeLotPicker";
@@ -152,6 +153,9 @@ export default function StocktakePage() {
 
   const [keyword, setKeyword] = useState("");
   const [filter, setFilter] = useState<FilterType>("UNRECORDED");
+  const [scanLocation, setScanLocation] = useState<{ id: string; name: string } | null>(null);
+  const [resolvingScan, setResolvingScan] = useState(false);
+  const scanBusyRef = useRef(false);
   const [majorCategory, setMajorCategory] = useState<string | null>(null);
 
   const [editingProduct, setEditingProduct] = useState<string | null>(null);
@@ -277,6 +281,7 @@ export default function StocktakePage() {
           q: nextKeyword,
         });
 
+        if (scanLocation) query.set("storageLocationId", scanLocation.id);
         if (nextMajorCategory) {
           query.set("majorCategory", nextMajorCategory);
         }
@@ -309,7 +314,7 @@ export default function StocktakePage() {
         }
       }
     },
-    [sessionId]
+    [sessionId, scanLocation]
   );
 
   useEffect(() => {
@@ -702,12 +707,28 @@ export default function StocktakePage() {
 
   const handleCategoryDetected = useCallback((category: string) => {
     setCategoryQrOpen(false);
+    setScanLocation(null);
     setMajorCategory(category);
     setKeyword("");
     setFilter("UNRECORDED");
     setMessage(`大分類「${category}」に絞り込みました。`);
     setError("");
   }, []);
+
+  const handleScan = async (raw: string) => {
+    if (scanBusyRef.current) return;
+    scanBusyRef.current = true; setResolvingScan(true); setError("");
+    try {
+      const scanned = await resolveScan(raw);
+      if (scanned.type === "CLASSIFICATION" && scanned.name) {
+        setScanLocation(null); handleCategoryDetected(scanned.name);
+      } else if (scanned.type === "LOCATION" && scanned.id && scanned.name) {
+        setMajorCategory(null); setScanLocation({ id: scanned.id, name: scanned.name });
+        setKeyword(""); setFilter("UNRECORDED"); setMessage("保管場所で絞り込みました。");
+      } else if (scanned.type === "ITEM" && scanned.code) await findBarcode(scanned.code);
+    } catch { setError("ラベルを確認できませんでした。商品・大分類・保管場所のラベルと通信状態を確認してください。"); }
+    finally { scanBusyRef.current = false; setResolvingScan(false); }
+  };
 
   if (loading) {
     return (
@@ -1000,6 +1021,7 @@ export default function StocktakePage() {
                 ))}
               </div>
 
+              {scanLocation && <div className="mt-4 flex items-center gap-3 rounded-xl bg-violet-50 p-3 text-violet-900"><span>保管場所：{scanLocation.name}</span><button type="button" className="ml-auto rounded-lg bg-white px-3 py-2" onClick={() => setScanLocation(null)}>解除</button></div>}
               {majorCategory && (
                 <div className="mt-4 flex flex-wrap items-center gap-3 rounded-2xl bg-violet-50 px-4 py-3 text-violet-900">
                   <span className="font-bold">
@@ -1145,13 +1167,13 @@ export default function StocktakePage() {
 
       {normalCameraOpen && (
         <BarcodeCamera
-          title="バーコードを読み取る"
+          title="JAN・QRを読み取る"
           notice="読み取ると自動でカメラを閉じ、棚卸入力へ進みます。"
           closeOnDetect
           onClose={() => setNormalCameraOpen(false)}
           onDetected={(barcode) => {
             setNormalCameraOpen(false);
-            void findBarcode(barcode);
+            void handleScan(barcode);
           }}
         />
       )}
@@ -1161,7 +1183,7 @@ export default function StocktakePage() {
           title="連続スキャン中"
           notice="保存後、そのまま次の商品を読み取れます。終了するまでカメラは閉じません。"
           closeOnDetect={false}
-          paused={Boolean(selected) || saving || lotCandidates.length > 0 || !canOperate}
+          paused={resolvingScan || Boolean(selected) || saving || lotCandidates.length > 0 || !canOperate}
           onClose={() => setContinuousCameraOpen(false)}
           onDetected={(barcode) => {
             if (selected || saving) {
@@ -1170,7 +1192,7 @@ export default function StocktakePage() {
               );
               return;
             }
-            void findBarcode(barcode);
+            void handleScan(barcode);
           }}
         >
           <StocktakeInputPanel

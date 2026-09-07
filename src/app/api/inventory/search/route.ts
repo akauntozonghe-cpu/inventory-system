@@ -94,7 +94,8 @@ export async function GET(request: NextRequest) {
       : !session.scopeValue ? { id: { in: [] } }
       : session.scopeType === "LOCATION" ? { storageLocation: { is: { name: session.scopeValue } } }
       : { item: { is: { [session.scopeType === "MAJOR_CATEGORY" ? "majorCategory" : "minorCategory"]: session.scopeValue } } };
-    const inventoryFilters: Prisma.InventoryInstanceWhereInput[] = [];
+    const locationId = searchParams.get("storageLocationId")?.trim();
+    const inventoryFilters: Prisma.InventoryInstanceWhereInput[] = locationId ? [{ storageLocationId: locationId }] : [];
     const normalizedKeyword = normalizeCode(keyword);
 
     if (inventoryInstanceId) {

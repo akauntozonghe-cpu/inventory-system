@@ -14,6 +14,11 @@ import { GET } from "../src/app/api/inventory/search/route";
 const item = { id: "new-item", janCode: "4901234567890", systemBarcode: null, managementCode: null, managementGroupCode: null, name: "他端末の新商品", majorCategory: "食品", minorCategory: null, manufacturer: null, defaultUnit: "個" };
 const inventory = { id: "new-inventory", quantity: 8, item, managementCode: null, managementGroupCode: null, majorCategory: null, minorCategory: null, storageLocation: { id: "shelf", name: "棚A" } };
 describe("live stocktake search", () => {
+  it("applies a location QR filter inside the existing session target query", async () => {
+    await GET(new NextRequest("http://localhost/api/inventory/search?sessionId=session&storageLocationId=shelf&filter=ALL"));
+    expect(db.stocktakeTarget.findMany.mock.calls[0][0].where.inventoryInstance.is.AND).toContainEqual({ storageLocationId: "shelf" });
+    expect(db.stocktakeTarget.findMany.mock.calls[0][0].where.sessionId).toBe("session");
+  });
   it("does not rewrite an already enrolled target during a scan", async () => {
     db.inventoryInstance.findMany.mockResolvedValue([{ ...inventory, stocktakeTargets: [{ sessionId: "session" }] }]);
     const response = await GET(new NextRequest("http://localhost/api/inventory/search?sessionId=session&exact=true&filter=ALL&q=4901234567890"));

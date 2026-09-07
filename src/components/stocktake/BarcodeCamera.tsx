@@ -1,4 +1,5 @@
 "use client";
+import { scanDisplayText } from "@/lib/scan-payload";
 import { playScanBeep, primeScanAudio, scanSoundEnabled, setScanSoundEnabled } from "@/lib/scan-feedback";
 
 import { useEffect, useRef, useState } from "react";
@@ -137,8 +138,8 @@ export default function BarcodeCamera({
 
             if (!scanGateRef.current(barcode, now, pausedRef.current)) return;
 
-            setLastBarcode(barcode);
-            setStatus(`読み取りました：${barcode}`);
+            setLastBarcode(scanDisplayText(barcode));
+            setStatus(scanDisplayText(barcode));
             confirmScan(barcode);
 
             if (closeOnDetect) {

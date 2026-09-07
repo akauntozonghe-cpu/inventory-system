@@ -1,4 +1,5 @@
 "use client";
+import { parseScan } from "@/lib/scan-payload";
 import { fetchFresh } from "@/lib/fetch-fresh";
 
 import { useLiveRefresh } from "@/hooks/useLiveRefresh";
@@ -14,17 +15,6 @@ type ItemRow = { id: string; name: string; janCode: string | null; systemBarcode
 type Payload = { classifications: Classification[]; locations: Location[]; items: ItemRow[] };
 
 function normalizeCode(value: string) { return value.normalize("NFKC").replace(/[\s-]/g, "").toLowerCase(); }
-
-function parseScan(raw: string): { type: "CLASSIFICATION" | "LOCATION" | "ITEM"; code?: string; name?: string; id?: string } {
-  const value = raw.trim();
-  try {
-    const parsed = JSON.parse(value) as Record<string, unknown>;
-    if (parsed.type === "INVENTORY_CLASSIFICATION_LABEL") return { type: "CLASSIFICATION", code: String(parsed.classificationLabelCode ?? ""), name: String(parsed.majorCategory ?? "") };
-    if (parsed.type === "INVENTORY_LOCATION_LABEL") return { type: "LOCATION", id: String(parsed.storageLocationId ?? ""), name: String(parsed.storageLocationName ?? "") };
-  } catch { /* JAN・管理バーコードはJSONではないため、そのまま商品検索へ渡す。 */ }
-  if (value.startsWith("大分類:")) return { type: "CLASSIFICATION", name: value.slice(4).trim() };
-  return { type: "ITEM", code: value };
-}
 
 function normalizePayload(value: unknown): Payload {
   const source = value && typeof value === "object" ? value as Partial<Payload> : {};
@@ -64,6 +54,7 @@ export default function ClassificationsPage() {
   const handleScan = (raw: string) => {
     setScannerOpen(false); setError("");
     const scanned = parseScan(raw);
+    if (scanned.type === "INVALID") { setError("対応していないQRです。商品・大分類・保管場所のラベルを読み取ってください。"); return; }
     if (scanned.type === "CLASSIFICATION") {
       const row = majors.find((candidate) => (scanned.code && candidate.labelCode === scanned.code) || (scanned.name && candidate.name === scanned.name));
       if (!row) { setError("読み取った大分類は現在の分類一覧にありません。ラベルを再発行するか、分類情報を確認してください。（CLASSIFICATION_SCAN_NOT_FOUND）"); return; }

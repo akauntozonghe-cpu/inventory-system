@@ -13,6 +13,7 @@ describe("shared JAN and QR reader", () => {
       ["96385074", Buffer.from(barcodeLabel("96385074").svg)],
       ["inventory-lot-123", await QRCode.toBuffer("inventory-lot-123", { width: 320 })],
       ["4901234567894", await QRCode.toBuffer("4901234567894", { width: 320 })],
+      ['{"type":"INVENTORY_CLASSIFICATION_LABEL","classificationLabelCode":"label-123","majorCategory":"食品"}', await QRCode.toBuffer('{"type":"INVENTORY_CLASSIFICATION_LABEL","classificationLabelCode":"label-123","majorCategory":"食品"}', { width: 640 })],
     ] as const) {
       const { data, info } = await sharp(input, { density: 300 }).flatten({ background: "white" }).greyscale().raw().toBuffer({ resolveWithObject: true });
       const pixels = new Uint8ClampedArray(info.width * info.height);
