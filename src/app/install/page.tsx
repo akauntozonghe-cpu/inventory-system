@@ -1,11 +1,17 @@
-import InstallButton from "@/components/pwa/InstallButton";
 import Link from "next/link";
+import InstallAction from "@/components/pwa/InstallAction";
+import InstallDiagnostics from "@/components/pwa/InstallDiagnostics";
 
 export default function InstallPage() {
-  return <main className="min-h-screen bg-[radial-gradient(circle_at_top_left,#164e63_0,#0f172a_42%,#020617_100%)] p-4 text-white sm:p-8"><div className="mx-auto max-w-5xl"><header className="flex flex-wrap items-center justify-between gap-4"><div className="flex items-center gap-4"><img src="/pwa-icon.svg" alt="Inventory OS" className="h-20 w-20 rounded-3xl shadow-2xl"/><div><p className="text-xs font-black tracking-[.28em] text-cyan-300">INSTALL INVENTORY OS</p><h1 className="mt-1 text-3xl font-black">在庫管理を、専用アプリの速さで。</h1></div></div><Link href="/settings" className="rounded-xl border border-white/20 bg-white/10 px-4 py-3 font-black backdrop-blur">設定へ戻る</Link></header>
-    <InstallButton /><section className="mt-8 grid gap-5 lg:grid-cols-2"><article className="rounded-[2rem] border border-white/15 bg-white/[.08] p-6 backdrop-blur-xl"><div className="flex items-center gap-3"><span className="grid h-12 w-12 place-items-center rounded-2xl bg-slate-100 text-2xl text-slate-900"></span><div><p className="text-xs font-black text-cyan-300">iPHONE / iPAD</p><h2 className="text-xl font-black">Safariから追加</h2></div></div><ol className="mt-6 space-y-4 font-bold text-slate-200"><li className="flex gap-3"><b className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-cyan-400 text-slate-950">1</b>SafariでInventory OSを開く</li><li className="flex gap-3"><b className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-cyan-400 text-slate-950">2</b>画面下の共有ボタンを押す</li><li className="flex gap-3"><b className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-cyan-400 text-slate-950">3</b>「ホーム画面に追加」を選ぶ</li></ol></article>
-    <article className="rounded-[2rem] border border-white/15 bg-white/[.08] p-6 backdrop-blur-xl"><div className="flex items-center gap-3"><span className="grid h-12 w-12 place-items-center rounded-2xl bg-emerald-400 text-2xl text-slate-950">◆</span><div><p className="text-xs font-black text-emerald-300">ANDROID / PC</p><h2 className="text-xl font-black">インストールを選択</h2></div></div><ol className="mt-6 space-y-4 font-bold text-slate-200"><li className="flex gap-3"><b className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-emerald-400 text-slate-950">1</b>ChromeまたはEdgeで開く</li><li className="flex gap-3"><b className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-emerald-400 text-slate-950">2</b>画面の「インストール」を押す</li><li className="flex gap-3"><b className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-emerald-400 text-slate-950">3</b>ホーム画面・アプリ一覧から起動</li></ol></article></section>
-    <p className="mt-5 rounded-2xl border border-amber-300/30 bg-amber-300/10 p-4 text-sm font-bold text-amber-100">以前のアイコンでインストール済みの場合、端末の仕様によりアイコンだけ更新されないことがあります。その場合は一度ホーム画面から削除し、この画面から再追加してください。登録データはサーバーにあるため削除されません。</p><section className="mt-5 grid gap-3 sm:grid-cols-3"><div className="rounded-2xl bg-white p-5 text-slate-950"><p className="text-2xl">⚡</p><h3 className="mt-2 font-black">すぐ起動</h3><p className="mt-1 text-sm font-semibold text-slate-600">URL入力なしで棚卸へ。</p></div><div className="rounded-2xl bg-white p-5 text-slate-950"><p className="text-2xl">▣</p><h3 className="mt-2 font-black">広い作業画面</h3><p className="mt-1 text-sm font-semibold text-slate-600">ブラウザ枠を隠して表示。</p></div><div className="rounded-2xl bg-white p-5 text-slate-950"><p className="text-2xl">↻</p><h3 className="mt-2 font-black">安全な更新</h3><p className="mt-1 text-sm font-semibold text-slate-600">保存後に最新版へ切替。</p></div></section></div></main>;
+  return <main className="min-h-screen bg-slate-100 p-4 text-slate-950 sm:p-8"><div className="mx-auto max-w-2xl rounded-3xl bg-white p-5 shadow-sm sm:p-8">
+    <Link href="/settings" className="inline-block rounded-xl border px-4 py-3 text-sm font-bold">設定へ戻る</Link>
+    <h1 className="mt-6 text-2xl font-black">ホーム画面に追加</h1>
+    <p className="mt-3 leading-7 text-slate-600">このページが表示されていれば、管理者画面からの操作は届いています。端末への追加は、ブラウザの確認画面で行います。</p>
+    <InstallAction />
+    <h2 className="mt-6 text-lg font-black">ボタンから追加できない場合</h2>
+    <p className="mt-3 leading-7">Pixel・Android：Chrome右上の「︙」→「ホーム画面に追加」または「アプリをインストール」。項目がない場合は、下の状態確認を開いてください。</p>
+    <p className="mt-3 leading-7">iPhone・iPad：Safariの共有ボタン→「ホーム画面に追加」。PC：Chrome・Edgeのメニューからインストールします。</p>
+    <InstallDiagnostics />
+    <p className="mt-5 text-sm leading-6 text-slate-600">アプリ内からブラウザの制限を解除することはできません。追加画面が出ないだけで「追加済み」とは判断しません。</p>
+  </div></main>;
 }
-
-

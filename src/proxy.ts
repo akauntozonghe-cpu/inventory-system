@@ -85,6 +85,7 @@ export async function proxy(request: NextRequest) {
 
   const isPublicPath =
     pathname === "/login" ||
+    pathname === "/install" ||
     pathname === "/setup" ||
     pathname === "/maintenance" ||
     pathname === "/offline" ||
