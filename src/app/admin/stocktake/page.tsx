@@ -1,5 +1,7 @@
 "use client";
 
+import StocktakeGroupFilter from "@/components/stocktake/StocktakeGroupFilter";
+import { matchesStocktakeGroup, type StocktakeGroup } from "@/lib/stocktake-groups";
 import Link from "next/link";
 import { useLiveRefresh } from "@/hooks/useLiveRefresh";
 import { fetchFresh } from "@/lib/fetch-fresh";
@@ -206,7 +208,7 @@ export default function AdminStocktakePage() {
   const [loading, setLoading] = useState(true);
   const [updatingId, setUpdatingId] = useState<string | null>(null);
   const [filter, setFilter] = useState<
-    "ACTIVE" | "ALL" | "COMPLETED" | "ISSUES"
+    StocktakeGroup
   >("ACTIVE");
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
@@ -287,35 +289,7 @@ export default function AdminStocktakePage() {
 
   const syncFailed = useLiveRefresh(() => loadData(false, true));
 
-  const filteredSessions = useMemo(() => {
-    if (filter === "ALL") {
-      return sessions;
-    }
-
-    if (filter === "COMPLETED") {
-      return sessions.filter(
-        (session) =>
-          session.status === "COMPLETED" ||
-          session.status === "CANCELLED"
-      );
-    }
-
-    if (filter === "ISSUES") {
-      return sessions.filter(
-        (session) =>
-          session.status === "REVIEW" ||
-          session.status === "CONFLICT"
-      );
-    }
-
-    return sessions.filter(
-      (session) =>
-        session.status === "IN_PROGRESS" ||
-        session.status === "PAUSED" ||
-        session.status === "REVIEW" ||
-        session.status === "CONFLICT"
-    );
-  }, [filter, sessions]);
+  const filteredSessions = useMemo(() => sessions.filter(session => matchesStocktakeGroup(session.status, filter)), [filter, sessions]);
 
   const summary = useMemo(
     () => ({
@@ -486,31 +460,7 @@ export default function AdminStocktakePage() {
           </button>
         </div>
 
-        <div className="mt-5 flex gap-2 overflow-x-auto pb-1">
-          {[
-            ["ACTIVE", "進行中"],
-            ["ISSUES", "要確認"],
-            ["COMPLETED", "完了・取消"],
-            ["ALL", "すべて"],
-          ].map(([value, label]) => (
-            <button
-              key={value}
-              type="button"
-              onClick={() =>
-                setFilter(
-                  value as "ACTIVE" | "ALL" | "COMPLETED" | "ISSUES"
-                )
-              }
-              className={`shrink-0 rounded-full px-4 py-2 text-sm font-bold ${
-                filter === value
-                  ? "bg-violet-600 text-white"
-                  : "bg-slate-100 text-slate-700 hover:bg-slate-200"
-              }`}
-            >
-              {label}
-            </button>
-          ))}
-        </div>
+        <StocktakeGroupFilter sessions={sessions} value={filter} onChange={setFilter} />
 
         <div className="mt-5 space-y-4">
           {filteredSessions.map((session) => {

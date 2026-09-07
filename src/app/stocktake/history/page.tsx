@@ -1,5 +1,7 @@
 "use client";
 
+import StocktakeGroupFilter from "@/components/stocktake/StocktakeGroupFilter";
+import { matchesStocktakeGroup, type StocktakeGroup } from "@/lib/stocktake-groups";
 import Link from "next/link";
 import { useRef } from "react";
 import { useLiveRefresh } from "@/hooks/useLiveRefresh";
@@ -142,6 +144,7 @@ export default function StocktakeHistoryPage() {
   const [sessions, setSessions] = useState<StocktakeSession[]>([]);
   const [isAdmin, setIsAdmin] = useState(false);
   const [showAll, setShowAll] = useState(false);
+  const [group, setGroup] = useState<StocktakeGroup>("ACTIVE");
   const [keyword, setKeyword] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -204,9 +207,10 @@ export default function StocktakeHistoryPage() {
   const displayedSessions = useMemo(() => {
     const normalizedKeyword = keyword.trim().toLowerCase();
 
-    if (!normalizedKeyword) return sessions;
+    const grouped = sessions.filter(session => matchesStocktakeGroup(session.status, group));
+    if (!normalizedKeyword) return grouped;
 
-    return sessions.filter((session) => {
+    return grouped.filter((session) => {
       const searchText = [
         session.title,
         session.operator,
@@ -220,7 +224,7 @@ export default function StocktakeHistoryPage() {
 
       return searchText.includes(normalizedKeyword);
     });
-  }, [keyword, sessions]);
+  }, [keyword, sessions, group]);
 
   return (
     <main className="min-h-screen bg-slate-50 p-4 text-slate-900 sm:p-8">
@@ -261,6 +265,7 @@ export default function StocktakeHistoryPage() {
         </header>
 
         <section className="mt-6 rounded-3xl bg-white p-4 shadow-sm">
+          <StocktakeGroupFilter sessions={sessions} value={group} onChange={setGroup} />
           <div className="flex flex-col gap-3 sm:flex-row">
             <input
               value={keyword}

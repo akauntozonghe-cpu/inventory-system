@@ -2,7 +2,6 @@
 
 import { type FormEvent, useState } from "react";
 import { useRouter } from "next/navigation";
-import { markLoginForInstallNotice } from "@/lib/pwa-install";
 
 const asciiOnly = (value: string) => value.normalize("NFKC").replace(/[^A-Za-z0-9]/g, "").slice(0, 64);
 
@@ -96,7 +95,6 @@ export default function LoginPage() {
         return;
       }
 
-      markLoginForInstallNotice();
       if (user.mustChangePassword) {
         router.replace("/account/password");
       } else {

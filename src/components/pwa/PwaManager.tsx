@@ -1,16 +1,12 @@
 "use client";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { consumeLoginInstallNotice, hasRelatedPwa, isPwaRemembered, isStandalonePwa, pwaInstallInstructions, rememberPwaInstalled, shouldOfferPwaInstall } from "@/lib/pwa-install";
+import { isStandalonePwa, pwaInstallInstructions, rememberPwaInstalled } from "@/lib/pwa-install";
 
 type InstallEvent = Event & { prompt: () => Promise<void>; userChoice: Promise<{ outcome: "accepted" | "dismissed" }> };
 export default function PwaManager() {
-  const pathname = usePathname();
   const promptRef = useRef<InstallEvent | null>(null);
   const dialogRef = useRef<HTMLDialogElement>(null);
-  const noticeVersion = useRef(0);
-  const loginNoticeActive = useRef(false);
   const [canInstall, setCanInstall] = useState(false);
   const [installOpen, setInstallOpen] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -21,10 +17,8 @@ export default function PwaManager() {
   const [updateDismissed, setUpdateDismissed] = useState(false);
   const [setupError, setSetupError] = useState("");
 
-  const closeInstall = useCallback(() => { loginNoticeActive.current = false; noticeVersion.current++; setInstallOpen(false); }, []);
+  const closeInstall = useCallback(() => { setInstallOpen(false); }, []);
   const install = useCallback(async () => {
-    loginNoticeActive.current = false;
-    noticeVersion.current++;
     setInstallOpen(true);
     const standalone = isStandalonePwa();
     setInstalledView(standalone);
@@ -49,12 +43,9 @@ export default function PwaManager() {
     const ready = (event: Event) => {
       event.preventDefault(); promptRef.current = event as InstallEvent; setCanInstall(true);
       if (!isStandalonePwa()) rememberPwaInstalled(false);
-      if (loginNoticeActive.current && !isStandalonePwa()) {
-        setInstalledView(false); setGuide("この端末のホーム画面に在庫管理を追加できます。"); setInstallOpen(true);
-      }
     };
-    const installed = () => { loginNoticeActive.current = false; rememberPwaInstalled(true); noticeVersion.current++; promptRef.current = null; setCanInstall(false); setInstallOpen(false); };
-    const request = () => { void install(); };
+    const installed = () => { rememberPwaInstalled(true); promptRef.current = null; setCanInstall(false); setInstallOpen(false); };
+    const request = (event: Event) => { event.preventDefault(); void install(); };
     const display = window.matchMedia("(display-mode: standalone)");
     const modeChanged = () => { if (isStandalonePwa()) installed(); };
     modeChanged();
@@ -84,23 +75,6 @@ export default function PwaManager() {
   }, [install]);
 
   useEffect(() => {
-    if (pathname === "/login") { loginNoticeActive.current = false; noticeVersion.current++; setInstallOpen(false); return; }
-    if (!consumeLoginInstallNotice()) return;
-    loginNoticeActive.current = true;
-    const version = ++noticeVersion.current;
-    void (async () => {
-      const relatedInstalled = await hasRelatedPwa();
-      if (version !== noticeVersion.current) return;
-      const standalone = isStandalonePwa();
-      if (standalone || relatedInstalled) rememberPwaInstalled(true);
-      if (!shouldOfferPwaInstall({ standalone, relatedInstalled, installable: Boolean(promptRef.current), remembered: isPwaRemembered() })) return;
-      setInstalledView(false);
-      setGuide(`ホーム画面に追加すると、アイコンからすぐに起動できます。${pwaInstallInstructions()}`);
-      setInstallOpen(true);
-    })();
-  }, [pathname]);
-
-  useEffect(() => {
     if (installOpen && !dialogRef.current?.open) dialogRef.current?.showModal();
     if (!installOpen && dialogRef.current?.open) dialogRef.current.close();
   }, [installOpen]);
@@ -112,7 +86,7 @@ export default function PwaManager() {
       {setupError && <p role="alert" className="my-3 rounded-xl bg-amber-50 p-3 text-amber-900">{setupError}</p>}
       <div className="flex flex-wrap gap-3">
         {!installedView && <button disabled={busy} onClick={() => void install()} className="rounded-xl bg-blue-700 px-5 py-3 font-bold text-white disabled:opacity-50">{busy ? "追加を確認中…" : canInstall ? "この端末に追加する" : "この端末での追加方法を確認"}</button>}
-        <button disabled={busy} onClick={closeInstall} className="rounded-xl border px-5 py-3 font-bold">{installedView ? "閉じる" : "あとで"}</button>
+        <button disabled={busy} onClick={closeInstall} className="rounded-xl border px-5 py-3 font-bold">閉じる</button>
         {!installedView && <button disabled={busy} onClick={() => { rememberPwaInstalled(true); closeInstall(); }} className="rounded-xl border px-5 py-3 font-bold">この端末には追加済み</button>}
         <Link href="/install" onClick={closeInstall} className="px-2 py-3 font-bold text-blue-700 underline">詳しい手順</Link>
       </div>

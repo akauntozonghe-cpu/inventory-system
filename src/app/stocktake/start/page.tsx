@@ -1,6 +1,8 @@
 "use client";
 import { fetchFresh } from "@/lib/fetch-fresh";
 
+import StocktakeGroupFilter from "@/components/stocktake/StocktakeGroupFilter";
+import { matchesStocktakeGroup, type StocktakeGroup } from "@/lib/stocktake-groups";
 import Link from "next/link";
 import ReopenStocktakeButton from "@/components/stocktake/ReopenStocktakeButton";
 import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
@@ -125,6 +127,7 @@ export default function StocktakeStartPage() {
   const scopeRef = useRef<HTMLSelectElement | null>(null);
 
   const [currentUser, setCurrentUser] = useState<CurrentUser | null>(null);
+  const [group, setGroup] = useState<StocktakeGroup>("ACTIVE");
   const [sessions, setSessions] = useState<StocktakeSession[]>([]);
   const [options, setOptions] = useState<OptionData>({
     storageLocations: [],
@@ -408,13 +411,15 @@ export default function StocktakeStartPage() {
             <p className="text-sm font-bold text-indigo-600">
               再開・確認できる棚卸
             </p>
-            <h2 className="mt-1 text-2xl font-black">作業中の棚卸</h2>
+            <h2 className="mt-1 text-2xl font-black">棚卸一覧</h2>
             <p className="mt-2 text-slate-600">
               中断した棚卸は再開できます。確認待ち・競合中の棚卸は結果を確認してください。
             </p>
 
             <div className="mt-6 space-y-3">
-              {sessions.map((session) => (
+              <StocktakeGroupFilter sessions={sessions} value={group} onChange={setGroup} />
+              {!sessions.some(session => matchesStocktakeGroup(session.status, group)) && <p className="p-4 text-slate-600">この区分の棚卸はありません。上のボタンで切り替えられます。</p>}
+              {sessions.filter(session => matchesStocktakeGroup(session.status, group)).map((session) => (
                 <article
                   key={session.id}
                   className="rounded-2xl border border-slate-200 p-5"
@@ -450,7 +455,7 @@ export default function StocktakeStartPage() {
 
                     {session.isAdminView && <ReopenStocktakeButton sessionId={session.id} status={session.status} />}
                     {session.status === "REVIEW" ||
-                    session.status === "CONFLICT" ? (
+                    session.status === "CONFLICT" || session.status === "COMPLETED" || session.status === "CANCELLED" ? (
                       <Link
                         href={`/stocktake/${session.id}/result`}
                         className="rounded-xl bg-indigo-600 px-5 py-3 text-center font-black text-white transition hover:bg-indigo-500"
