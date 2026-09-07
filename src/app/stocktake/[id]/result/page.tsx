@@ -1,6 +1,7 @@
 "use client";
 import { displayUnit } from "@/lib/unit";
 
+import ProductEditDialog from "@/components/ProductEditDialog";
 import Link from "next/link";
 import ReopenStocktakeButton from "@/components/stocktake/ReopenStocktakeButton";
 import { useLiveRefresh } from "@/hooks/useLiveRefresh";
@@ -23,7 +24,9 @@ type ResultRecord = {
   expectedQuantity: number;
   difference: number;
   memo: string | null;
+  lotNo: string | null;
   item: {
+    id: string;
     name: string;
     janCode: string | null;
     systemBarcode: string | null;
@@ -108,6 +111,8 @@ export default function StocktakeResultPage() {
   const [applying, setApplying] = useState(false);
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
+  const [editingProduct, setEditingProduct] = useState<string | null>(null);
+  const [memoOnly, setMemoOnly] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
 
   const loadResult = useCallback(async () => {
@@ -389,13 +394,18 @@ export default function StocktakeResultPage() {
             </p>
           </div>
 
+          <label className="mt-5 flex items-center gap-3 rounded-xl bg-slate-100 p-3 font-bold">
+            <input type="checkbox" checked={memoOnly} onChange={(event) => setMemoOnly(event.target.checked)} className="h-5 w-5" />
+            メモありのみ表示（{data.records.filter(record => record.memo?.trim()).length}件）
+          </label>
+          {memoOnly && !data.records.some(record => record.memo?.trim()) && <p className="mt-4 text-slate-600">メモのある棚卸入力はありません。</p>}
           {data.records.length === 0 ? (
             <div className="mt-6 rounded-2xl bg-slate-100 p-6 text-center text-slate-600">
               保存済みの棚卸入力がありません。
             </div>
           ) : (
             <div className="mt-6 space-y-3">
-              {data.records.map((record) => (
+              {data.records.filter(record => !memoOnly || record.memo?.trim()).map((record) => (
                 <article
                   key={record.id}
                   className={`rounded-2xl border p-5 ${
@@ -411,6 +421,8 @@ export default function StocktakeResultPage() {
                       </h3>
 
                       <div className="mt-2 space-y-1 text-sm text-slate-600">
+                        <p>Lot：{record.lotNo || "未設定"}</p>
+                        <p className="break-all text-xs">管理No.：{record.inventoryInstanceId}</p>
                         <p>JAN：{record.item.janCode || "-"}</p>
                         <p>
                           保管場所：
@@ -460,16 +472,23 @@ export default function StocktakeResultPage() {
                   </div>
 
                   {record.memo && (
-                    <p className="mt-4 rounded-xl bg-slate-100 p-3 text-sm text-slate-700">
+                    <p className="mt-4 whitespace-pre-wrap break-words rounded-xl bg-amber-50 p-3 text-sm text-slate-800">
                       メモ：{record.memo}
                     </p>
                   )}
+                  {data.permissions.isAdmin && <button type="button" disabled={applying} onClick={() => setEditingProduct(record.item.id)} className="mt-4 rounded-xl border border-blue-300 px-4 py-3 font-bold text-blue-700 disabled:opacity-50">商品情報を編集する</button>}
                 </article>
               ))}
             </div>
           )}
         </section>
       </div>
+
+      {editingProduct && <ProductEditDialog key={editingProduct} itemId={editingProduct} onClose={() => setEditingProduct(null)} onSaved={() => {
+        setEditingProduct(null);
+        setMessage("商品情報を更新しました。");
+        void loadResult().catch(() => setError("商品情報は保存済みですが、結果の再取得に失敗しました。通信回復後に更新します。"));
+      }} />}
 
       {showConfirm && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/70 p-5">

@@ -96,6 +96,7 @@ export async function GET(
               },
               item: {
                 select: {
+                  id: true,
                   name: true,
                   janCode: true,
                   systemBarcode: true,
@@ -162,6 +163,7 @@ export async function GET(
               }
             : null,
           item: {
+            id: inventory.item.id,
             name: inventory.item.name,
             janCode: inventory.item.janCode,
             systemBarcode: inventory.item.systemBarcode,
