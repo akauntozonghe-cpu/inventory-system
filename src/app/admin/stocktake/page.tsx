@@ -1,6 +1,8 @@
 "use client";
 
 import Link from "next/link";
+import { useLiveRefresh } from "@/hooks/useLiveRefresh";
+import { fetchFresh } from "@/lib/fetch-fresh";
 import ReopenStocktakeButton from "@/components/stocktake/ReopenStocktakeButton";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
@@ -214,17 +216,17 @@ export default function AdminStocktakePage() {
     action: SessionAction;
   } | null>(null);
 
-  const loadData = useCallback(async (showLoading = true) => {
+  const loadData = useCallback(async (showLoading = true, background = false) => {
     if (showLoading) {
       setLoading(true);
     }
 
-    setError("");
+    if (!background) setError("");
 
     try {
       const [userResponse, sessionResponse] = await Promise.all([
-        fetch("/api/auth/me", { cache: "no-store" }),
-        fetch("/api/stocktake/session?all=true", { cache: "no-store" }),
+        fetchFresh("/api/auth/me", { cache: "no-store" }),
+        fetchFresh("/api/stocktake/session?all=true", { cache: "no-store" }),
       ]);
 
       const [userData, sessionData] = await Promise.all([
@@ -266,6 +268,7 @@ export default function AdminStocktakePage() {
 
       setSessions(normalizeSessions(sessionData));
     } catch (caught) {
+      if (background) throw caught;
       setError(
         caught instanceof Error
           ? caught.message
@@ -281,6 +284,8 @@ export default function AdminStocktakePage() {
   useEffect(() => {
     void loadData();
   }, [loadData]);
+
+  const syncFailed = useLiveRefresh(() => loadData(false, true));
 
   const filteredSessions = useMemo(() => {
     if (filter === "ALL") {
@@ -390,6 +395,7 @@ export default function AdminStocktakePage() {
 
   return (
     <main className="mx-auto max-w-7xl px-4 py-6 sm:px-6 sm:py-10">
+      {syncFailed && <p role="status" className="mb-3 rounded-xl bg-amber-50 p-3">更新確認に失敗しています。通信回復後に自動で再取得します。</p>}
       <header className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div>
           <p className="text-sm font-black tracking-[0.14em] text-violet-600">

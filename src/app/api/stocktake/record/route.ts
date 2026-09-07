@@ -89,6 +89,14 @@ export async function POST(request: NextRequest) {
           throw new Error("STOCKTAKE_NOT_IN_PROGRESS");
         }
 
+        // Serialize input with finishing/reopening the session. A delayed save must
+        // not slip into a review after another device has ended input.
+        const claimed = await transaction.stocktakeSession.updateMany({
+          where: { id: sessionId, status: "IN_PROGRESS" },
+          data: { updatedAt: new Date() },
+        });
+        if (claimed.count !== 1) throw new Error("STOCKTAKE_SESSION_CHANGED");
+
         const target = await transaction.stocktakeTarget.findUnique({
           where: {
             sessionId_inventoryInstanceId: {
@@ -160,6 +168,7 @@ export async function POST(request: NextRequest) {
       error instanceof Error ? error.message : "STOCKTAKE_RECORD_500";
 
     const messages: Record<string, string> = {
+      STOCKTAKE_SESSION_CHANGED: "別端末で棚卸の状態が変更されました。最新の状態を確認してください。",
       STOCKTAKE_SESSION_NOT_FOUND:
         "棚卸セッションが見つかりません。",
       STOCKTAKE_OPERATOR_FORBIDDEN:
@@ -177,7 +186,7 @@ export async function POST(request: NextRequest) {
         ? 403
         : code === "STOCKTAKE_SESSION_NOT_FOUND"
           ? 404
-          : code === "STOCKTAKE_CONFLICT_LOCKED"
+          : (code === "STOCKTAKE_CONFLICT_LOCKED" || code === "STOCKTAKE_SESSION_CHANGED")
             ? 409
             : 400;
 

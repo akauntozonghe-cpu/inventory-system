@@ -1,6 +1,9 @@
 "use client";
 
 import Link from "next/link";
+import { useRef } from "react";
+import { useLiveRefresh } from "@/hooks/useLiveRefresh";
+import { fetchFresh } from "@/lib/fetch-fresh";
 import ReopenStocktakeButton from "@/components/stocktake/ReopenStocktakeButton";
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
@@ -143,13 +146,16 @@ export default function StocktakeHistoryPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
-  const load = async (all = showAll) => {
-    setLoading(true);
-    setError("");
+  const loadVersion = useRef(0);
+  const load = async (all = showAll, background = false) => {
+    const version = ++loadVersion.current;
+    if (!background) setShowAll(all);
+    if (!background) setLoading(true);
+    if (!background) setError("");
 
     try {
-      const response = await fetch(
-        `/api/stocktake/session${all ? "?all=true" : ""}`,
+      const response = await fetchFresh(
+        `/api/stocktake/session?all=${all}`,
         { cache: "no-store" }
       );
 
@@ -170,17 +176,20 @@ export default function StocktakeHistoryPage() {
         throw new Error("棚卸履歴の形式が正しくありません。");
       }
 
+      if (version !== loadVersion.current) return;
       setSessions(data.sessions);
       setIsAdmin(data.isAdmin);
       setShowAll(all);
     } catch (caughtError) {
+      if (version !== loadVersion.current) return;
+      if (background) throw caughtError;
       setError(
         caughtError instanceof Error
           ? caughtError.message
           : "棚卸履歴を取得できませんでした。"
       );
     } finally {
-      setLoading(false);
+      if (version === loadVersion.current) setLoading(false);
     }
   };
 
@@ -189,6 +198,8 @@ export default function StocktakeHistoryPage() {
     // 初回のみ
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  const syncFailed = useLiveRefresh(() => load(showAll, true));
 
   const displayedSessions = useMemo(() => {
     const normalizedKeyword = keyword.trim().toLowerCase();
@@ -213,6 +224,7 @@ export default function StocktakeHistoryPage() {
 
   return (
     <main className="min-h-screen bg-slate-50 p-4 text-slate-900 sm:p-8">
+      {syncFailed && <p role="status" className="rounded-xl bg-amber-50 p-3">最新の棚卸状態を確認できません。通信回復後に再取得します。</p>}
       <div className="mx-auto max-w-5xl">
         <header className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
           <div>

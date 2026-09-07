@@ -23,6 +23,21 @@ describe("stocktake confirmation guards", () => {
     db.inventoryInstance.updateMany.mockResolvedValue({ count: 1 });
     db.$transaction.mockImplementation((callback: (tx: typeof db) => unknown) => callback(db));
   });
+  it("reconfirms an unchanged reopened session without rolling back later stock movements", async () => {
+    db.stocktakeSession.findUnique.mockResolvedValue({ id: "s", title: "棚卸", status: "REVIEW", operatorUserId: "worker", updatedAt: date, completedAt: date });
+    db.stocktakeRecord.findMany.mockResolvedValue([{ inventoryInstanceId: "inventory", countedQuantity: 5, updatedAt: new Date(date.getTime() - 1000) }]);
+    const response = await request();
+    expect(response.status).toBe(200);
+    expect(db.inventoryInstance.updateMany).not.toHaveBeenCalled();
+    expect(db.inventoryHistory.create).not.toHaveBeenCalled();
+  });
+  it("applies only newly changed records when confirming a reopened completed session", async () => {
+    db.stocktakeSession.findUnique.mockResolvedValue({ id: "s", title: "棚卸", status: "REVIEW", operatorUserId: "worker", updatedAt: date, completedAt: date });
+    db.stocktakeRecord.findMany.mockResolvedValue([{ inventoryInstanceId: "untouched", countedQuantity: 2, updatedAt: new Date(date.getTime() - 1000) }, { inventoryInstanceId: "inventory", countedQuantity: 5, updatedAt: new Date(date.getTime() + 1000) }]);
+    expect((await request()).status).toBe(200);
+    expect(db.inventoryInstance.findMany.mock.calls[0][0].where.id.in).toEqual(["inventory"]);
+    expect(db.inventoryInstance.updateMany).toHaveBeenCalledOnce();
+  });
   it("does not write inventory or history if another device already claimed the session", async () => {
     db.stocktakeSession.updateMany.mockResolvedValue({ count: 0 });
     const response = await request();

@@ -145,6 +145,13 @@ const inventoryMenus: MenuItem[] = [
 
 const systemMenus: MenuItem[] = [
   {
+    href: "/reset",
+    icon: "⚠️",
+    title: "データ初期化",
+    description: "初期化が必要な場合に対象を確認して実行します。",
+    color: "bg-red-700",
+  },
+  {
     href: "/admin/operation-mode",
     icon: "🛠️",
     title: "運用モード設定",

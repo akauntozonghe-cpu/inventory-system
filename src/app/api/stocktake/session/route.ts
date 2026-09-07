@@ -45,8 +45,9 @@ export async function GET(request: NextRequest) {
   try {
     const isAdmin = hasAdminAccess(request);
 
+    const showAll = isAdmin && request.nextUrl.searchParams.get("all") !== "false";
     const sessions = await prisma.stocktakeSession.findMany({
-      where: isAdmin
+      where: showAll
         ? {
             // 管理者は取消以外すべて表示
             status: {
@@ -105,6 +106,8 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({
       success: true,
       code: "STOCKTAKE_SESSION_LIST_OK",
+      isAdmin,
+      scope: showAll ? "ALL" : "MINE",
 
       sessions: sessions.map((session) => {
         const targetCount = session._count.targets;
@@ -117,6 +120,7 @@ export async function GET(request: NextRequest) {
           title: session.title,
 
           operator: session.operator,
+          operatorUser: session.operatorUser,
 
           operatorUserId: session.operatorUserId,
 
@@ -197,7 +201,7 @@ export async function GET(request: NextRequest) {
             session.status === "CONFLICT",
         };
       }),
-    });
+    }, { headers: { "Cache-Control": "private, no-store" } });
   } catch (error) {
     console.error(
       "GET /api/stocktake/session",

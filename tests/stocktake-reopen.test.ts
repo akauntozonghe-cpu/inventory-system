@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { NextRequest, NextResponse } from "next/server";
 const mock = vi.hoisted(() => ({
   admin: true,
-  db: { stocktakeSession: { findUnique: vi.fn(), updateMany: vi.fn() }, adminActionLog: { create: vi.fn() }, $transaction: vi.fn() },
+  db: { stocktakeSession: { findUnique: vi.fn(), updateMany: vi.fn() }, stocktakeRecord: { findMany: vi.fn() }, adminActionLog: { create: vi.fn() }, $transaction: vi.fn() },
 }));
 vi.mock("@/lib/prisma", () => ({ prisma: mock.db }));
 vi.mock("@/lib/auth", () => ({ requireAdmin: () => mock.admin ? { user: { id: "admin" } } : { response: NextResponse.json({ message: "管理者のみ" }, { status: 403 }) } }));
@@ -14,6 +14,7 @@ describe("administrator reopens a finished stocktake", () => {
     vi.clearAllMocks(); mock.admin = true;
     mock.db.stocktakeSession.findUnique.mockResolvedValue({ id: "s", title: "棚卸", status: "REVIEW", updatedAt: date });
     mock.db.stocktakeSession.updateMany.mockResolvedValue({ count: 1 });
+    mock.db.stocktakeRecord.findMany.mockResolvedValue([]);
     mock.db.$transaction.mockImplementation(operation => operation(mock.db));
   });
   it("rejects a worker before reading or writing the database", async () => {
@@ -31,10 +32,17 @@ describe("administrator reopens a finished stocktake", () => {
     expect(mock.db.stocktakeSession.updateMany).toHaveBeenCalledWith({ where: { id: "s", status: "REVIEW", updatedAt: date }, data: { status: "IN_PROGRESS", pausedAt: null } });
     expect(mock.db.adminActionLog.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ adminUserId: "admin", action: "STOCKTAKE_REOPEN", detail: expect.objectContaining({ reason: "数量を確認し直す", recordsPreserved: true }) }) }));
   });
-  it.each(["IN_PROGRESS", "PAUSED", "COMPLETED", "CANCELLED", "CONFLICT"])("does not reopen %s", async status => {
+  it.each(["IN_PROGRESS", "PAUSED", "CANCELLED", "CONFLICT"])("does not reopen %s", async status => {
     mock.db.stocktakeSession.findUnique.mockResolvedValue({ id: "s", status, updatedAt: date });
     expect((await request()).status).toBe(409);
     expect(mock.db.stocktakeSession.updateMany).not.toHaveBeenCalled();
+  });
+  it("preserves the original worker and saved quantities when reopening a completed session", async () => {
+    mock.db.stocktakeSession.findUnique.mockResolvedValue({ id: "s", title: "棚卸", status: "COMPLETED", operatorUserId: "original-worker", updatedAt: date, completedAt: date });
+    mock.db.stocktakeRecord.findMany.mockResolvedValue([{ inventoryInstanceId: "i", countedQuantity: 9, updatedAt: date }]);
+    expect((await request()).status).toBe(200);
+    expect(mock.db.stocktakeSession.updateMany.mock.calls[0][0].data).toEqual({ status: "IN_PROGRESS", pausedAt: null });
+    expect(mock.db.adminActionLog.create.mock.calls[0][0].data.detail).toMatchObject({ operatorUserId: "original-worker", previousCompletedAt: date.toISOString(), previousRecords: [{ inventoryInstanceId: "i", countedQuantity: 9, updatedAt: date.toISOString() }] });
   });
   it("returns not found for a missing session", async () => {
     mock.db.stocktakeSession.findUnique.mockResolvedValue(null);

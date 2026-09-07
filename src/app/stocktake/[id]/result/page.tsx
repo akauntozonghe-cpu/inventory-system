@@ -310,7 +310,7 @@ export default function StocktakeResultPage() {
             </h2>
             <p className="mt-3 leading-7 text-indigo-900">
               正式確定すると、保存済みの棚卸数量が在庫数へ反映され、棚卸履歴が作成されます。
-              確定後も履歴から確認できます。
+              完了済みから再開した棚卸では、今回追加・修正した数量だけを反映します。確定後も履歴から確認できます。
             </p>
 
             {data.summary.recordedCount === 0 && <p role="status" className="mt-4 rounded-xl bg-amber-100 p-4 font-bold text-amber-950">保存済みの棚卸数量がないため、このまま正式確定はできません。{data.permissions.isAdmin ? "上の「管理者として途中から再開」から入力を再開してください。" : "管理者に再開を依頼してください。"}</p>}

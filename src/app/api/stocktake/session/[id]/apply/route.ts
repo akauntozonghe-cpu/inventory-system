@@ -1,3 +1,4 @@
+import { recordsForConfirmation } from "@/lib/stocktake-reopening";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getLoggedInUser, hasAdminAccess } from "@/lib/auth";
@@ -42,6 +43,7 @@ export async function POST(
         status: true,
         operatorUserId: true,
         updatedAt: true,
+        completedAt: true,
       },
     });
 
@@ -94,6 +96,7 @@ export async function POST(
       select: {
         inventoryInstanceId: true,
         countedQuantity: true,
+        updatedAt: true,
       },
     });
 
@@ -107,7 +110,8 @@ export async function POST(
       );
     }
 
-    const inventoryIds = records.map((record) => record.inventoryInstanceId);
+    const recordsToApply = recordsForConfirmation(records, session.completedAt);
+    const inventoryIds = recordsToApply.map((record) => record.inventoryInstanceId);
 
     const inventories = await prisma.inventoryInstance.findMany({
       where: {
@@ -126,7 +130,7 @@ export async function POST(
       inventories.map((inventory) => [inventory.id, inventory])
     );
 
-    const targetsToApply = records
+    const targetsToApply = recordsToApply
       .map((record) => {
         const inventory = inventoryMap.get(record.inventoryInstanceId);
 
@@ -152,7 +156,7 @@ export async function POST(
         } => target !== null
       );
 
-    if (targetsToApply.length === 0) {
+    if (targetsToApply.length !== recordsToApply.length || (!session.completedAt && targetsToApply.length === 0)) {
       return NextResponse.json(
         {
           code: "STOCKTAKE_APPLY_INVENTORY_EMPTY",
