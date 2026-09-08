@@ -189,7 +189,7 @@ export async function PATCH(request: NextRequest) {
     const input = body as Record<string, unknown>;
     const action = input.action;
     if (action === "SYNC_PRODUCT_METADATA") {
-      const result = await repairProductLinks(auth.user.id);
+      const result = await repairProductLinks(elevation.adminUserId, typeof input.reason === "string" ? input.reason.trim().slice(0,1000) : undefined);
       return NextResponse.json({ success: true, message: "商品情報の紐付けを修復しました（" + result.updated + "件）。再チェックで結果を確認します。", result });
     }
 
@@ -473,6 +473,7 @@ export async function PATCH(request: NextRequest) {
             detail: {
               itemId: item.id,
               itemName: item.name,
+              reason: typeof input.reason === "string" ? input.reason.trim().slice(0,1000) : null,
               systemBarcode,
             },
           },

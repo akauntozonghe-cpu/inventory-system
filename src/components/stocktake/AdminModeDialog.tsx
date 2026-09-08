@@ -129,7 +129,7 @@ export default function AdminModeDialog({
   };
 
   return (
-    <div className="fixed inset-0 z-[80] overflow-y-auto bg-slate-950/70 p-4">
+    <div className="fixed inset-0 z-[200] overflow-y-auto bg-slate-950/70 p-4">
       <div className="mx-auto flex min-h-full max-w-md items-center">
         <section
           role="dialog"
@@ -151,7 +151,7 @@ export default function AdminModeDialog({
           </p>
 
           <label className="mt-5 block text-sm font-bold text-slate-800">
-            全機能利用者ID
+            管理者ID
             <input
               value={username}
               autoComplete="username"

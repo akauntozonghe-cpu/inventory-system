@@ -4,6 +4,7 @@ import {
   adminElevationCookieOptions,
   createAdminElevationToken,
   getLoggedInUser,
+  getAdminElevation,
   verifyPassword,
 } from "@/lib/auth";
 import { createAdminActionLog } from "@/lib/error-report";
@@ -38,8 +39,8 @@ export async function POST(request: NextRequest) {
 
     const body = (await request.json()) as RequestBody;
 
-    const username = getText(body.username, 100);
-    const password = getText(body.password, 200);
+    const username = getText(body.username, 100).normalize("NFKC");
+    const password = typeof body.password === "string" ? body.password : "";
     const errorReportId = getText(body.errorReportId, 100) || undefined;
     const route = getText(body.route, 500) || undefined;
     const sessionId = getText(body.sessionId, 100) || undefined;
@@ -95,7 +96,7 @@ export async function POST(request: NextRequest) {
       detail: {
         authenticatedBy: currentUser.id,
         authenticatedByName: currentUser.displayName,
-        reason: "棚卸画面の隠し管理者モードを有効化",
+        reason: "共通の管理者モードを有効化",
       },
     });
 
@@ -132,3 +133,10 @@ export async function POST(request: NextRequest) {
     );
   }
 }
+export async function GET(request: NextRequest) {
+  const user = getLoggedInUser(request);
+  if (!user) return NextResponse.json({message:"ログインが必要です。"},{status:401});
+  const elevation = getAdminElevation(request);
+  return NextResponse.json({role:user.role,expiresAt:elevation?.authenticatedByUserId === user.id ? elevation.expiresAt : 0},{headers:{"Cache-Control":"no-store"}});
+}
+export async function DELETE() { const response=NextResponse.json({success:true});response.cookies.delete(ADMIN_ELEVATION_COOKIE);return response; }

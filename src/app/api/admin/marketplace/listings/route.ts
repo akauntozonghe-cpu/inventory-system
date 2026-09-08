@@ -1,3 +1,4 @@
+import { reverseMarketplace } from "@/lib/marketplace-reversal";
 import { NextRequest, NextResponse } from "next/server";
 import { Prisma } from "@prisma/client";
 import { requireLogin } from "@/lib/auth";
@@ -35,13 +36,16 @@ async function loadMarketplace(request: NextRequest) {
   const auth = requireLogin(request);
   if (auth.response) return auth.response;
 
+  const query = (request.nextUrl.searchParams.get("inventoryQuery") ?? "").normalize("NFKC").trim().slice(0,200);
+  const category = request.nextUrl.searchParams.get("category");
+  const location = request.nextUrl.searchParams.get("location");
   const [listings, inventories, channels, shippingRates, recommendationSetting] = await Promise.all([
     prisma.marketplaceListing.findMany({
       orderBy: { updatedAt: "desc" },
       include: { inventoryInstance: { include: { item: true, storageLocation: true } } },
     }),
     prisma.inventoryInstance.findMany({
-      where: { quantity: { gt: 0 }, status: { not: "廃止" } },
+      where: { quantity: { gt: 0 }, status: { not: "廃止" }, item: { isArchived:false, ...(category ? {majorCategory:category}: {}) }, ...(location ? {storageLocation:{name:location}}:{}), ...(query ? {OR:[{item:{name:{contains:query,mode:"insensitive" as const}}},{item:{janCode:{contains:query}}},{item:{systemBarcode:{contains:query,mode:"insensitive" as const}}},{item:{managementCode:{contains:query,mode:"insensitive" as const}}},{lotNo:{contains:query,mode:"insensitive" as const}},{storageLocation:{name:{contains:query,mode:"insensitive" as const}}}]}:{}) },
       orderBy: { updatedAt: "desc" },
       include: { item: true, storageLocation: true },
       take: 500,
@@ -169,11 +173,13 @@ async function changeListing(request: NextRequest) {
   const body = await request.json().catch(() => null) as Record<string, unknown> | null;
   const id = text(body?.id, 100);
   const action = text(body?.action, 40);
+  if (action === "ADMIN_REVERSE" && body) return reverseMarketplace(request, body);
   if (!id) return NextResponse.json({ code: "MARKETPLACE_ID_REQUIRED", message: "対象の出品を指定してください。" }, { status: 400 });
 
   const existing = await prisma.marketplaceListing.findUnique({ where: { id }, include: { inventoryInstance: { include: { item: true } } } });
   if (!existing) return NextResponse.json({ code: "MARKETPLACE_NOT_FOUND", message: "対象の出品が見つかりません。" }, { status: 404 });
 
+  if (body?.expectedUpdatedAt && body.expectedUpdatedAt !== existing.updatedAt.toISOString()) throw new Error("MARKETPLACE_CHANGED");
   if (action === "UPDATE_DETAILS") {
     const listing = await prisma.marketplaceListing.update({
       where: { id, updatedAt: existing.updatedAt },
@@ -198,6 +204,8 @@ async function changeListing(request: NextRequest) {
     if (!SHIPPING_STATUSES.includes(shippingStatus as typeof SHIPPING_STATUSES[number])) {
       return NextResponse.json({ code: "MARKETPLACE_SHIPPING_STATUS_INVALID", message: "発送状態が正しくありません。" }, { status: 400 });
     }
+    const nextShipping = ({NOT_READY:"PACKING",PACKING:"READY_TO_SHIP",READY_TO_SHIP:"SHIPPED",SHIPPED:"DELIVERED",DELIVERED:"SETTLED"} as Record<string,string>)[existing.shippingStatus];
+    if (shippingStatus !== nextShipping) return NextResponse.json({message:"発送状態は順に進めてください。取消・差戻しは管理者操作から行えます。"},{status:409});
     const now = new Date();
     const listing = await prisma.marketplaceListing.update({
       where: { id, updatedAt: existing.updatedAt },
@@ -218,6 +226,7 @@ async function changeListing(request: NextRequest) {
   if (!LISTING_STATUSES.includes(status as typeof LISTING_STATUSES[number])) {
     return NextResponse.json({ code: "MARKETPLACE_STATUS_INVALID", message: "更新内容が正しくありません。" }, { status: 400 });
   }
+  if (status !== "CANCELLED" && ({DRAFT:"READY",READY:"LISTED",LISTED:"SOLD"} as Record<string,string>)[existing.status] !== status) return NextResponse.json({message:"順番に状態を進めてください。差戻しは管理者モードから行えます。"},{status:409});
   if (["SOLD", "CANCELLED"].includes(existing.status)) {
     return NextResponse.json({ code: "MARKETPLACE_ALREADY_CLOSED", message: "終了済みの出品は変更できません。" }, { status: 409 });
   }

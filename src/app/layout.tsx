@@ -1,3 +1,4 @@
+import PageAdminMode from "@/components/auth/PageAdminMode";
 import ScanAudioInitializer from "@/components/ScanAudioInitializer";
 import type { Metadata } from "next";
 import LogoutButton from "@/components/auth/LogoutButton";
@@ -32,7 +33,7 @@ export default function RootLayout({
         <PwaManager />
         <ScanAudioInitializer />
         <LogoutButton />
-        <div id="main-content" tabIndex={-1} className="min-h-screen">{children}</div>
+        <PageAdminMode><div id="main-content" tabIndex={-1} className="min-h-screen">{children}</div></PageAdminMode>
       </body>
     </html>
   );

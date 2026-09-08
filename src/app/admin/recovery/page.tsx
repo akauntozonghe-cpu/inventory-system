@@ -1,0 +1,3 @@
+import RecoveryWizard from "@/components/RecoveryWizard";
+import Link from "next/link";
+export default function RecoveryPage(){return <main className="min-h-screen bg-slate-100 p-4 sm:p-8"><div className="mx-auto max-w-5xl"><header className="mb-5"><h1 className="text-3xl font-black">管理者復旧</h1><p className="mt-2 text-slate-600">診断 → 対象・処置の確認 → 実行 → 再チェック</p></header><RecoveryWizard/><nav className="flex flex-wrap gap-3"><Link className="rounded-xl border bg-white p-3 font-bold" href="/admin/system-check">詳細な点検履歴・手動確認</Link><Link className="rounded-xl border bg-white p-3 font-bold" href="/admin/error-reports">エラー記録</Link><Link className="rounded-xl border bg-white p-3 font-bold" href="/admin">管理者設定</Link></nav></div></main>}

@@ -137,7 +137,7 @@ const systemMenus: MenuItem[] = [
     color: "bg-amber-600",
   },
   {
-    href: "/admin/system-check",
+    href: "/admin/recovery",
     icon: "🩺",
     title: "システム点検",
     description:

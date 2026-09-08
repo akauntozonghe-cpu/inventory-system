@@ -44,3 +44,13 @@ it("does not ship an unsold listing", async () => {
   expect((await PATCH(request({ id: "listing", action: "UPDATE_SHIPPING", shippingStatus: "SHIPPED" })))?.status).toBe(409);
   expect(db.marketplaceListing.update).not.toHaveBeenCalled();
 });
+it("does not allow a draft to skip straight to a sale", async () => {
+  db.marketplaceListing.findUnique.mockResolvedValue({ id:"listing",status:"DRAFT",updatedAt:new Date(0),inventoryInstance:inventory });
+  expect((await PATCH(request({id:"listing",status:"SOLD"})))?.status).toBe(409);
+  expect(db.$transaction).not.toHaveBeenCalled();
+});
+it("does not allow ordinary shipping updates to reverse a completed shipment",async()=>{
+  db.marketplaceListing.findUnique.mockResolvedValue({id:"listing",status:"SOLD",shippingStatus:"SHIPPED",updatedAt:new Date(0),inventoryInstance:inventory});
+  expect((await PATCH(request({id:"listing",action:"UPDATE_SHIPPING",shippingStatus:"PACKING"})))?.status).toBe(409);
+  expect(db.marketplaceListing.update).not.toHaveBeenCalled();
+});

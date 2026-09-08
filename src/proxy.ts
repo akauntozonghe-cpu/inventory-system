@@ -71,6 +71,7 @@ function isSystemAdminRoute(pathname: string) {
 
   return (
     pathname === "/admin" ||
+    pathname.startsWith("/admin/recovery") ||
     pathname.startsWith("/admin/maintenance-recovery") ||
     pathname.startsWith("/admin/users") ||
     pathname.startsWith("/admin/error-reports") ||
@@ -154,7 +155,7 @@ export async function proxy(request: NextRequest) {
     return response;
   }
   const elevation = getAdminElevation(request);
-  if (elevation) {
+  if (elevation && !(pathname === "/admin/re-auth" && ["POST","DELETE"].includes(method))) {
     const sponsor = await prisma.appUser.findUnique({ where: { id: elevation.adminUserId }, select: { isActive: true, role: true } });
     if (!sponsor?.isActive || sponsor.role !== "ADMIN" || elevation.authenticatedByUserId !== user.id) {
       const response = NextResponse.json({ code: "ADMIN_ELEVATION_REVOKED", message: "一時管理者認証が無効になりました。必要な操作では再認証してください。" }, { status: 403 });
@@ -187,6 +188,7 @@ export async function proxy(request: NextRequest) {
   if (operationSetting?.mode === "MAINTENANCE") {
     const adminRecoveryPage =
       pathname === "/admin/maintenance-recovery" ||
+      pathname === "/admin/recovery" ||
       pathname.startsWith("/admin/operation-mode") ||
       pathname.startsWith("/admin/system-check") ||
       pathname.startsWith("/admin/error-reports") ||
