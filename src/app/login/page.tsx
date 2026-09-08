@@ -1,7 +1,7 @@
 "use client";
 
 import { type FormEvent, useState } from "react";
-import { useRouter } from "next/navigation";
+import { resetSessionActivity } from "@/lib/session-activity";
 
 const asciiOnly = (value: string) => value.normalize("NFKC").replace(/[^A-Za-z0-9]/g, "").slice(0, 64);
 
@@ -44,7 +44,7 @@ async function readLoginResponse(
 }
 
 export default function LoginPage() {
-  const router = useRouter();
+
 
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
@@ -95,13 +95,8 @@ export default function LoginPage() {
         return;
       }
 
-      if (user.mustChangePassword) {
-        router.replace("/account/password");
-      } else {
-        router.replace("/");
-      }
-
-      router.refresh();
+      resetSessionActivity();
+      window.location.replace(user.mustChangePassword ? "/account/password" : "/");
     } catch {
       setErrorCode("AUTH_LOGIN_NETWORK_ERROR");
       setError(

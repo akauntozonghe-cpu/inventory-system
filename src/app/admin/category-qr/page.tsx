@@ -1,4 +1,5 @@
 "use client";
+import SectionNavigation, { classificationLinks } from "@/components/common/SectionNavigation";
 
 import { useLiveRefresh } from "@/hooks/useLiveRefresh";
 import Link from "next/link";
@@ -222,7 +223,7 @@ export default function CategoryQrPage() {
           >
             管理者設定へ戻る
           </Link>
-        </header>
+        </header><SectionNavigation label="分類管理" current="/admin/category-qr" links={classificationLinks} />
 
         {message && (
           <section className="mb-5 rounded-2xl border border-red-200 bg-red-50 p-5 font-bold text-red-700">

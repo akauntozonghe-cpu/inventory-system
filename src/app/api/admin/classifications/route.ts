@@ -10,6 +10,8 @@ function text(value: unknown, max = 100) { return normalizeDisplayText(value, ma
 
 async function mergeInventory(sourceLocationId: string, targetLocationId: string, actorId: string) {
   return prisma.$transaction(async (tx) => {
+    const [from, to] = await Promise.all([tx.storageLocation.findUnique({ where: { id: sourceLocationId } }), tx.storageLocation.findUnique({ where: { id: targetLocationId } })]);
+    if (!from || !to) throw new Error("LOCATION_CHANGED");
     const source = await tx.inventoryInstance.findMany({ where: { storageLocationId: sourceLocationId }, orderBy: { createdAt: "asc" } });
     let moved = 0, consolidated = 0;
     for (const inventory of source) {
@@ -37,8 +39,12 @@ async function mergeInventory(sourceLocationId: string, targetLocationId: string
       await tx.inventoryInstance.delete({ where: { id: inventory.id } });
       consolidated += 1;
     }
+    await tx.itemRegistrationRequest.updateMany({ where: { storageLocationId: sourceLocationId }, data: { storageLocationId: targetLocationId } });
+    await tx.stocktakeSession.updateMany({ where: { scopeType: "LOCATION", scopeValue: from.name, status: { in: ["IN_PROGRESS", "PAUSED", "REVIEW", "CONFLICT"] } }, data: { scopeValue: to.name, scopeLabel: to.name } });
+    await tx.storageLocation.delete({ where: { id: sourceLocationId } });
+    await tx.adminActionLog.create({ data: { adminUserId: actorId, action: "CLASSIFICATION_MERGE_LOCATION", route: "/admin/classifications", detail: { sourceLocationId, targetLocationId, moved, consolidated } } });
     return { moved, consolidated };
-  }, { timeout: 30_000 });
+  }, { timeout: 30_000, isolationLevel: "Serializable" });
 }
 
 export async function GET(request: NextRequest) {
@@ -104,7 +110,8 @@ export async function POST(request: NextRequest) {
         return { items: items.count, inventories: inventories.count };
       });
     } else if (action === "ASSIGN_ITEMS") {
-      const itemIds = Array.isArray(body.itemIds) ? Array.from(new Set(body.itemIds.filter((value): value is string => typeof value === "string" && value.length > 0))).slice(0, 500) : [];
+      const itemIds = Array.isArray(body.itemIds) ? Array.from(new Set(body.itemIds.filter((value): value is string => typeof value === "string" && value.length > 0))) : [];
+      if (itemIds.length > 500) return NextResponse.json({ code: "CLASSIFICATION_BATCH_LIMIT", message: "一度に変更できるのは500件までです。選択を減らして実行してください。" }, { status: 400 });
       const hasMajor = Object.prototype.hasOwnProperty.call(body, "majorCategory");
       const hasMinor = Object.prototype.hasOwnProperty.call(body, "minorCategory");
       const majorCategory = body.majorCategory === null ? null : text(body.majorCategory);
@@ -113,6 +120,7 @@ export async function POST(request: NextRequest) {
       if (hasMinor && minorCategory && !(hasMajor ? majorCategory : text(body.currentMajor))) return NextResponse.json({ code: "CLASSIFICATION_PARENT_REQUIRED", message: "小分類を設定する場合は大分類も選択してください。" }, { status: 400 });
       result = await prisma.$transaction(async (tx) => {
         const selected = await tx.item.findMany({ where: { id: { in: itemIds }, isArchived: false }, select: { id: true, majorCategory: true, minorCategory: true } });
+        if (selected.length !== itemIds.length) throw new Error("CLASSIFICATION_ITEMS_CHANGED");
         for (const item of selected) {
           const nextMajor = hasMajor ? majorCategory : item.majorCategory;
           const nextMinor = hasMinor ? minorCategory : (hasMajor && majorCategory !== item.majorCategory ? null : item.minorCategory);
@@ -135,13 +143,10 @@ export async function POST(request: NextRequest) {
       result = await prisma.$transaction([prisma.storageLocation.update({ where: { id: sourceId }, data: { name: target, description: text(body.description, 500) || before.description } }), prisma.stocktakeSession.updateMany({ where: { scopeType: "LOCATION", scopeValue: before.name, status: { in: ["IN_PROGRESS", "PAUSED", "REVIEW", "CONFLICT"] } }, data: { scopeValue: target, scopeLabel: target } })]);
     } else if (action === "MERGE_LOCATION") {
       const sourceId = text(body.sourceId), targetId = text(body.targetId); if (!sourceId || !targetId || sourceId === targetId) return NextResponse.json({ code: "LOCATION_MERGE_INVALID", message: "異なる統合元と統合先を指定してください。" }, { status: 400 });
-      const [from, to] = await Promise.all([prisma.storageLocation.findUnique({ where: { id: sourceId } }), prisma.storageLocation.findUnique({ where: { id: targetId } })]); if (!from || !to) return NextResponse.json({ code: "LOCATION_NOT_FOUND", message: "統合する保管場所が見つかりません。" }, { status: 404 });
-      const merged = await mergeInventory(sourceId, targetId, auth.user.id);
-      await prisma.itemRegistrationRequest.updateMany({ where: { storageLocationId: sourceId }, data: { storageLocationId: targetId } });
-      await prisma.stocktakeSession.updateMany({ where: { scopeType: "LOCATION", scopeValue: from.name, status: { in: ["IN_PROGRESS", "PAUSED", "REVIEW", "CONFLICT"] } }, data: { scopeValue: to.name, scopeLabel: to.name } });
-      await prisma.storageLocation.delete({ where: { id: sourceId } }); result = merged;
+      result = await mergeInventory(sourceId, targetId, auth.user.id);
     } else return NextResponse.json({ code: "CLASSIFICATION_ACTION_INVALID", message: "編集操作が正しくありません。" }, { status: 400 });
-    await createAdminActionLog({ adminUserId: auth.user.id, action: `CLASSIFICATION_${action}`, route: "/admin/classifications", detail: { kind, name, parentName, source, target, targetParent, result: result as never } });
+    if (action !== "MERGE_LOCATION") await createAdminActionLog({ adminUserId: auth.user.id, action: `CLASSIFICATION_${action}`, route: "/admin/classifications", detail: { kind, name, parentName, source, target, targetParent, result: result as never } });
     return NextResponse.json({ code: "CLASSIFICATION_UPDATE_OK", message: "分類・在庫・棚卸範囲を更新し、操作履歴へ記録しました。", result });
-  } catch (error) { console.error("POST classifications", error); return NextResponse.json({ code: "CLASSIFICATION_UPDATE_FAILED", message: error instanceof Error && (error.message.startsWith("小分類の変更") || error.message.startsWith("同名の小分類")) ? error.message : "分類編集を完了できませんでした。現在の状態を再読込して確認してください。", action: "入力内容を確認して再試行し、解決しない場合はエラー管理を開いてください。" }, { status: 500 }); }
+  } catch (error) { console.error("POST classifications", error);
+    if (error && typeof error === "object" && (("code" in error && ["P2034", "P2025"].includes(String(error.code))) || (error instanceof Error && ["LOCATION_CHANGED", "CLASSIFICATION_ITEMS_CHANGED"].includes(error.message)))) return NextResponse.json({ code: "CLASSIFICATION_CHANGED", message: "他の操作で情報が変わりました。再読込してから実行してください。" }, { status: 409 }); return NextResponse.json({ code: "CLASSIFICATION_UPDATE_FAILED", message: error instanceof Error && (error.message.startsWith("小分類の変更") || error.message.startsWith("同名の小分類")) ? error.message : "分類編集を完了できませんでした。現在の状態を再読込して確認してください。", action: "入力内容を確認して再試行し、解決しない場合はエラー管理を開いてください。" }, { status: 500 }); }
 }

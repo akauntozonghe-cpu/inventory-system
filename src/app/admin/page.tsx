@@ -79,35 +79,13 @@ const stocktakeMenus: MenuItem[] = [
       "過去の棚卸結果、差異、担当者、実施日時を確認できます。",
     color: "bg-sky-600",
   },
-  {
-    href: "/admin/category-qr",
-    icon: "▣",
-    title: "大分類QR管理",
-    description:
-      "大分類ごとのQRを発行し、棚卸時の分類別作業に利用できます。",
-    color: "bg-fuchsia-600",
-  },
 ];
 
 const inventoryMenus: MenuItem[] = [
   {
-    href: "/admin/marketplace/settings",
-    icon: "🚚",
-    title: "販売・配送連携設定",
-    description: "販売手数料、送料表、地域、目標利益、公式API・CSV連携方式を画面から設定します。",
-    color: "bg-cyan-700",
-  },
-  {
-    href: "/admin/marketplace/advisor",
-    icon: "💡",
-    title: "価格・送料・季節提案",
-    description: "原価、梱包、送料、手数料、天候、季節から出品商品と見込利益を提案します。",
-    color: "bg-violet-700",
-  },
-  {
-    href: "/admin/marketplace",
+    href: "/marketplace",
     icon: "🛍️",
-    title: "フリマ出品・販売連携",
+    title: "フリマ販売",
     description: "出品候補、出品中、売却、在庫減算、CSV連携をまとめて管理します。",
     color: "bg-pink-600",
   },

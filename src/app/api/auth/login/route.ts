@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import {
   AUTH_COOKIE,
+  ADMIN_ELEVATION_COOKIE,
   createSessionToken,
   sessionCookieOptions,
   verifyPassword,
@@ -91,6 +92,7 @@ export async function POST(request: NextRequest) {
       sessionCookieOptions
     );
 
+    response.cookies.delete(ADMIN_ELEVATION_COOKIE);
     return response;
   } catch (error) {
     console.error("=== LOGIN ERROR ===");

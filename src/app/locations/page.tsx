@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
 
 export default function LocationsPage() {
-  redirect("/admin/classifications?section=locations");
+  redirect("/admin/classifications#locations");
 }

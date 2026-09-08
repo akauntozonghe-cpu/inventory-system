@@ -1,7 +1,6 @@
 "use client";
 
 import Link from "next/link";
-import ContinueStocktake from "@/components/dashboard/ContinueStocktake";
 import { fetchFresh } from "@/lib/fetch-fresh";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
@@ -172,6 +171,7 @@ export default function HomePage() {
         });
 
         const authData = await readJson(authResponse);
+        if (cancelled) return;
 
         if (authResponse.status === 401) {
           router.replace("/login");
@@ -340,7 +340,6 @@ export default function HomePage() {
           </div>
         </header>
 
-        {(user.role === "ADMIN" || user.featurePermissions.includes("STOCKTAKE")) && <ContinueStocktake />}
 
         <div className="mb-4 mt-8 flex items-end justify-between px-1"><div><p className="text-xs font-bold uppercase tracking-[.18em] text-slate-500">Workspace</p><h2 className="mt-1 text-xl font-black tracking-tight">機能を選ぶ</h2></div><p className="hidden text-sm text-slate-500 sm:block">よく使う順に配置しています</p></div>
         <section className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">

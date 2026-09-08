@@ -5,8 +5,8 @@ import { useEffect, useRef, useState } from "react";
 
 const IDLE_LIMIT_MS = 30 * 60 * 1000;
 const WARNING_MS = 60 * 1000;
-const ACTIVITY_KEY = "inventory:last-activity";
-const PUBLIC_PATHS = new Set(["/login", "/setup", "/maintenance"]);
+import { ACTIVITY_KEY } from "@/lib/session-activity";
+const PUBLIC_PATHS = new Set(["/login", "/setup", "/maintenance", "/install", "/offline"]);
 
 export default function IdleSessionGuard() {
   const pathname = usePathname();
@@ -21,11 +21,14 @@ export default function IdleSessionGuard() {
       return;
     }
 
+    loggingOutRef.current = false;
+    let memoryActivity = Date.now();
     const recordActivity = () => {
       const now = Date.now();
       if (now - lastWriteRef.current < 10_000) return;
       lastWriteRef.current = now;
-      localStorage.setItem(ACTIVITY_KEY, String(now));
+      memoryActivity = now;
+      try { localStorage.setItem(ACTIVITY_KEY, String(now)); } catch {}
       setRemainingSeconds(null);
     };
 
@@ -33,11 +36,12 @@ export default function IdleSessionGuard() {
       if (loggingOutRef.current) return;
       loggingOutRef.current = true;
       try { await fetch("/api/auth/logout", { method: "POST" }); }
-      finally { localStorage.removeItem(ACTIVITY_KEY); router.replace("/login?reason=idle"); router.refresh(); }
+      finally { try { localStorage.removeItem(ACTIVITY_KEY); } catch {} window.location.replace("/login?reason=idle"); }
     };
 
     const check = () => {
-      const saved = Number(localStorage.getItem(ACTIVITY_KEY));
+      let saved = memoryActivity;
+      try { saved = Number(localStorage.getItem(ACTIVITY_KEY)) || memoryActivity; } catch {}
       const lastActivity = Number.isFinite(saved) && saved > 0 ? saved : Date.now();
       const remaining = IDLE_LIMIT_MS - (Date.now() - lastActivity);
       if (remaining <= 0) void logout();
@@ -45,7 +49,7 @@ export default function IdleSessionGuard() {
       else setRemainingSeconds(null);
     };
 
-    if (!localStorage.getItem(ACTIVITY_KEY)) recordActivity();
+    try { if (!localStorage.getItem(ACTIVITY_KEY)) recordActivity(); } catch { recordActivity(); }
     const events: Array<keyof WindowEventMap> = ["pointerdown", "keydown", "touchstart", "scroll"];
     events.forEach((event) => window.addEventListener(event, recordActivity, { passive: true }));
     window.addEventListener("storage", check);
@@ -55,5 +59,5 @@ export default function IdleSessionGuard() {
   }, [pathname, router]);
 
   if (remainingSeconds === null) return null;
-  return <div className="fixed inset-x-4 top-4 z-[100] mx-auto max-w-lg rounded-2xl border border-amber-300 bg-amber-50 p-4 text-amber-950 shadow-xl" role="alert"><p className="font-black">まもなく自動ログアウトします</p><p className="mt-1 text-sm">無操作状態が続いています。あと約{remainingSeconds}秒です。画面を操作すると延長されます。</p><button type="button" onClick={() => { const now = Date.now(); localStorage.setItem(ACTIVITY_KEY, String(now)); lastWriteRef.current = now; setRemainingSeconds(null); }} className="mt-3 rounded-xl bg-amber-700 px-4 py-2 font-bold text-white">ログインを延長</button></div>;
+  return <div className="fixed inset-x-4 top-4 z-[100] mx-auto max-w-lg rounded-2xl border border-amber-300 bg-amber-50 p-4 text-amber-950 shadow-xl" role="alert"><p className="font-black">まもなく自動ログアウトします</p><p className="mt-1 text-sm">無操作状態が続いています。あと約{remainingSeconds}秒です。画面を操作すると延長されます。</p><button type="button" onClick={() => { const now = Date.now(); try { localStorage.setItem(ACTIVITY_KEY, String(now)); } catch {} lastWriteRef.current = 0; window.dispatchEvent(new Event("pointerdown")); setRemainingSeconds(null); }} className="mt-3 rounded-xl bg-amber-700 px-4 py-2 font-bold text-white">ログインを延長</button></div>;
 }

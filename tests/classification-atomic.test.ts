@@ -1,0 +1,13 @@
+import { beforeEach, expect, it, vi } from "vitest";
+import { NextRequest } from "next/server";
+const db=vi.hoisted(()=>({$transaction:vi.fn(),storageLocation:{findUnique:vi.fn(),delete:vi.fn()},inventoryInstance:{findMany:vi.fn()},itemRegistrationRequest:{updateMany:vi.fn()},stocktakeSession:{updateMany:vi.fn()},adminActionLog:{create:vi.fn()}}));
+const log=vi.hoisted(()=>vi.fn());
+vi.mock("@/lib/prisma",()=>({prisma:db}));
+vi.mock("@/lib/auth",()=>({requireAdmin:()=>({user:{id:"admin"},response:null})}));
+vi.mock("@/lib/error-report",()=>({createAdminActionLog:log}));
+import { POST } from "../src/app/api/admin/classifications/route";
+const request=(body:object)=>new NextRequest("http://localhost/api/admin/classifications",{method:"POST",body:JSON.stringify(body)});
+beforeEach(()=>{vi.resetAllMocks();db.$transaction.mockImplementation(async callback=>callback(db));db.storageLocation.findUnique.mockImplementation(async ({where})=>({id:where.id,name:where.id}));db.inventoryInstance.findMany.mockResolvedValue([]);});
+it("keeps location references and action log inside the merge transaction",async()=>{let inTransaction=false;db.$transaction.mockImplementation(async callback=>{inTransaction=true;const result=await callback(db);inTransaction=false;return result;});for(const method of [db.itemRegistrationRequest.updateMany,db.stocktakeSession.updateMany,db.storageLocation.delete,db.adminActionLog.create])method.mockImplementation(async()=>{expect(inTransaction).toBe(true);return {};});expect((await POST(request({action:"MERGE_LOCATION",sourceId:"from",targetId:"to"})))?.status).toBe(200);expect(db.$transaction).toHaveBeenCalledWith(expect.any(Function),expect.objectContaining({isolationLevel:"Serializable"}));expect(log).not.toHaveBeenCalled();});
+it("does not delete a location after a reference update failed",async()=>{db.itemRegistrationRequest.updateMany.mockRejectedValue({code:"P2034"});expect((await POST(request({action:"MERGE_LOCATION",sourceId:"from",targetId:"to"})))?.status).toBe(409);expect(db.storageLocation.delete).not.toHaveBeenCalled();});
+it("rejects too many selections instead of silently truncating them",async()=>{const response=await POST(request({action:"ASSIGN_ITEMS",itemIds:Array.from({length:501},(_,i)=>String(i)),majorCategory:"食品"}));expect(response?.status).toBe(400);expect(db.$transaction).not.toHaveBeenCalled();});
