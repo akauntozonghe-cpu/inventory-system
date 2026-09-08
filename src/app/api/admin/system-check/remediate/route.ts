@@ -52,7 +52,7 @@ export async function GET(request: NextRequest) {
   }
 
   const elevation = getAdminElevation(request);
-  if (!elevation || elevation.authenticatedByUserId !== auth.user.id) {
+  if (auth.user.role !== "ADMIN" && (!elevation || elevation.authenticatedByUserId !== auth.user.id)) {
     return NextResponse.json(
       {
         code: "ADMIN_ELEVATION_REQUIRED",
@@ -189,7 +189,7 @@ export async function PATCH(request: NextRequest) {
     const input = body as Record<string, unknown>;
     const action = input.action;
     if (action === "SYNC_PRODUCT_METADATA") {
-      const result = await repairProductLinks(elevation.adminUserId, typeof input.reason === "string" ? input.reason.trim().slice(0,1000) : undefined);
+      const result = await repairProductLinks(elevation?.adminUserId ?? auth.user.id, typeof input.reason === "string" ? input.reason.trim().slice(0,1000) : undefined);
       return NextResponse.json({ success: true, message: "商品情報の紐付けを修復しました（" + result.updated + "件）。再チェックで結果を確認します。", result });
     }
 

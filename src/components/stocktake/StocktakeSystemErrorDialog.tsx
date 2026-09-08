@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { useEffect } from "react";
 
 type Props = {
@@ -16,11 +15,8 @@ type Props = {
 export default function StocktakeSystemErrorDialog({
   code,
   message,
-  reportId,
   provisional,
-  isAdmin,
   onClose,
-  onRetry,
 }: Props) {
   useEffect(() => {
     const timer = window.setTimeout(onClose, 8000);
@@ -36,40 +32,21 @@ export default function StocktakeSystemErrorDialog({
         className="w-full max-w-lg rounded-3xl border-2 border-red-300 bg-white p-6 shadow-2xl"
       >
         <p className="text-sm font-black text-red-700">システムエラー</p>
-        <h2 id="stocktake-system-error-title" className="mt-1 text-2xl font-black text-slate-950">
+        <h2 data-admin-recovery-title="true" id="stocktake-system-error-title" className="mt-1 text-2xl font-black text-slate-950">
           自動復旧を完了できませんでした
         </h2>
         <p className="mt-4 font-semibold leading-7 text-slate-800">{message}</p>
         <div className="mt-4 rounded-2xl bg-slate-950 p-4 text-white">
           <p className="text-xs font-bold text-slate-300">エラーコード</p>
           <p className="mt-1 break-all font-mono text-sm font-black">{code}</p>
-          {reportId && (
-            <p className="mt-2 break-all text-xs text-slate-300">受付番号：{reportId}</p>
-          )}
+
         </div>
         {provisional && (
           <p className="mt-4 rounded-2xl border border-amber-300 bg-amber-50 p-4 text-sm font-bold leading-6 text-amber-950">
             今回の棚卸は端末内へ簡易保存しました。作業は続けられます。管理者が復旧完了にすると、この端末から正式登録されます。
           </p>
         )}
-        <p className="mt-4 rounded-2xl border border-blue-200 bg-blue-50 p-4 text-sm font-bold leading-6 text-blue-950">
-          管理側へ即時通知しました。まず「今すぐ自動復旧」を実行してください。改善しない場合は受付番号を伝えて管理者へお問い合わせください。
-        </p>
-        <p className="mt-3 text-center text-xs font-bold text-slate-600">
-          この表示は8秒後に自動で閉じます。未解決の間は画面左下に状態を表示します。
-        </p>
-        <div className="mt-6 grid gap-3 sm:grid-cols-2">
-          <button type="button" onClick={() => void onRetry()} className="rounded-xl bg-blue-700 px-5 py-3 font-black text-white hover:bg-blue-800">
-            今すぐ自動復旧
-          </button>
-          {isAdmin && (
-            <Link
-              href={`/admin/error-reports${reportId ? `?reportId=${encodeURIComponent(reportId)}` : ""}`}
-              className="rounded-xl bg-red-700 px-5 py-3 text-center font-black text-white hover:bg-red-800"
-            >
-              このエラーを管理者復旧
-            </Link>
-          )}
+        <div className="mt-6">
           <button
             type="button"
             onClick={onClose}

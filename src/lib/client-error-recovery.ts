@@ -96,21 +96,20 @@ export async function recoverAfterFailure<T>(
   const maxRetries = options.maxRetries ?? 2;
   const retryDelayMs = options.retryDelayMs ?? 700;
 
-  const reportId = await createReport({
+  const reportTask = createReport({
     code: options.code,
     title: options.title,
     message: options.message,
     route: options.route,
     sessionId: options.sessionId,
     detail: options.detail,
-  });
-
-  await updateReport(reportId, "START_AUTO_RECOVERY");
+  }).then(async reportId => { await updateReport(reportId, "START_AUTO_RECOVERY"); return reportId; });
 
   for (let attempt = 0; attempt <= maxRetries; attempt += 1) {
     try {
       const value = await options.action();
 
+      const reportId = await reportTask;
       await updateReport(
         reportId,
         "AUTO_RECOVERY_SUCCEEDED"
@@ -128,6 +127,7 @@ export async function recoverAfterFailure<T>(
     }
   }
 
+  const reportId = await reportTask;
   await updateReport(reportId, "ADMIN_REQUIRED");
 
   return {

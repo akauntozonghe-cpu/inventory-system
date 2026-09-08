@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 type AdminUser = {
   id: string;
@@ -41,6 +41,9 @@ export default function AdminModeDialog({
   const [loading, setLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
 
+  const authenticated = useRef(onAuthenticated);
+  useEffect(()=>{authenticated.current=onAuthenticated;},[onAuthenticated]);
+  useEffect(()=>{if(!open)return;let cancelled=false;void fetch("/api/auth/me",{cache:"no-store"}).then(response=>response.ok?response.json():null).then(user=>{if(!cancelled&&user?.role==="ADMIN")authenticated.current(user);}).catch(()=>{});return()=>{cancelled=true;};},[open]);
   if (!open) {
     return null;
   }
@@ -129,7 +132,7 @@ export default function AdminModeDialog({
   };
 
   return (
-    <div className="fixed inset-0 z-[200] overflow-y-auto bg-slate-950/70 p-4">
+    <div className="fixed inset-0 z-[500] overflow-y-auto bg-slate-950/70 p-4">
       <div className="mx-auto flex min-h-full max-w-md items-center">
         <section
           role="dialog"

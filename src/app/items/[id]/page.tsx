@@ -1,4 +1,5 @@
 "use client";
+import { useAdminMode } from "@/components/auth/PageAdminMode";
 import { fetchFresh } from "@/lib/fetch-fresh";
 
 import Link from "next/link";
@@ -280,7 +281,8 @@ export default function ItemDetailPage() {
   const [inventoryForm, setInventoryForm] =
     useState<InventoryForm | null>(null);
 
-  const isAdmin = currentUser?.role === "ADMIN";
+  const adminMode = useAdminMode();
+  const isAdmin = currentUser?.role === "ADMIN" || adminMode.active;
 
   const loadItem = useCallback(async (silent = false) => {
     if (!itemId) {

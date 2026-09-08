@@ -1,4 +1,5 @@
 "use client";
+import { useAdminMode } from "@/components/auth/PageAdminMode";
 import { fetchFresh } from "@/lib/fetch-fresh";
 
 import CompactFilter from "@/components/common/CompactFilter";
@@ -81,7 +82,8 @@ export default function ItemPage() {
 
   const [editingItem, setEditingItem] = useState<Item | null>(null);
 
-  const isAdmin = currentUser?.role === "ADMIN";
+  const adminMode = useAdminMode();
+  const isAdmin = currentUser?.role === "ADMIN" || adminMode.active;
 
   const fetchUser = useCallback(async () => {
     try {

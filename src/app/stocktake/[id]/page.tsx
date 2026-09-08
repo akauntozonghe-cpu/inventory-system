@@ -520,7 +520,7 @@ export default function StocktakePage() {
           else if (recoveredItems.length > 1) { setLotCandidates(recoveredItems); }
           else setError("自動復旧後も該当商品がありません。棚卸範囲を確認し、登録済みの場合は管理者へお問い合わせください。");
         } else {
-          setSystemError({ code, message: `${detail} 管理者へ即時通知しました。管理者にお問い合わせください。`, reportId: recovery.reportId, provisional: false, retry: async () => {
+          setSystemError({ code, message: detail, reportId: recovery.reportId, provisional: false, retry: async () => {
             const retryItems = await requestBarcode(trimmed);
             if (retryItems.length === 1) selectItem(retryItems[0]);
             else if (retryItems.length > 1) { setLotCandidates(retryItems); }

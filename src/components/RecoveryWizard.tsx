@@ -24,7 +24,11 @@ async function read(response: Response) {
   return value;
 }
 
-export default function RecoveryWizard() {
+export default function RecoveryWizard({contextRoute}:{contextRoute?:string}) {
+  const [reports,setReports]=useState<Array<{id:string;code:string;message:string;recoveryAttempts:number}>>([]);
+  const [verified,setVerified]=useState(false),[completionNote,setCompletionNote]=useState("");
+  const readReports=async()=>{if(!contextRoute)return;const value=await read(await fetchFresh("/api/admin/system-check/reports?"+new URLSearchParams({route:contextRoute})));setReports(value.reports??[]);};
+  const finish=async(report:{id:string;recoveryAttempts:number})=>{if(!run)return;setBusy(true);setError("");try{const value=await read(await fetchFresh("/api/admin/system-check/reports",{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify({id:report.id,expectedAttempts:report.recoveryAttempts,route:contextRoute,runId:run.id,verified,reason:completionNote})}));setResult(value.message);await readReports();}catch(error){setError(error instanceof Error?error.message:"復旧完了を記録できませんでした。");}finally{setBusy(false);}};
   const diagnosisVersion = useRef(0);
   const [review,setReview] = useState<Action|null>(null);
   const [reason,setReason] = useState("");
@@ -43,14 +47,14 @@ export default function RecoveryWizard() {
     setBusy(true); setError(""); setStep(recheck ? 3 : 0); setRechecked(false);
     try {
       const value = await read(await fetchFresh("/api/admin/system-check", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "RUN_AUTO" }) }));
-      setRun(value.run); setHistoryLoaded(false); setTargets([]); setSessions([]); setStep(recheck ? 3 : 1); setRechecked(recheck);
+      setRun(value.run); setHistoryLoaded(false); setTargets([]); setSessions([]); setStep(recheck ? 3 : 1); setRechecked(recheck); setVerified(false); await readReports();
     } catch (caught) { setError(caught instanceof Error ? caught.message : "診断できませんでした。"); }
     finally { setBusy(false); }
   }
   async function loadTargets() {
     setBusy(true); setError("");
     try {
-      const value = await read(await fetch("/api/admin/system-check/remediate", { cache: "no-store" }));
+      const value = await read(await fetchFresh("/api/admin/system-check/remediate", { cache: "no-store" }));
       setSessions(value.activeSessions ?? []);
       setTargets([...new Map((value.inventoriesWithoutIdentifier as Target[]).map((entry) => [entry.item.id, entry])).values()]);
     } catch (caught) {
@@ -86,6 +90,7 @@ export default function RecoveryWizard() {
     </article>)}</div>
     {run&&<section className="my-4 rounded-xl border p-4"><h3 className="font-black">止まっている棚卸を復旧する</h3><p className="my-2 text-sm">確認待ち・完了済みは棚卸管理で再開します。取消は入力内容を確認してから実行します。</p><button disabled={busy} className="rounded-lg border px-3 py-2 font-bold" onClick={()=>void loadTargets()}>対象の棚卸を確認</button><Link href="/admin/stocktake" className="ml-3 font-bold text-blue-700 underline">確認待ち・完了済みを再開</Link>{sessions.map(session=><div key={session.id} className="mt-3 rounded-xl bg-slate-50 p-3"><p className="font-bold">{session.title} ／ {session.scopeLabel}</p><Link href={"/stocktake/"+session.id} className="mr-3 text-blue-700 underline">記録を確認</Link>{session.status==="PAUSED"&&<button disabled={busy} className="rounded-lg border p-2" onClick={()=>{setReason("");setReview({action:"RESUME_SESSION",sessionId:session.id,label:session.title+"を再開"});}}>再開する</button>}{session.status==="IN_PROGRESS"&&<button disabled={busy} className="rounded-lg border p-2" onClick={()=>{setReason("");setReview({action:"PAUSE_SESSION",sessionId:session.id,label:session.title+"を中断"});}}>中断する</button>}<button disabled={busy} className="ml-2 rounded-lg border p-2 text-red-700" onClick={()=>{setReason("");setReview({action:"CANCEL_SESSION",sessionId:session.id,label:session.title+"を取消"});}}>取消を確認</button></div>)}</section>}
     <div className="mt-4 flex flex-wrap gap-3"><button disabled={busy} onClick={() => void diagnose(Boolean(run))} className="rounded-xl bg-slate-900 px-5 py-3 font-black text-white disabled:opacity-50">{busy ? `${steps[step]}中…` : run ? "再チェックする" : "診断を開始する"}</button>{rechecked && issues.length === 0 && !error && <Link href="/admin/operation-mode" className="rounded-xl bg-emerald-600 px-5 py-3 font-black text-white">運用状態を確認する</Link>}</div>
+    {contextRoute&&rechecked&&reports.length>0&&<section className="my-4 rounded-xl border p-4"><h3 className="font-black">最後に元の操作を確認する</h3><p className="my-2 text-sm">診断だけで直ったと判断せず、元の画面で問題の操作ができるか確認します。</p><label className="flex gap-2"><input type="checkbox" checked={verified} onChange={e=>setVerified(e.target.checked)}/>元の操作が正常にできることを確認しました</label><textarea aria-label="復旧完了の対応内容" className="my-3 w-full rounded-xl border p-3" value={completionNote} onChange={e=>setCompletionNote(e.target.value)} placeholder="実施した対応と確認結果"/>{reports.map(report=><div key={report.id} className="my-2 rounded-xl bg-slate-50 p-3"><p>{report.code}：{report.message}</p><button disabled={busy||!verified||!completionNote.trim()||issues.some(item=>item.status==="FAIL"||item.status==="NOT_RUN")} onClick={()=>void finish(report)} className="mt-2 rounded-xl bg-blue-700 p-3 font-bold text-white disabled:opacity-40">この問題の復旧を完了する</button></div>)}</section>}
     {review&&<div className="fixed inset-0 z-[90] grid place-items-center bg-slate-950/60 p-4"><section role="dialog" aria-modal="true" aria-label="復旧処置の確認" className="w-full max-w-lg rounded-2xl bg-white p-5"><h3 className="text-xl font-black">{review.label}</h3><p className="my-3">{review.action==="CANCEL_SESSION"?"棚卸を取り消します。入力と対象の記録を確認してください。在庫の数量はこの操作では変更しません。":review.action==="SYNC_PRODUCT_METADATA"?"商品マスターに合わせて在庫の分類・メーカー情報と分類の選択肢を修復します。数量は変更しません。":"選択した対象だけに処置を実行し、その後に再診断します。"}</p><textarea aria-label="復旧の理由" value={reason} onChange={e=>setReason(e.target.value)} placeholder="処置の理由（必須）" className="w-full rounded-xl border p-3"/><div className="mt-3 flex gap-3"><button disabled={busy||!reason.trim()} className="rounded-xl bg-blue-700 p-3 font-bold text-white disabled:opacity-40" onClick={()=>{const action={...review,reason};setReview(null);void execute(action);}}>この内容で実行</button><button className="rounded-xl border p-3" onClick={()=>setReview(null)}>戻る</button></div></section></div>}
     <AdminModeDialog open={Boolean(pending)} sessionId="" purpose="表示された復旧処置を実行するため、管理者として再認証してください。" onClose={() => setPending(null)} onAuthenticated={() => { const action = pending; setPending(null); if (action === "TARGETS") void loadTargets(); else if (action) void execute(action); }}/>
   </section>;

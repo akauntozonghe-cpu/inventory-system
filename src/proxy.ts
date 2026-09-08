@@ -271,7 +271,8 @@ export async function proxy(request: NextRequest) {
   // 管理者アカウントだけが直接開ける。
   if (
     isSystemAdminRoute(pathname) &&
-    liveUser.role !== "ADMIN"
+    liveUser.role !== "ADMIN" &&
+    !((pathname === "/api/admin/system-check" || pathname.startsWith("/api/admin/system-check/")) && hasAdminAccess(request))
   ) {
     if (pathname.startsWith("/api/")) {
       return NextResponse.json(

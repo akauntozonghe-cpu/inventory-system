@@ -40,8 +40,8 @@ describe("shared refresh subscriptions", () => {
     const view = vi.fn(async () => {}), failed = vi.fn();
     stops.push(subscribeLiveRefresh(view, failed));
     await vi.advanceTimersByTimeAsync(1000);
-    request.mockRejectedValueOnce(new Error("offline"));
-    await vi.advanceTimersByTimeAsync(2000);
+    request.mockRejectedValueOnce(new Error("offline")).mockRejectedValueOnce(new Error("offline")).mockRejectedValueOnce(new Error("offline"));
+    await vi.advanceTimersByTimeAsync(3000);
     expect(failed).toHaveBeenCalledTimes(1);
     expect(view).toHaveBeenCalledTimes(2);
   });

@@ -40,7 +40,7 @@ afterEach(() => {
 });
 
 describe("recoverAfterFailure", () => {
-  it("エラーレポート通信が応答しなくても期限後に保存の再試行へ進む", async () => {
+  it("エラーレポート通信を待たずに保存の再試行を開始する", async () => {
     installBrowserMocks();
     vi.useFakeTimers();
     globalThis.fetch = vi.fn((_input, init) => new Promise<Response>((_resolve, reject) => {
@@ -48,6 +48,7 @@ describe("recoverAfterFailure", () => {
     })) as typeof fetch;
     const action = vi.fn(async () => "saved");
     const pending = recoverAfterFailure({ code: "NETWORK_ERROR", title: "test", message: "test", action, retryDelayMs: 0 });
+    expect(action).toHaveBeenCalledTimes(1);
     await vi.advanceTimersByTimeAsync(15001);
     expect(await pending).toEqual({ success: true, value: "saved", reportId: null });
     expect(action).toHaveBeenCalledTimes(1);

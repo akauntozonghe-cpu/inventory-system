@@ -1,0 +1,7 @@
+import { afterEach, expect, it, vi } from "vitest";
+import { fetchFresh } from "../src/lib/fetch-fresh";
+afterEach(()=>{vi.unstubAllGlobals();vi.useRealTimers();});
+it("automatically retries a transient read",async()=>{vi.useFakeTimers();const fetcher=vi.fn().mockResolvedValueOnce(new Response("down",{status:503})).mockResolvedValue(new Response("ok"));vi.stubGlobal("fetch",fetcher);const pending=fetchFresh("/api/items");await vi.advanceTimersByTimeAsync(300);expect((await pending).status).toBe(200);expect(fetcher).toHaveBeenCalledTimes(2);});
+it("never replays an uncertain write",async()=>{const fetcher=vi.fn().mockResolvedValue(new Response("down",{status:503}));vi.stubGlobal("fetch",fetcher);expect((await fetchFresh("/api/inventory",{method:"POST"})).status).toBe(503);expect(fetcher).toHaveBeenCalledTimes(1);});
+it("does not retry validation or permission failures",async()=>{const fetcher=vi.fn().mockResolvedValue(new Response("denied",{status:403}));vi.stubGlobal("fetch",fetcher);await fetchFresh("/api/items");expect(fetcher).toHaveBeenCalledTimes(1);});
+it("limits repeated read failures",async()=>{vi.useFakeTimers();const fetcher=vi.fn().mockImplementation(async()=>new Response("down",{status:503}));vi.stubGlobal("fetch",fetcher);const pending=fetchFresh("/api/items");await vi.advanceTimersByTimeAsync(1000);expect((await pending).status).toBe(503);expect(fetcher).toHaveBeenCalledTimes(3);});

@@ -1,37 +1,53 @@
 "use client";
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from "react";
 import { usePathname } from "next/navigation";
-import Link from "next/link";
 import AdminModeDialog from "@/components/stocktake/AdminModeDialog";
+import RecoveryWizard from "@/components/RecoveryWizard";
+import PageStocktakeActions from "./PageStocktakeActions";
 import { fetchFresh } from "@/lib/fetch-fresh";
-const Context = createContext({active:false,open:()=>{}});
+type Intent = "page" | "recovery";
+const Context = createContext({active:false,isAdmin:false,open:()=>{}});
 export const useAdminMode = () => useContext(Context);
 const publicPaths = new Set(["/login","/setup","/install","/offline"]);
 export default function PageAdminMode({children}:{children:ReactNode}) {
-  const pathname = usePathname();
-  const [expiresAt,setExpiresAt] = useState(0), [role,setRole] = useState("");
-  const [authOpen,setAuthOpen] = useState(false), [menuOpen,setMenuOpen] = useState(false), [error,setError] = useState("");
-  const active = expiresAt > 0;
-  const open = useCallback(()=>{setError("");if(expiresAt > Date.now())setMenuOpen(true);else setAuthOpen(true);},[expiresAt]);
-  const openRef = useRef(open);useEffect(()=>{openRef.current=open;},[open]);
+  const pathname=usePathname();
+  const [expiresAt,setExpiresAt]=useState(0),[role,setRole]=useState("");
+  const [authOpen,setAuthOpen]=useState(false),[view,setView]=useState<Intent|null>(null),[error,setError]=useState("");
+  const [lastFailure,setLastFailure]=useState<{code:string;message:string}|null>(null);
+  const intent=useRef<Intent>("page");
+  const isAdmin=role==="ADMIN",active=isAdmin||expiresAt>0;
+  const show=useCallback((next:Intent="page")=>{setError("");intent.current=next;if(role==="ADMIN"||expiresAt>Date.now())setView(next);else setAuthOpen(true);},[role,expiresAt]);
+  const showRef=useRef(show);useEffect(()=>{showRef.current=show;},[show]);
   useEffect(()=>{
+    setView(null);setLastFailure(null);
     if(publicPaths.has(pathname))return;
     let cancelled=false;
-    const check=async()=>{try{const response=await fetchFresh("/admin/re-auth");if(!cancelled){if(!response.ok){setExpiresAt(0);return;}const value=await response.json();setRole(value.role);setExpiresAt(value.expiresAt > Date.now() ? value.expiresAt : 0);}}catch{if(!cancelled)setExpiresAt(0);}};
+    const check=async()=>{try{const response=await fetchFresh("/admin/re-auth");const value=response.ok?await response.json():null;if(!cancelled){setRole(value?.role||"");setExpiresAt(value?.expiresAt>Date.now()?value.expiresAt:0);}}catch{if(!cancelled){setRole("");setExpiresAt(0);}}};
     void check();window.addEventListener("focus",check);
     let count=0,last=0,target:Element|null=null;
-    const click=(event:MouseEvent)=>{const title=(event.target as Element)?.closest?.("h1");if(!title || title.closest('[role="dialog"]'))return;const now=Date.now();count=target===title&&now-last<900?count+1:1;target=title;last=now;if(count===3){count=0;openRef.current();}};
-    document.addEventListener("click",click);
-    return()=>{cancelled=true;window.removeEventListener("focus",check);document.removeEventListener("click",click);};
+    const click=(event:MouseEvent)=>{const title=(event.target as Element)?.closest?.("[data-admin-recovery-title], h1");if(!title)return;const now=Date.now();count=target===title&&now-last<900?count+1:1;last=now;target=title;if(count===3){count=0;showRef.current(title.hasAttribute("data-admin-recovery-title")?"recovery":"page");}};
+    const failure=(event:Event)=>{const value=(event as CustomEvent).detail;if(value?.code&&value?.message)setLastFailure(value);};
+    document.addEventListener("click",click);window.addEventListener("inventory:recovery-failed",failure);
+    return()=>{cancelled=true;window.removeEventListener("focus",check);document.removeEventListener("click",click);window.removeEventListener("inventory:recovery-failed",failure);};
   },[pathname]);
-  useEffect(()=>{if(!expiresAt)return;const timer=setTimeout(()=>{setExpiresAt(0);setMenuOpen(false);},Math.max(0,expiresAt-Date.now()));return()=>clearTimeout(timer);},[expiresAt]);
-  const exit=async()=>{try{const response=await fetchFresh("/admin/re-auth",{method:"DELETE"});if(!response.ok)throw new Error();setExpiresAt(0);setMenuOpen(false);}catch{setError("管理者モードを終了できませんでした。再試行してください。");}};
-  return <Context.Provider value={{active,open}}>{children}
-    {!publicPaths.has(pathname)&&<button type="button" onClick={open} className="fixed bottom-3 right-3 z-40 rounded-full border bg-white px-3 py-2 text-xs font-bold text-slate-700 shadow">{active?"管理者モード中":"管理者操作"}</button>}
-    <AdminModeDialog open={authOpen} sessionId="" purpose="このページの管理者操作を有効にします。権限は10分で終了します。" onClose={()=>setAuthOpen(false)} onAuthenticated={()=>{setExpiresAt(Date.now()+600000);setAuthOpen(false);setMenuOpen(true);}}/>
-    {menuOpen&&active&&<div className="fixed inset-0 z-[100] grid place-items-center bg-slate-950/60 p-4"><section role="dialog" aria-modal="true" aria-labelledby="page-admin-title" className="w-full max-w-lg rounded-2xl bg-white p-6 text-slate-950"><h2 id="page-admin-title" className="text-xl font-black">管理者モード</h2><p className="my-3 text-sm">操作は記録されます。タイトルを3回押すか「管理者操作」から開けます。</p>{error&&<p role="alert">{error}</p>}<div className="grid gap-3">
-    {pathname==="/marketplace"&&<button className="rounded-xl bg-violet-700 p-3 font-bold text-white" onClick={()=>{setMenuOpen(false);window.dispatchEvent(new Event("inventory:marketplace-admin"));}}>フリマの取消・差戻し</button>}
-    {role==="ADMIN"?<><Link className="rounded-xl border p-3 font-bold" onClick={()=>setMenuOpen(false)} href="/admin/recovery">診断・復旧を開く</Link><Link className="rounded-xl border p-3 font-bold" onClick={()=>setMenuOpen(false)} href="/admin/stocktake">棚卸の再開・確認待ちを管理</Link><Link className="rounded-xl border p-3 font-bold" onClick={()=>setMenuOpen(false)} href="/admin">管理者設定</Link></>:<p className="text-sm text-slate-600">このページの保護された業務操作に使えます。ユーザー管理・システム復旧は管理者アカウントで開いてください。</p>}
-    <button onClick={()=>window.location.reload()} className="rounded-xl border p-3 font-bold">最新の状態を読み直す</button><button onClick={()=>setMenuOpen(false)} className="rounded-xl border p-3 font-bold">作業に戻る</button><button onClick={()=>void exit()} className="rounded-xl bg-slate-800 p-3 font-bold text-white">管理者モードを終了</button></div></section></div>}
+  useEffect(()=>{if(!expiresAt||isAdmin)return;const timer=setTimeout(()=>{setExpiresAt(0);setView(null);},Math.max(0,expiresAt-Date.now()));return()=>clearTimeout(timer);},[expiresAt,isAdmin]);
+  const exit=async()=>{try{const response=await fetchFresh("/admin/re-auth",{method:"DELETE"});if(!response.ok)throw new Error();setExpiresAt(0);setView(null);}catch{setError("ADMIN_EXIT_FAILED：管理者モードを終了できませんでした。");}};
+  const stocktake=pathname.match(/^\/stocktake\/([^/]+)(?:\/result)?$/);
+  const stocktakeId=stocktake&&!['start','history'].includes(stocktake[1])?stocktake[1]:null;
+  const catalog=pathname.startsWith("/items");
+  return <Context.Provider value={{active,isAdmin,open:()=>show("page")}}>{children}
+    {!publicPaths.has(pathname)&&<button type="button" onClick={()=>show("page")} className="fixed bottom-3 right-3 z-40 rounded-full border bg-white px-3 py-2 text-xs font-bold text-slate-700 shadow">{isAdmin?"このページの管理操作":active?"管理者操作中":"管理者操作"}</button>}
+    <AdminModeDialog open={authOpen} sessionId={stocktakeId||""} purpose="このページの保護された操作・復旧を有効にします。" onClose={()=>setAuthOpen(false)} onAuthenticated={()=>{setExpiresAt(Date.now()+600000);setAuthOpen(false);setView(intent.current);}}/>
+    {view&&active&&<div className="fixed inset-0 z-[300] overflow-auto bg-slate-950/60 p-4"><section role="dialog" aria-modal="true" aria-labelledby="page-admin-title" className="mx-auto my-5 w-full max-w-3xl rounded-2xl bg-white p-5 text-slate-950"><header className="mb-4 flex items-start justify-between gap-3"><h2 id="page-admin-title" className="text-xl font-black">{view==="recovery"?"管理者復旧":"このページの管理操作"}</h2><button className="rounded-xl border px-3 py-2" onClick={()=>setView(null)}>閉じる</button></header>{error&&<p role="alert">{error}</p>}
+      {view==="recovery"?<>{lastFailure&&<p className="mb-3 rounded-xl bg-red-50 p-3">{lastFailure.code}：{lastFailure.message}</p>}<RecoveryWizard contextRoute={pathname}/></>:<div className="grid gap-3">
+        {pathname==="/marketplace"&&<button className="rounded-xl bg-violet-700 p-3 font-bold text-white" onClick={()=>{setView(null);window.dispatchEvent(new Event("inventory:marketplace-admin"));}}>このページの出品を取消・差戻し</button>}
+        {stocktakeId&&<PageStocktakeActions sessionId={stocktakeId}/>}
+        {catalog&&<button className="rounded-xl border p-3 font-bold" onClick={()=>setView(null)}>商品・在庫の編集操作へ戻る</button>}
+        {pathname==="/admin/classifications"&&<p className="rounded-xl bg-slate-50 p-3">この画面で分類名の変更・統合、商品への分類割当、保管場所の整理を行えます。</p>}
+        <button className="rounded-xl border p-3 font-bold" onClick={()=>setView("recovery")}>このページのエラーを診断・復旧</button>
+        <button className="rounded-xl border p-3 font-bold" onClick={()=>window.location.reload()}>最新情報を読み直す</button>
+        {!isAdmin&&<button className="rounded-xl bg-slate-800 p-3 font-bold text-white" onClick={()=>void exit()}>管理者操作を終了</button>}
+      </div>}
+    </section></div>}
   </Context.Provider>;
 }

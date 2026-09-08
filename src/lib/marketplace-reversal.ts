@@ -7,7 +7,7 @@ export async function reverseMarketplace(request: NextRequest, body: Record<stri
   const auth = requireAdmin(request);
   if (auth.response || !auth.user) return auth.response;
   const elevation = getAdminElevation(request);
-  if (!elevation || elevation.authenticatedByUserId !== auth.user.id) return NextResponse.json({code:"ADMIN_ELEVATION_REQUIRED",message:"取消・差戻しには管理者認証が必要です。"},{status:403});
+  if (auth.user.role !== "ADMIN" && (!elevation || elevation.authenticatedByUserId !== auth.user.id)) return NextResponse.json({code:"ADMIN_ELEVATION_REQUIRED",message:"取消・差戻しには管理者認証が必要です。"},{status:403});
   const id = typeof body.id === "string" ? body.id : "";
   const reason = typeof body.reason === "string" ? body.reason.trim().slice(0,1000) : "";
   const target = body.targetStatus;
@@ -30,11 +30,11 @@ export async function reverseMarketplace(request: NextRequest, body: Record<stri
       const changed = await tx.inventoryInstance.updateMany({where:{id:inventory.id,updatedAt:inventory.updatedAt,quantity:inventory.quantity},data:{quantity:after,actualQuantity:inventory.actualQuantity === null ? null : inventory.actualQuantity + restored}});
       if (changed.count !== 1) throw new Error("MARKETPLACE_CHANGED");
       await tx.inventoryHistory.create({data:{inventoryInstanceId:inventory.id,changeQuantity:restored,action:"フリマ販売取消："+reason}});
-      await tx.inventoryEvent.create({data:{inventoryInstanceId:inventory.id,eventType:"RETURN",quantityBefore:inventory.quantity,quantityChange:restored,quantityAfter:after,reason,performedByUserId:auth.user!.id,detail:{marketplaceListingId:id,adminUserId:elevation.adminUserId,originalStatus:current.status}}});
+      await tx.inventoryEvent.create({data:{inventoryInstanceId:inventory.id,eventType:"RETURN",quantityBefore:inventory.quantity,quantityChange:restored,quantityAfter:after,reason,performedByUserId:auth.user!.id,detail:{marketplaceListingId:id,adminUserId:(elevation?.adminUserId ?? auth.user.id),originalStatus:current.status}}});
     }
     const active = await tx.marketplaceListing.count({where:{inventoryInstanceId:inventory.id,status:{in:["DRAFT","READY","LISTED"]}}});
     await tx.inventoryInstance.update({where:{id:inventory.id},data:{allocationType:active ? "flea_market":"home"}});
-    await tx.adminActionLog.create({data:{adminUserId:elevation.adminUserId,action:"MARKETPLACE_ADMIN_REVERSE",route:"/marketplace",detail:{listingId:id,operatorUserId:auth.user!.id,reason,from:current.status,to:String(target),restoredQuantity:restored,inventoryBefore:inventory.quantity,inventoryAfter:after,originalSale:{price:current.price,soldQuantity:current.soldQuantity,fee:current.fee,shippingCost:current.shippingCost,packagingCost:current.packagingCost,acquisitionCostSnapshot:current.acquisitionCostSnapshot,shippingStatus:current.shippingStatus,trackingNumber:current.trackingNumber,soldAt:current.soldAt?.toISOString()??null}}}});
+    await tx.adminActionLog.create({data:{adminUserId:(elevation?.adminUserId ?? auth.user.id),action:"MARKETPLACE_ADMIN_REVERSE",route:"/marketplace",detail:{listingId:id,operatorUserId:auth.user!.id,reason,from:current.status,to:String(target),restoredQuantity:restored,inventoryBefore:inventory.quantity,inventoryAfter:after,originalSale:{price:current.price,soldQuantity:current.soldQuantity,fee:current.fee,shippingCost:current.shippingCost,packagingCost:current.packagingCost,acquisitionCostSnapshot:current.acquisitionCostSnapshot,shippingStatus:current.shippingStatus,trackingNumber:current.trackingNumber,soldAt:current.soldAt?.toISOString()??null}}}});
     return {restored};
   },{isolationLevel:"Serializable"});
   if (!result) return NextResponse.json({message:"販売分が未発送または返却済みで、在庫に戻せることを確認してください。"},{status:400});
