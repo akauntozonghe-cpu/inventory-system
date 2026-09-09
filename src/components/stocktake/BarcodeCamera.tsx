@@ -162,6 +162,7 @@ export default function BarcodeCamera({
         );
 
         if (!mounted || stoppedRef.current) { controls.stop(); return; }
+        window.dispatchEvent(new Event("inventory:camera-granted"));
         controlsRef.current = controls;
 
         // 同じ読取エンジン・解像度・連続AFを単品/連続の両方で使う。
