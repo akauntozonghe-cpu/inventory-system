@@ -1,4 +1,5 @@
 "use client";
+import {matchesStockFilter,stockFilterLabels,type StockFilter} from "@/lib/stock-state";
 import { useAdminMode } from "@/components/auth/PageAdminMode";
 import { fetchFresh } from "@/lib/fetch-fresh";
 
@@ -69,6 +70,7 @@ export default function ItemPage() {
   const listRequestRef = useRef(0);
   const [items, setItems] = useState<Item[]>([]);
   const [currentUser, setCurrentUser] = useState<CurrentUser | null>(null);
+  const [stockFilter,setStockFilter]=useState<StockFilter>("ALL");
   const [search, setSearch] = useState("");
   const [majorCategory, setMajorCategory] = useState("");
   const [sort, setSort] = useState<SortType>("createdDesc");
@@ -195,7 +197,7 @@ export default function ItemPage() {
         !majorCategory || category === majorCategory;
 
       const searchableText = [
-        item.name,
+        item.id, item.name,
         item.janCode,
         item.systemBarcode,
         item.managementCode,
@@ -205,7 +207,7 @@ export default function ItemPage() {
         item.minorCategory,
         item.defaultUnit,
         ...item.inventoryInstances.flatMap((inventory) => [
-          inventory.storageLocation?.name,
+          inventory.id, inventory.storageLocation?.name,
           inventory.lotNo,
           inventory.expirationDate,
           inventory.stocktakeStatus,
@@ -220,11 +222,11 @@ export default function ItemPage() {
         (!registeredDate ||
           (new Date(item.createdAt).getTime() >= selectedStart &&
             new Date(item.createdAt).getTime() < selectedEnd)) &&
-        matchesCategory &&
+        matchesCategory && matchesStockFilter(item.inventoryInstances,stockFilter) &&
         (!keyword || searchableText.includes(keyword))
       );
     });
-  }, [items, majorCategory, registeredDate, search, todayOnly]);
+  }, [items, majorCategory, registeredDate, search, todayOnly,stockFilter]);
 
   const sortedItems = useMemo(() => {
     const list = [...filteredItems];
@@ -265,7 +267,7 @@ export default function ItemPage() {
   const archivedItemCount = items.filter((item) => item.isArchived).length;
 
   const handleQrDetected = useCallback((category: string) => {
-    setMajorCategory(category);
+    setStockFilter("ALL");setMajorCategory(category);
     setSearch("");
     setTodayOnly(false); setRegisteredDate("");
     setMessage(`大分類「${category}」で絞り込みました。`);
@@ -301,7 +303,7 @@ export default function ItemPage() {
             </h1>
 
             <p className="mt-2 text-slate-600">
-              商品、現在庫、保管場所、Lot、期限を一画面で検索し、登録日ごとのラベル印刷まで行えます。
+              通常在庫・フリマ準備・出品・発送の状態を、商品やロットと紐づけて確認できます。
             </p>
           </div>
 
@@ -337,10 +339,10 @@ export default function ItemPage() {
 
         <p role="status" className="mb-3 text-sm font-bold text-slate-700">{syncFailed ? "同期できていません。表示は前回取得時点です。通信回復後に再取得します。" : "他端末の登録・在庫変更を自動取得（通信時間＋約1秒）。"}</p>
         {isAdmin && (
-          <section className="mb-5 rounded-2xl border border-indigo-200 bg-indigo-50 p-4">
+          <details className="mb-5 rounded-2xl border border-indigo-200 bg-indigo-50 p-3"><summary className="cursor-pointer font-bold">廃止商品の表示・管理権限</summary>
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <div>
-                <p className="font-bold text-indigo-900">管理者モード</p>
+                <p className="font-bold text-indigo-900">管理者として操作できます</p>
                 <p className="mt-1 text-sm text-indigo-800">
                   商品の編集・廃止・復元・複数選択による一括操作ができます。
                 </p>
@@ -365,7 +367,7 @@ export default function ItemPage() {
               通常商品：{activeItemCount}件
               {showArchived && ` ／ 廃止済み：${archivedItemCount}件`}
             </p>
-          </section>
+          </details>
         )}
 
         {editingItem && <ProductEditDialog key={editingItem.id} itemId={editingItem.id} onClose={() => setEditingItem(null)} onSaved={() => {
@@ -407,6 +409,7 @@ export default function ItemPage() {
             </select>
           </div>
 
+          <label className="mt-3 block text-sm font-bold">在庫・フリマの状態<select aria-label="在庫・フリマの状態" value={stockFilter} onChange={event=>setStockFilter(event.target.value as StockFilter)} className="ml-2 max-w-full rounded-xl border p-3">{Object.entries(stockFilterLabels).map(([value,label])=><option key={value} value={value}>{label}</option>)}</select></label>
           <label className="mt-3 inline-flex cursor-pointer items-center gap-3 rounded-xl bg-blue-50 px-4 py-3 text-sm font-black text-blue-950">
             <input
               type="checkbox"
@@ -454,7 +457,7 @@ export default function ItemPage() {
             <ItemTable
               items={sortedItems}
               isAdmin={isAdmin}
-              filterKey={JSON.stringify([search, majorCategory, sort, todayOnly, registeredDate, showArchived])}
+              filterKey={JSON.stringify([search, majorCategory, sort, todayOnly, registeredDate, showArchived,stockFilter])}
               reload={fetchItems}
               onEdit={startEdit}
             />
@@ -465,7 +468,7 @@ export default function ItemPage() {
       {scannerOpen && <UnifiedScanner
         onClose={() => setScannerOpen(false)}
         onCategory={async name => { handleQrDetected(name); await fetchItems(true); }}
-        onProduct={async code => { setSearch(code); setMajorCategory(""); setTodayOnly(false); setRegisteredDate(""); await fetchItems(true); }}
+        onProduct={async code => { setStockFilter("ALL");setSearch(code.normalize("NFKC")); setMajorCategory(""); setTodayOnly(false); setRegisteredDate(""); await fetchItems(true); }}
       />}
     </main>
   );

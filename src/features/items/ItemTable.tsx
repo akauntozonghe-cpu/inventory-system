@@ -1,4 +1,5 @@
 "use client";
+import StockStateSummary from "@/components/inventory/StockStateSummary";
 import { displayUnit } from "@/lib/unit";
 
 import Pagination from "@/components/common/Pagination";
@@ -215,6 +216,7 @@ export default function ItemTable({ items, reload, isAdmin, onEdit, filterKey }:
   return (
     <>
       <section className="space-y-4">
+        <details className="rounded-2xl border bg-white p-3"><summary className="cursor-pointer font-bold">ラベル印刷・複数商品の操作</summary>
         <div className="block rounded-xl bg-white p-3 text-sm font-bold">印刷サイズ
           <BarcodePrintOptions scale={labelScale} onScale={setLabelScale} includeName={includeLabelName} onIncludeName={setIncludeLabelName} />
         </div>
@@ -291,6 +293,7 @@ export default function ItemTable({ items, reload, isAdmin, onEdit, filterKey }:
           )}
         </div>
 
+        </details>
         <Pagination {...pagination} />
         <div className="grid gap-4 md:grid-cols-2">
           {pagination.visible.map((item) => {
@@ -299,12 +302,6 @@ export default function ItemTable({ items, reload, isAdmin, onEdit, filterKey }:
               [item.majorCategory, item.minorCategory]
                 .filter(Boolean)
                 .join(" / ") || "-";
-            const totals = new Map<string, number>();
-            for (const inventory of item.inventoryInstances) {
-              const unit = displayUnit(inventory.unit, item.defaultUnit);
-              totals.set(unit, (totals.get(unit) ?? 0) + (inventory.actualQuantity ?? inventory.quantity));
-            }
-            const totalQuantity = totals.size ? [...totals].map(([unit, quantity]) => quantity + " " + unit).join(" ／ ") : "0 " + displayUnit(item.defaultUnit);
             const locationNames = Array.from(
               new Set(
                 item.inventoryInstances
@@ -360,14 +357,8 @@ export default function ItemTable({ items, reload, isAdmin, onEdit, filterKey }:
                       {barcode ?? "-"}
                     </p>
 
+                    <StockStateSummary stocks={item.inventoryInstances} defaultUnit={item.defaultUnit} itemId={item.id}/>
                     <dl className="mt-4 grid grid-cols-2 gap-3 text-sm">
-                      <div>
-                        <dt className="font-bold text-slate-500">現在庫合計</dt>
-                        <dd className="mt-1 text-lg font-black text-emerald-700">
-                          {totalQuantity}
-                        </dd>
-                      </div>
-
                       <div>
                         <dt className="font-bold text-slate-500">保管場所</dt>
                         <dd className="mt-1 text-slate-800">

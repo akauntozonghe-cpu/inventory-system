@@ -36,6 +36,7 @@ class MarketplaceRequestError extends Error {
 
 export default function PersonalMarketplacePage() {
   const admin = useAdminMode();
+  const [linkedTarget,setLinkedTarget]=useState<{itemId?:string;inventoryId?:string}>({});
   const [scannerOpen,setScannerOpen] = useState(false);
   const [inventoryQuery,setInventoryQuery] = useState("");
   const [debouncedQuery,setDebouncedQuery] = useState("");
@@ -51,6 +52,7 @@ export default function PersonalMarketplacePage() {
   const [page, setPage] = useState(1);
   const [listSearch, setListSearch] = useState("");
   const [listStatus, setListStatus] = useState("ACTIVE");
+  useEffect(()=>{const params=new URLSearchParams(location.search);if(params.get("itemId")||params.get("inventoryId")){setLinkedTarget({itemId:params.get("itemId")??undefined,inventoryId:params.get("inventoryId")??undefined});setListStatus("ALL");}},[]);
   const refreshSequence = useRef(0);
   const [data, setData] = useState<Payload>({ listings: [], inventories: [] });
   const [loading, setLoading] = useState(true);
@@ -114,7 +116,7 @@ useEffect(() => {
     setTitle((current) => current || selectedInventory.item.name);
   }, [selectedInventory]);
 
-  const visibleListings = useMemo(() => data.listings.filter(row => (listStatus === "ALL" || (listStatus === "ACTIVE" ? row.status !== "CANCELLED" && row.shippingStatus !== "SETTLED" : row.status === listStatus)) && ([row.title,row.inventoryInstance.item.name,row.inventoryInstance.item.janCode,row.inventoryInstance.item.managementCode].join(" ")).normalize("NFKC").toLowerCase().includes(listSearch.normalize("NFKC").trim().toLowerCase())), [data.listings, listStatus, listSearch]);
+  const visibleListings = useMemo(() => data.listings.filter(row => (!linkedTarget.itemId||row.inventoryInstance.item.id===linkedTarget.itemId)&&(!linkedTarget.inventoryId||row.inventoryInstanceId===linkedTarget.inventoryId)&&(listStatus === "ALL" || (listStatus === "ACTIVE" ? row.status !== "CANCELLED" && row.shippingStatus !== "SETTLED" : row.status === listStatus)) && ([row.title,row.inventoryInstance.item.name,row.inventoryInstance.item.janCode,row.inventoryInstance.item.managementCode].join(" ")).normalize("NFKC").toLowerCase().includes(listSearch.normalize("NFKC").trim().toLowerCase())), [data.listings, listStatus, listSearch,linkedTarget]);
   const pages = Math.max(1, Math.ceil(visibleListings.length / 30));
   const currentPage = Math.min(page, pages);
   const pageRows = visibleListings.slice((currentPage-1)*30, currentPage*30);
@@ -162,6 +164,7 @@ useEffect(() => {
 
   return (
     <main className="min-h-screen bg-violet-50 p-4 text-slate-950 sm:p-8">
+      {(linkedTarget.itemId||linkedTarget.inventoryId)&&<p className="mx-auto mb-3 max-w-7xl rounded-xl bg-violet-50 p-3 font-bold">在庫検索から指定した商品の出品・販売履歴を表示中<button className="ml-3 underline" onClick={()=>setLinkedTarget({})}>絞り込みを解除</button></p>}
       <FeedbackToast tone="error" title="フリマエラー" message={error?.message ?? ""} errorCode={error?.code} reportId={error?.reportId} recoveryStatus={error?.status} onRetry={() => void load()} retrying={error?.status === "RECOVERING"} onClose={() => setError(null)} />
       <FeedbackToast tone="success" title="完了" message={notice} onClose={() => setNotice("")} />
       <div className="mx-auto max-w-7xl space-y-7">

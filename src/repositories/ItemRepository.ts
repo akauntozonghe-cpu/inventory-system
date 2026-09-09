@@ -1,3 +1,4 @@
+import {marketplaceStockSelect} from "@/lib/stock-state";
 import { syncItemLinks, ensureClassification } from "@/lib/item-links";
 import { prisma } from "@/lib/prisma";
 
@@ -39,7 +40,7 @@ function normalizeCode(value: string | null | undefined) {
 
 export class ItemRepository {
   static async findAll(options: ItemListOptions = {}) {
-    return prisma.item.findMany({
+    return prisma.$transaction(tx=>tx.item.findMany({
       where: options.includeArchived ? undefined : { isArchived: false },
       orderBy: [{ isArchived: "asc" }, { name: "asc" }],
       include: {
@@ -51,13 +52,15 @@ export class ItemRepository {
             lotNo: true,
             expirationDate: true,
             unit: true,
+            marketplaceListings: {select:marketplaceStockSelect},
+            allocationType: true,
             stocktakeStatus: true,
             storageLocation: { select: { id: true, name: true } },
           },
           orderBy: { createdAt: "asc" },
         },
       },
-    });
+    }),{isolationLevel:"RepeatableRead"});
   }
 
   static async create(data: ItemInput) {

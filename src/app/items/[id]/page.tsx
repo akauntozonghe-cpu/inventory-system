@@ -1,4 +1,6 @@
 "use client";
+import StockStateSummary from "@/components/inventory/StockStateSummary";
+import type {StockListing} from "@/lib/stock-state";
 import { useAdminMode } from "@/components/auth/PageAdminMode";
 import { fetchFresh } from "@/lib/fetch-fresh";
 
@@ -29,6 +31,7 @@ type InventoryInstance = {
   id: string;
   quantity: number;
   actualQuantity: number | null;
+  marketplaceListings?: StockListing[];
   managementCode: string | null;
   managementGroupCode: string | null;
   manufacturer: string | null;
@@ -1190,6 +1193,7 @@ export default function ItemDetailPage() {
                             </dl>
                           </div>
 
+                          <StockStateSummary stocks={[inventory]} defaultUnit={item.defaultUnit} itemId={item.id} inventoryId={inventory.id}/>
                           <div className="flex flex-wrap items-end gap-3 sm:flex-col sm:items-end">
                             <div className="rounded-2xl bg-blue-50 px-5 py-3 text-right">
                               <p className="text-sm font-bold text-slate-500">

@@ -1,4 +1,4 @@
-export type ScanPayload = { type: "CLASSIFICATION" | "LOCATION" | "ITEM" | "INVALID"; code?: string; name?: string; id?: string };
+export type ScanPayload = { type: "CLASSIFICATION" | "LOCATION" | "ITEM" | "INVALID"; code?: string; name?: string; id?: string; kind?: "MINOR"; parentName?: string };
 const text = (value: unknown) => typeof value === "string" ? value.trim() : "";
 function decode(value: string) { try { return decodeURIComponent(value).trim(); } catch { return value.trim(); } }
 export function parseScan(raw: string): ScanPayload {
@@ -13,6 +13,9 @@ export function parseScan(raw: string): ScanPayload {
         const id = text(row.storageLocationId), name = text(row.storageLocationName);
         return id || name ? { type: "LOCATION", id, name } : { type: "INVALID" };
       }
+      const itemIdentity=text(row.inventoryInstanceId)||text(row.itemId)||text(row.janCode)||text(row.systemBarcode);
+      if(itemIdentity && row.type!=="INVENTORY_CLASSIFICATION_LABEL")return {type:"ITEM",code:itemIdentity};
+      if(row.kind==="MINOR" && (text(row.classificationLabelCode)||text(row.minorCategory)))return {type:"CLASSIFICATION",kind:"MINOR",code:text(row.classificationLabelCode),name:text(row.minorCategory),parentName:text(row.parentName)||text(row.majorCategory)};
       const code = text(row.classificationLabelCode), name = text(row.majorCategory) || text(row.category);
       if (code || name) return { type: "CLASSIFICATION", code, name: decode(name) };
       const itemCode = text(row.inventoryInstanceId) || text(row.janCode) || text(row.systemBarcode);
@@ -27,7 +30,7 @@ export function parseScan(raw: string): ScanPayload {
 
 export function scanDisplayText(raw: string) {
   const parsed = parseScan(raw);
-  if (parsed.type === "CLASSIFICATION") return "大分類QRを読み取りました";
+  if (parsed.type === "CLASSIFICATION") return parsed.kind==="MINOR"?"小分類QRを読み取りました":"大分類QRを読み取りました";
   if (parsed.type === "LOCATION") return "保管場所QRを読み取りました";
   if (parsed.type === "INVALID") return "対応していないQRです";
   return parsed.code ?? "";

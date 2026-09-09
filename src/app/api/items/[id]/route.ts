@@ -1,3 +1,4 @@
+import {marketplaceStockSelect} from "@/lib/stock-state";
 import { syncItemLinks } from "@/lib/item-links";
 import { unitValidationMessage } from "@/lib/unit";
 import { NextRequest, NextResponse } from "next/server";
@@ -93,7 +94,7 @@ export async function GET(
   try {
     const { id } = await params;
 
-    const item = await prisma.item.findUnique({
+    const item = await prisma.$transaction(tx=>tx.item.findUnique({
       where: { id },
       select: {
         id: true,
@@ -128,6 +129,7 @@ export async function GET(
             actualQuantity: true,
             allocationType: true,
             status: true,
+            marketplaceListings: {select:marketplaceStockSelect},
             stocktakeStatus: true,
             stocktakeAt: true,
             createdAt: true,
@@ -139,7 +141,7 @@ export async function GET(
           },
         },
       },
-    });
+    }),{isolationLevel:"RepeatableRead"});
 
     if (!item) {
       return NextResponse.json(

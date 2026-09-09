@@ -1,3 +1,4 @@
+import {summarizeStock} from "@/lib/stock-state";
 import { renameClassificationMaster } from "@/lib/classification-links";
 import { ensureClassification } from "@/lib/item-links";
 import { normalizeDisplayText } from "@/lib/input-normalization";
@@ -50,11 +51,11 @@ async function mergeInventory(sourceLocationId: string, targetLocationId: string
 export async function GET(request: NextRequest) {
   const auth = requireAdmin(request); if (auth.response) return auth.response;
   try {
-    const [masters, items, locations] = await Promise.all([
-      prisma.classification.findMany({ orderBy: [{ kind: "asc" }, { parentName: "asc" }, { name: "asc" }] }),
-      prisma.item.findMany({ where: { isArchived: false }, orderBy: { name: "asc" }, select: { id: true, name: true, janCode: true, systemBarcode: true, majorCategory: true, minorCategory: true, inventoryInstances: { select: { quantity: true } }, _count: { select: { inventoryInstances: true } } } }),
-      prisma.storageLocation.findMany({ orderBy: { name: "asc" }, include: { _count: { select: { inventories: true, itemRegistrationRequests: true } } } }),
-    ]);
+    const [masters, items, locations] = await prisma.$transaction(tx=>Promise.all([
+      tx.classification.findMany({ orderBy: [{ kind: "asc" }, { parentName: "asc" }, { name: "asc" }] }),
+      tx.item.findMany({ where: { isArchived: false }, orderBy: { name: "asc" }, select: { id: true, name: true, janCode: true, systemBarcode: true, majorCategory: true, minorCategory: true, managementCode:true, defaultUnit:true, inventoryInstances: { select: { id:true, quantity: true, unit:true, storageLocationId:true } }, _count: { select: { inventoryInstances: true } } } }),
+      tx.storageLocation.findMany({ orderBy: { name: "asc" }, include: { _count: { select: { inventories: true, itemRegistrationRequests: true } } } }),
+    ]),{isolationLevel:"RepeatableRead"});
     const usage = new Map<string, { itemCount: number; inventoryCount: number }>();
     for (const item of items) {
       if (item.majorCategory) { const key = `MAJOR::${item.majorCategory}`; const row = usage.get(key) ?? { itemCount: 0, inventoryCount: 0 }; row.itemCount += 1; row.inventoryCount += item._count.inventoryInstances; usage.set(key, row); }
@@ -64,7 +65,7 @@ export async function GET(request: NextRequest) {
     const rows = new Map<string, { id: string; labelCode?: string; kind: string; name: string; parentName: string; itemCount: number; inventoryCount: number }>();
     for (const row of masters) rows.set(`${row.kind}:${row.parentName}:${row.name}`, { ...row, itemCount: 0, inventoryCount: 0 });
     for (const row of derived) rows.set(`${row.kind}:${row.parentName}:${row.name}`, { ...(rows.get(`${row.kind}:${row.parentName}:${row.name}`) ?? row), itemCount: row.itemCount, inventoryCount: row.inventoryCount });
-    return NextResponse.json({ classifications: Array.from(rows.values()), locations, items: items.map((item) => ({ id: item.id, name: item.name, janCode: item.janCode, systemBarcode: item.systemBarcode, majorCategory: item.majorCategory, minorCategory: item.minorCategory, inventoryCount: item._count.inventoryInstances, totalQuantity: item.inventoryInstances.reduce((sum, row) => sum + row.quantity, 0) })) });
+    return NextResponse.json({ classifications: Array.from(rows.values()), locations, items: items.map((item) => ({ id: item.id, name: item.name, managementCode:item.managementCode, inventoryInstances:item.inventoryInstances, janCode: item.janCode, systemBarcode: item.systemBarcode, majorCategory: item.majorCategory, minorCategory: item.minorCategory, inventoryCount: item._count.inventoryInstances, quantityLabel:summarizeStock(item.inventoryInstances,item.defaultUnit).map(row=>row.quantity+" "+row.unit).join(" ／ "), totalQuantity: item.inventoryInstances.reduce((sum, row) => sum + row.quantity, 0) })) });
   } catch (error) { console.error("GET classifications", error); return NextResponse.json({ code: "CLASSIFICATION_LIST_FAILED", message: "分類・保管場所を取得できませんでした。", action: "自動再読込後も解決しない場合はシステム点検を実行してください。" }, { status: 500 }); }
 }
 

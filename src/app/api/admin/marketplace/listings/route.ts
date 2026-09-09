@@ -1,3 +1,4 @@
+import {availableStock,RESERVED_LISTING_STATUSES} from "@/lib/stock-state";
 import { scheduleDeviceNotifications } from "@/lib/device-push";
 import { reverseMarketplace } from "@/lib/marketplace-reversal";
 import { NextRequest, NextResponse } from "next/server";
@@ -40,24 +41,24 @@ async function loadMarketplace(request: NextRequest) {
   const query = (request.nextUrl.searchParams.get("inventoryQuery") ?? "").normalize("NFKC").trim().slice(0,200);
   const category = request.nextUrl.searchParams.get("category");
   const location = request.nextUrl.searchParams.get("location");
-  const [listings, inventories, channels, shippingRates, recommendationSetting] = await Promise.all([
-    prisma.marketplaceListing.findMany({
+  const [listings, inventories, channels, shippingRates, recommendationSetting] = await prisma.$transaction(tx=>Promise.all([
+    tx.marketplaceListing.findMany({
       orderBy: { updatedAt: "desc" },
       include: { inventoryInstance: { include: { item: true, storageLocation: true } } },
     }),
-    prisma.inventoryInstance.findMany({
+    tx.inventoryInstance.findMany({
       where: { quantity: { gt: 0 }, status: { not: "廃止" }, item: { isArchived:false, ...(category ? {majorCategory:category}: {}) }, ...(location ? {storageLocation:{name:location}}:{}), ...(query ? {OR:[{item:{name:{contains:query,mode:"insensitive" as const}}},{item:{janCode:{contains:query}}},{item:{systemBarcode:{contains:query,mode:"insensitive" as const}}},{item:{managementCode:{contains:query,mode:"insensitive" as const}}},{lotNo:{contains:query,mode:"insensitive" as const}},{storageLocation:{name:{contains:query,mode:"insensitive" as const}}}]}:{}) },
       orderBy: { updatedAt: "desc" },
       include: { item: true, storageLocation: true },
       take: 500,
     }),
-    prisma.salesChannelSetting.findMany({ where: { isEnabled: true }, orderBy: { displayName: "asc" } }),
-    prisma.shippingRate.findMany({
+    tx.salesChannelSetting.findMany({ where: { isEnabled: true }, orderBy: { displayName: "asc" } }),
+    tx.shippingRate.findMany({
       where: { isActive: true, effectiveFrom: { lte: new Date() }, OR: [{ effectiveTo: null }, { effectiveTo: { gte: new Date() } }] },
       orderBy: { fee: "asc" },
     }),
-    prisma.salesRecommendationSetting.findUnique({ where: { id: "system" } }),
-  ]);
+    tx.salesRecommendationSetting.findUnique({ where: { id: "system" } }),
+  ]),{isolationLevel:"RepeatableRead"});
 
   if (request.nextUrl.searchParams.get("format") === "csv") {
     const rows = [
@@ -76,7 +77,7 @@ async function loadMarketplace(request: NextRequest) {
 
   const reserved = new Map<string, number>();
   for (const entry of listings) {
-    if (["DRAFT", "READY", "LISTED"].includes(entry.status)) {
+    if ((RESERVED_LISTING_STATUSES as readonly string[]).includes(entry.status)) {
       reserved.set(entry.inventoryInstanceId, (reserved.get(entry.inventoryInstanceId) ?? 0) + entry.listedQuantity);
     }
   }
@@ -90,7 +91,7 @@ async function loadMarketplace(request: NextRequest) {
 
   return NextResponse.json({
     listings,
-    inventories: inventories.map((entry) => ({ ...entry, fleaMarketReserved: reserved.get(entry.id) ?? 0, storageAvailable: Math.max(entry.quantity - (reserved.get(entry.id) ?? 0), 0) })),
+    inventories: inventories.map((entry) => ({ ...entry, fleaMarketReserved: reserved.get(entry.id) ?? 0, storageAvailable: availableStock(entry.quantity,reserved.get(entry.id)??0) })),
     channels,
     shippingRates,
     recommendationSetting,
@@ -138,7 +139,7 @@ async function createListing(request: NextRequest) {
 
   const listing = await prisma.$transaction(async (tx) => {
     const inventory = await tx.inventoryInstance.findUnique({ where: { id: inventoryInstanceId }, include: { item: true } });
-    const reserved = await tx.marketplaceListing.aggregate({ where: { inventoryInstanceId, status: { in: ["DRAFT", "READY", "LISTED"] } }, _sum: { listedQuantity: true } });
+    const reserved = await tx.marketplaceListing.aggregate({ where: { inventoryInstanceId, status: { in: [...RESERVED_LISTING_STATUSES] } }, _sum: { listedQuantity: true } });
     if (!inventory || inventory.item.isArchived || inventory.status === "廃止" || inventory.quantity - (reserved._sum.listedQuantity ?? 0) < listedQuantity) throw new Error("MARKETPLACE_STOCK_SHORTAGE");
     const created = await tx.marketplaceListing.create({
       data: {
@@ -246,13 +247,13 @@ async function changeListing(request: NextRequest) {
       if (changed.count !== 1) throw new Error("MARKETPLACE_CHANGED");
       await tx.inventoryHistory.create({ data: { inventoryInstanceId: existing.inventoryInstanceId, changeQuantity: -soldQuantity, action: `個人フリマ販売：${existing.channel}` } });
       await tx.inventoryEvent.create({ data: { inventoryInstanceId: existing.inventoryInstanceId, eventType: "ISSUE", quantityBefore: before, quantityChange: -soldQuantity, quantityAfter: after, reason: "個人フリマ販売", detail: { marketplaceListingId: id, channel: existing.channel, externalListingId: existing.externalListingId }, performedByUserId: auth.user.id } });
-      const siblingResult = await tx.marketplaceListing.updateMany({ where: { inventoryInstanceId: existing.inventoryInstanceId, id: { not: id }, status: { in: ["DRAFT", "READY", "LISTED"] } }, data: { status: "CANCELLED", notes: "他の販売先で売却されたため取り下げ確認が必要です。" } });
+      const siblingResult = await tx.marketplaceListing.updateMany({ where: { inventoryInstanceId: existing.inventoryInstanceId, id: { not: id }, status: { in: [...RESERVED_LISTING_STATUSES] } }, data: { status: "CANCELLED", notes: "他の販売先で売却されたため取り下げ確認が必要です。" } });
       await tx.notification.create({ data: { type: "MARKETPLACE_SOLD", audience: "ADMIN", title: siblingResult.count ? "売却済み：他サイトの出品を取り下げてください" : "フリマ販売を在庫へ反映", message: `${existing.inventoryInstance.item.name}を${soldQuantity}点販売し、残数は${after}点です。${siblingResult.count ? ` 併売${siblingResult.count}件を停止扱いにしました。` : ""}`, detail: { marketplaceListingId: id, cancelledSiblingCount: siblingResult.count } } });
       return tx.marketplaceListing.update({ where: { id }, data: { status: "SOLD", soldQuantity, soldAt: new Date(), shippingStatus: "PACKING", fee: nonNegativeInt(body?.fee) ?? existing.fee, shippingCost: nonNegativeInt(body?.shippingCost) ?? existing.shippingCost } });
     }
     const updated = await tx.marketplaceListing.update({ where: { id }, data: { status: status as typeof LISTING_STATUSES[number], listedAt: status === "LISTED" ? new Date() : existing.listedAt, listingUrl: text(body?.listingUrl, 1000) || existing.listingUrl, externalListingId: text(body?.externalListingId, 100) || existing.externalListingId } });
     if (status === "CANCELLED") {
-      const active = await tx.marketplaceListing.count({ where: { inventoryInstanceId: existing.inventoryInstanceId, id: { not: id }, status: { in: ["DRAFT", "READY", "LISTED"] } } });
+      const active = await tx.marketplaceListing.count({ where: { inventoryInstanceId: existing.inventoryInstanceId, id: { not: id }, status: { in: [...RESERVED_LISTING_STATUSES] } } });
       if (active === 0) await tx.inventoryInstance.update({ where: { id: existing.inventoryInstanceId }, data: { allocationType: "home" }, select: { id: true } });
     }
     return updated;

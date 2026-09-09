@@ -4,10 +4,10 @@ export async function resolveScan(raw: string): Promise<ScanPayload> {
   const scanned = parseScan(raw);
   if (scanned.type === "INVALID") throw new Error("このQRは商品・大分類・保管場所のラベルではありません。正しいラベルを読み取ってください。");
   if (scanned.type === "CLASSIFICATION" && scanned.code) {
-    const response = await fetchFresh(`/api/classifications/resolve?labelCode=${encodeURIComponent(scanned.code)}`);
+    const response = await fetchFresh(`/api/classifications/resolve?labelCode=${encodeURIComponent(scanned.code)}&allowMinor=true`);
     const body = await response.json().catch(() => null);
     if (!response.ok || typeof body?.classification?.name !== "string") throw new Error("大分類ラベルを確認できませんでした。通信と分類管理の登録内容を確認してください。");
-    return { ...scanned, name: body.classification.name };
+    return { ...scanned, name: body.classification.name, ...(body.classification.kind==="MINOR"?{kind:"MINOR" as const,parentName:body.classification.parentName}: {}) };
   }
   if (scanned.type === "LOCATION") {
     const response = await fetchFresh("/api/storage-locations");

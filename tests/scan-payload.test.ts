@@ -34,3 +34,6 @@ describe("QR payload routing", () => {
     expect(await resolveScan('{"type":"INVENTORY_LOCATION_LABEL","storageLocationId":"shelf","storageLocationName":"古い棚"}')).toEqual({ type: "LOCATION", id: "shelf", name: "新しい棚" });
   });
 });
+
+it("prioritizes product identity over category metadata in a product QR",()=>{expect(parseScan(JSON.stringify({inventoryInstanceId:"lot-1",majorCategory:"食品",janCode:"4901234567894"}))).toEqual({type:"ITEM",code:"lot-1"});});
+it("keeps a minor category tied to its major category",()=>{expect(parseScan(JSON.stringify({type:"INVENTORY_CLASSIFICATION_LABEL",kind:"MINOR",classificationLabelCode:"minor-label",minorCategory:"飲料",parentName:"食品"}))).toMatchObject({type:"CLASSIFICATION",kind:"MINOR",name:"飲料",parentName:"食品",code:"minor-label"});});

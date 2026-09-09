@@ -1,0 +1,10 @@
+import {describe,it,expect} from "vitest";
+import {stockState,summarizeStock,matchesStockFilter,type StockListing} from "../src/lib/stock-state";
+const listing=(status:string,quantity:number,shippingStatus="NOT_READY"):StockListing=>({id:status,status,shippingStatus,listedQuantity:quantity,soldQuantity:status==="SOLD"?quantity:0});
+describe("inventory and marketplace share quantity semantics",()=>{
+ it("reservations are part of stock and cancelled entries release it",()=>{const stocks={quantity:10,marketplaceListings:[listing("DRAFT",2),listing("LISTED",3),listing("CANCELLED",4)]};expect(stockState(stocks)).toMatchObject({quantity:10,preparing:2,listed:3,reserved:5,available:5});});
+ it("does not subtract sold quantities again and distinguishes unshipped from shipped",()=>{expect(stockState({quantity:7,marketplaceListings:[listing("SOLD",2,"PACKING"),listing("SOLD",1,"SHIPPED")]})).toMatchObject({quantity:7,available:7,reserved:0,shipping:2,shipped:1});});
+ it("keeps incompatible units separate and does not cover one lot's shortage with another",()=>{const stocks=[{quantity:1,unit:"個",marketplaceListings:[listing("LISTED",3)]},{quantity:10,unit:"個"},{quantity:4,unit:"箱"}];expect(summarizeStock(stocks)).toEqual([expect.objectContaining({unit:"個",quantity:11,available:10,shortage:2}),expect.objectContaining({unit:"箱",quantity:4})]);});
+ it("tracks cancel and administrator reversal immediately from persisted states",()=>{const row=listing("SOLD",3,"PACKING");expect(matchesStockFilter([{quantity:7,marketplaceListings:[row]}],"SHIPPING")).toBe(true);expect(matchesStockFilter([{quantity:10,marketplaceListings:[{...row,status:"DRAFT"}]}],"SHIPPING")).toBe(false);expect(stockState({quantity:10,marketplaceListings:[{...row,status:"DRAFT"}]}).available).toBe(7);});
+ it("shows historical shipments even when all remaining stock is zero",()=>{const stocks=[{quantity:0,marketplaceListings:[listing("SOLD",3,"SETTLED")]}];expect(matchesStockFilter(stocks,"EMPTY")).toBe(true);expect(matchesStockFilter(stocks,"SHIPPED")).toBe(true);expect(matchesStockFilter(stocks,"AVAILABLE")).toBe(false);});
+});

@@ -1,3 +1,4 @@
+import type {StockListing} from "@/lib/stock-state";
 export type Item = {
   id: string;
   name: string;
@@ -16,6 +17,8 @@ export type Item = {
   inventoryInstances: Array<{
     id: string;
     quantity: number;
+    allocationType?: string;
+    marketplaceListings?: StockListing[];
     actualQuantity: number | null;
     lotNo: string | null;
     expirationDate: string | null;
