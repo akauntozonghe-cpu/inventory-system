@@ -658,6 +658,7 @@ model StocktakePresence {
 }
 
 model DevicePushSetting {
+  policy Json @default("{}")
   id String @id @default("system")
   publicKey String
   privateKey String

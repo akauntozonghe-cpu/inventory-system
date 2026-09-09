@@ -1,3 +1,4 @@
+import { readPushPolicy, pushMessage } from "./device-notification-policy";
 import webpush from "web-push";
 import { createECDH, createHash, createCipheriv, createDecipheriv, randomBytes } from "node:crypto";
 import { after } from "next/server";
@@ -37,16 +38,19 @@ export function validPushKeys(keys: unknown): keys is { p256dh: string; auth: st
   return publicKey.length === 65 && publicKey[0] === 4 && Buffer.from(value.auth, "base64url").length === 16;
 }
 
-export async function sendDeviceNotification(subscription: { endpoint: string; p256dh: string; auth: string }, tag: string, test = false) {
+export async function sendDeviceNotification(subscription: { endpoint: string; p256dh: string; auth: string }, tag: string, test = false, notification?: {title:string;message:string;type:string}) {
   if (!validPushEndpoint(subscription.endpoint)) throw new Error("PUSH_ENDPOINT_INVALID");
   const settings = await prisma.devicePushSetting.findUnique({ where: { id: "system" } });
   if (!settings) throw new Error("PUSH_NOT_READY");
-  // Lock-screen contents deliberately contain no item, user, or error details.
-  await webpush.sendNotification({ endpoint: subscription.endpoint, keys: { p256dh: subscription.p256dh, auth: subscription.auth } }, JSON.stringify({ title: "Inventory OS", body: test ? "端末通知のテストです。" : "新しい通知があります。アプリで内容を確認してください。", tag, url: "/notifications" }), { TTL: 300, timeout: 5000, urgency: "normal", vapidDetails: { subject: settings.subject, publicKey: settings.publicKey, privateKey: decryptPushKey(settings.privateKey) } });
+  const policy = readPushPolicy(settings.policy);
+  if (!test && (!policy.enabled || (notification && !policy.types.includes(notification.type)))) return;
+  await webpush.sendNotification({ endpoint: subscription.endpoint, keys: { p256dh: subscription.p256dh, auth: subscription.auth } }, JSON.stringify({ ...pushMessage(policy,notification,test), tag, url: "/notifications" }), { TTL: policy.ttl, timeout: 5000, urgency: "normal", vapidDetails: { subject: settings.subject, publicKey: settings.publicKey, privateKey: decryptPushKey(settings.privateKey) } });
 }
 
 export async function deliverDeviceNotifications() {
   const now = new Date();
+  const settings = await prisma.devicePushSetting.findUnique({where:{id:"system"}});
+  if (!settings || !readPushPolicy(settings.policy).enabled) return;
   const subscriptions = await prisma.devicePushSubscription.findMany({ where: { expiresAt: { gt: now } }, take: 500 });
   for (const sub of subscriptions) {
     const user = await prisma.appUser.findUnique({ where: { id: sub.userId }, select: { isActive: true, role: true } });
@@ -69,7 +73,7 @@ export async function deliverDeviceNotifications() {
       await prisma.devicePushDelivery.updateMany({ where: { id: delivery.id }, data: { sentAt: new Date() } }); return;
     }
     try {
-      await sendDeviceNotification(sub, "notification-" + notification.id);
+      await sendDeviceNotification(sub, "notification-" + notification.id, false, notification);
       await prisma.devicePushDelivery.updateMany({ where: { id: delivery.id }, data: { sentAt: new Date() } });
     } catch (error) {
       const status = error && typeof error === "object" && "statusCode" in error ? error.statusCode : 0;

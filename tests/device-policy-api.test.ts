@@ -1,0 +1,13 @@
+import {beforeEach,expect,it,vi} from "vitest";
+import {NextRequest} from "next/server";
+import {defaultPushPolicy} from "../src/lib/device-notification-policy";
+const state=vi.hoisted(()=>({role:"WORKER"}));const update=vi.hoisted(()=>vi.fn());
+vi.mock("@/lib/auth",()=>({AUTH_COOKIE:"auth",requireLogin:()=>({user:{id:"u",role:state.role},response:null})}));
+vi.mock("@/lib/prisma",()=>({prisma:{devicePushSetting:{update}}}));
+vi.mock("@/lib/device-push",()=>({encryptPushKey:vi.fn(),sessionHash:vi.fn(),validPushEndpoint:vi.fn(),validPushKeys:vi.fn(),sendDeviceNotification:vi.fn()}));
+import {POST} from "../src/app/api/notifications/device/route";
+const req=(policy:unknown)=>new NextRequest("http://localhost/api/notifications/device",{method:"POST",body:JSON.stringify({action:"POLICY",policy})});
+beforeEach(()=>{vi.resetAllMocks();state.role="WORKER";});
+it("rejects a normal user's global notification setting change",async()=>{expect((await POST(req(defaultPushPolicy)))?.status).toBe(403);expect(update).not.toHaveBeenCalled();});
+it("lets an administrator persist validated policy",async()=>{state.role="ADMIN";expect((await POST(req(defaultPushPolicy)))?.status).toBe(200);expect(update).toHaveBeenCalledWith({where:{id:"system"},data:{policy:defaultPushPolicy}});});
+it("rejects unknown notification types even from an administrator",async()=>{state.role="ADMIN";expect((await POST(req({...defaultPushPolicy,types:["INVALID"]})))?.status).toBe(400);expect(update).not.toHaveBeenCalled();});

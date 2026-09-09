@@ -1,4 +1,5 @@
 "use client";
+import NotificationPermissionLink from "./NotificationPermissionLink";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { isStandalonePwa, rememberPwaInstalled } from "@/lib/pwa-install";
 import { captureInstallPrompt, markNativeInstalled, type NativeInstallEvent } from "@/lib/pwa-install-prompt";
@@ -42,7 +43,7 @@ export default function AppUpdateFooter() {
   },[update]);
   useEffect(()=>{const element=panel.current;if(!element)return;const observer=new ResizeObserver(()=>document.documentElement.style.setProperty("--app-footer-height",`${element.offsetHeight}px`));observer.observe(element);return()=>{observer.disconnect();document.documentElement.style.removeProperty("--app-footer-height");};},[]);
   return <footer ref={panel} className="fixed inset-x-0 bottom-0 z-[65] print:hidden border-t bg-white px-4 py-3 text-sm text-slate-600">
-    <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-2"><span className="flex items-center gap-2"><span aria-hidden="true" className={`h-2 w-2 rounded-full ${online?"bg-emerald-500":"bg-amber-500"}`}/>{online?"オンライン":"オフライン：他端末の変更は通信復帰後に反映"}</span><span>Inventory OS</span></div>
+    <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-2"><span className="flex items-center gap-2"><span aria-hidden="true" className={`h-2 w-2 rounded-full ${online?"bg-emerald-500":"bg-amber-500"}`}/>{online?"オンライン":"オフライン：他端末の変更は通信復帰後に反映"}</span><NotificationPermissionLink/></div>
     {!dismissed&&(available||message)&&<section aria-label="アプリの更新" className="mx-auto mt-3 max-w-7xl rounded-xl border bg-slate-50 p-3"><p role={error?"alert":"status"} className="font-bold">{message||"新しいアプリに更新できます"}</p><div className="mt-2 flex flex-wrap gap-2"><button disabled={busy} onClick={()=>void update()} className="rounded-lg bg-blue-700 px-4 py-2 font-bold text-white disabled:opacity-50">{busy?"更新中…":error?"更新を再試行":"保存してあれば更新"}</button>{error&&message.startsWith("PWA_UPDATE_UNSAVED")&&<button className="rounded-lg border px-3 py-2" onClick={()=>{if(window.confirm("未保存の入力を破棄して更新しますか？")){setUnsavedWork(false);window.dispatchEvent(new CustomEvent("inventory:draft",{detail:{dirty:false}}));void update();}}}>入力を破棄して更新</button>}{error&&<button disabled={busy} className="rounded-lg border px-3 py-2" onClick={()=>{try{reload();}catch(error){setMessage((error as Error).message);}}}>画面を読み直す</button>}<button disabled={busy} className="rounded-lg border px-3 py-2" onClick={()=>{setDismissed(true);setMessage("");}}>あとで</button></div></section>}
   </footer>;
 }

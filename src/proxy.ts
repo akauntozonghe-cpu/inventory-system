@@ -86,6 +86,8 @@ export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
   const { method } = request;
 
+  // This endpoint authenticates the scheduler with a separate server secret.
+  if (pathname === "/api/internal/device-notifications") return NextResponse.next();
   const isPublicPath =
     pathname === "/login" ||
     pathname === "/install" ||

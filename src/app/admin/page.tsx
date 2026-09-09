@@ -1,4 +1,5 @@
 "use client";
+import DeviceNotifications from "@/components/pwa/DeviceNotifications";
 import InstallPanel from "@/components/pwa/InstallPanel";
 
 import Link from "next/link";
@@ -296,7 +297,7 @@ export default function AdminPage() {
   return (
     <main className="min-h-screen bg-slate-100 px-4 py-6 text-slate-900 sm:px-6 sm:py-10">
       <div className="mx-auto max-w-7xl">
-        <InstallPanel />
+        <details className="my-4 rounded-2xl border bg-white p-4"><summary className="cursor-pointer py-2 font-bold">端末の通知・使用許可と配信設定</summary><DeviceNotifications/></details><InstallPanel />
         <header className="flex flex-col gap-5 sm:flex-row sm:items-start sm:justify-between">
           <div>
             <p className="text-sm font-black tracking-[0.14em] text-violet-600">

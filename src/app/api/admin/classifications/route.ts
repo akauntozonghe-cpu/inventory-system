@@ -1,3 +1,4 @@
+import {nextClassification} from "@/lib/classification-change";
 import {summarizeStock} from "@/lib/stock-state";
 import { renameClassificationMaster } from "@/lib/classification-links";
 import { ensureClassification } from "@/lib/item-links";
@@ -113,6 +114,7 @@ export async function POST(request: NextRequest) {
     } else if (action === "ASSIGN_ITEMS") {
       const itemIds = Array.isArray(body.itemIds) ? Array.from(new Set(body.itemIds.filter((value): value is string => typeof value === "string" && value.length > 0))) : [];
       if (itemIds.length > 500) return NextResponse.json({ code: "CLASSIFICATION_BATCH_LIMIT", message: "一度に変更できるのは500件までです。選択を減らして実行してください。" }, { status: 400 });
+      if (body.expectedClassifications !== undefined && (!Array.isArray(body.expectedClassifications) || body.expectedClassifications.length !== itemIds.length || body.expectedClassifications.some(row=>!row || typeof row!=="object" || typeof row.id!=="string" || !(row.majorCategory===null || typeof row.majorCategory==="string") || !(row.minorCategory===null || typeof row.minorCategory==="string")))) return NextResponse.json({code:"CLASSIFICATION_INPUT_INVALID",message:"変更前の分類を確認できません。選び直してください。"},{status:400});
       const hasMajor = Object.prototype.hasOwnProperty.call(body, "majorCategory");
       const hasMinor = Object.prototype.hasOwnProperty.call(body, "minorCategory");
       const majorCategory = body.majorCategory === null ? null : text(body.majorCategory);
@@ -122,15 +124,22 @@ export async function POST(request: NextRequest) {
       result = await prisma.$transaction(async (tx) => {
         const selected = await tx.item.findMany({ where: { id: { in: itemIds }, isArchived: false }, select: { id: true, majorCategory: true, minorCategory: true } });
         if (selected.length !== itemIds.length) throw new Error("CLASSIFICATION_ITEMS_CHANGED");
+        if(Array.isArray(body.expectedClassifications)){const expected=body.expectedClassifications as Array<{id:string;majorCategory:string|null;minorCategory:string|null}>;if(selected.some(item=>!expected.some(row=>row.id===item.id&&row.majorCategory===item.majorCategory&&row.minorCategory===item.minorCategory)))throw new Error("CLASSIFICATION_ITEMS_CHANGED");}
+        const groups = new Map<string,{ids:string[];majorCategory:string|null;minorCategory:string|null}>();
         for (const item of selected) {
-          const nextMajor = hasMajor ? majorCategory : item.majorCategory;
-          const nextMinor = hasMinor ? minorCategory : (hasMajor && majorCategory !== item.majorCategory ? null : item.minorCategory);
-          await ensureClassification(tx, nextMajor, nextMinor);
-          await tx.item.update({ where: { id: item.id }, data: { majorCategory: nextMajor, minorCategory: nextMinor } });
-          await tx.inventoryInstance.updateMany({ where: { itemId: item.id }, data: { majorCategory: nextMajor, minorCategory: nextMinor } });
+          const next = nextClassification(item,{...(hasMajor?{majorCategory}:{}),...(hasMinor?{minorCategory}:{}),keepMinorCategory:body.keepMinorCategory===true});
+          const key = JSON.stringify(next);
+          const group = groups.get(key) ?? {...next,ids:[]};group.ids.push(item.id);groups.set(key,group);
         }
+        // One update per destination classification, not repeated writes per item.
+        for (const {ids,majorCategory,minorCategory} of groups.values()) {
+          await ensureClassification(tx,majorCategory,minorCategory);
+          await tx.item.updateMany({where:{id:{in:ids}},data:{majorCategory,minorCategory}});
+          await tx.inventoryInstance.updateMany({where:{itemId:{in:ids}},data:{majorCategory,minorCategory}});
+        }
+        await tx.adminActionLog.create({data:{adminUserId:auth.user!.id,action:"CLASSIFICATION_ASSIGN_ITEMS",route:"/admin/classifications",detail:{before:selected,after:selected.map(item=>({id:item.id,...nextClassification(item,{...(hasMajor?{majorCategory}:{}),...(hasMinor?{minorCategory}:{}),keepMinorCategory:body.keepMinorCategory===true})}))}}});
         return { updatedItems: selected.length, requestedItems: itemIds.length };
-      });
+      },{isolationLevel:"Serializable"});
     } else if (action === "DELETE_CLASSIFICATION") {
       const used = kind === "MAJOR" ? await prisma.item.count({ where: { majorCategory: source } }) : await prisma.item.count({ where: { minorCategory: source, ...(parentName ? { majorCategory: parentName } : {}) } });
       if (used > 0) return NextResponse.json({ code: "CLASSIFICATION_IN_USE", message: `${used}件の商品が使用中です。削除ではなく統合または移動を実行してください。` }, { status: 409 });
@@ -146,7 +155,7 @@ export async function POST(request: NextRequest) {
       const sourceId = text(body.sourceId), targetId = text(body.targetId); if (!sourceId || !targetId || sourceId === targetId) return NextResponse.json({ code: "LOCATION_MERGE_INVALID", message: "異なる統合元と統合先を指定してください。" }, { status: 400 });
       result = await mergeInventory(sourceId, targetId, auth.user.id);
     } else return NextResponse.json({ code: "CLASSIFICATION_ACTION_INVALID", message: "編集操作が正しくありません。" }, { status: 400 });
-    if (action !== "MERGE_LOCATION") await createAdminActionLog({ adminUserId: auth.user.id, action: `CLASSIFICATION_${action}`, route: "/admin/classifications", detail: { kind, name, parentName, source, target, targetParent, result: result as never } });
+    if (action !== "MERGE_LOCATION" && action !== "ASSIGN_ITEMS") await createAdminActionLog({ adminUserId: auth.user.id, action: `CLASSIFICATION_${action}`, route: "/admin/classifications", detail: { kind, name, parentName, source, target, targetParent, result: result as never } });
     return NextResponse.json({ code: "CLASSIFICATION_UPDATE_OK", message: "分類・在庫・棚卸範囲を更新し、操作履歴へ記録しました。", result });
   } catch (error) { console.error("POST classifications", error);
     if (error && typeof error === "object" && (("code" in error && ["P2034", "P2025"].includes(String(error.code))) || (error instanceof Error && ["LOCATION_CHANGED", "CLASSIFICATION_ITEMS_CHANGED"].includes(error.message)))) return NextResponse.json({ code: "CLASSIFICATION_CHANGED", message: "他の操作で情報が変わりました。再読込してから実行してください。" }, { status: 409 }); return NextResponse.json({ code: "CLASSIFICATION_UPDATE_FAILED", message: error instanceof Error && (error.message.startsWith("小分類の変更") || error.message.startsWith("同名の小分類")) ? error.message : "分類編集を完了できませんでした。現在の状態を再読込して確認してください。", action: "入力内容を確認して再試行し、解決しない場合はエラー管理を開いてください。" }, { status: 500 }); }

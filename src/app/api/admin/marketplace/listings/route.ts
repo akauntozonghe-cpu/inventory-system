@@ -47,7 +47,7 @@ async function loadMarketplace(request: NextRequest) {
       include: { inventoryInstance: { include: { item: true, storageLocation: true } } },
     }),
     tx.inventoryInstance.findMany({
-      where: { quantity: { gt: 0 }, status: { not: "廃止" }, item: { isArchived:false, ...(category ? {majorCategory:category}: {}) }, ...(location ? {storageLocation:{name:location}}:{}), ...(query ? {OR:[{item:{name:{contains:query,mode:"insensitive" as const}}},{item:{janCode:{contains:query}}},{item:{systemBarcode:{contains:query,mode:"insensitive" as const}}},{item:{managementCode:{contains:query,mode:"insensitive" as const}}},{lotNo:{contains:query,mode:"insensitive" as const}},{storageLocation:{name:{contains:query,mode:"insensitive" as const}}}]}:{}) },
+      where: { quantity: { gt: 0 }, status: { not: "廃止" }, item: { isArchived:false, ...(category ? {majorCategory:category}: {}) }, ...(location ? {storageLocation:{name:location}}:{}), ...(query ? {OR:[{id:query},{itemId:query},{item:{name:{contains:query,mode:"insensitive" as const}}},{item:{janCode:{contains:query}}},{item:{systemBarcode:{contains:query,mode:"insensitive" as const}}},{item:{managementCode:{contains:query,mode:"insensitive" as const}}},{lotNo:{contains:query,mode:"insensitive" as const}},{storageLocation:{name:{contains:query,mode:"insensitive" as const}}}]}:{}) },
       orderBy: { updatedAt: "desc" },
       include: { item: true, storageLocation: true },
       take: 500,

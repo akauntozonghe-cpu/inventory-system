@@ -1,3 +1,4 @@
+import {readPushPolicy,validPushPolicy} from "@/lib/device-notification-policy";
 import { NextRequest, NextResponse } from "next/server";
 import webpush from "web-push";
 import { AUTH_COOKIE, requireLogin } from "@/lib/auth";
@@ -7,8 +8,8 @@ import { encryptPushKey, sessionHash, validPushEndpoint, validPushKeys, sendDevi
 export async function GET(request: NextRequest) {
   const auth = requireLogin(request); if (auth.response || !auth.user) return auth.response;
   try {
-    const settings = await prisma.devicePushSetting.findUnique({ where: { id: "system" }, select: { publicKey: true } });
-    return NextResponse.json({ ready: Boolean(settings), publicKey: settings?.publicKey, isAdmin: auth.user.role === "ADMIN" }, { headers: { "Cache-Control": "no-store" } });
+    const settings = await prisma.devicePushSetting.findUnique({ where: { id: "system" }, select: { publicKey: true, policy:true } });
+    return NextResponse.json({ ready: Boolean(settings), publicKey: settings?.publicKey, isAdmin: auth.user.role === "ADMIN", policy:readPushPolicy(settings?.policy), cronConfigured:auth.user.role === "ADMIN" ? Boolean(process.env.CRON_SECRET && process.env.CRON_SECRET.length>=32):undefined }, { headers: { "Cache-Control": "no-store" } });
   } catch { return NextResponse.json({ code: "PUSH_SETUP_REQUIRED", message: "端末通知の準備が完了していません。管理者が更新結果を確認してください。" }, { status: 503 }); }
 }
 export async function POST(request: NextRequest) {
@@ -16,6 +17,12 @@ export async function POST(request: NextRequest) {
   const input = await request.json().catch(() => null);
   if (!input) return NextResponse.json({ code: "PUSH_INPUT_INVALID", message: "端末情報を確認できませんでした。" }, { status: 400 });
   try {
+    if (input.action === "POLICY") {
+      if (auth.user.role !== "ADMIN") return NextResponse.json({code:"PUSH_ADMIN_REQUIRED",message:"管理者の設定が必要です。"},{status:403});
+      if (!validPushPolicy(input.policy)) return NextResponse.json({code:"PUSH_POLICY_INVALID",message:"通知設定を確認してください。"},{status:400});
+      await prisma.devicePushSetting.update({where:{id:"system"},data:{policy:input.policy}});
+      return NextResponse.json({message:"全端末への配信設定を保存しました。"});
+    }
     if (input.action === "SETUP") {
       if (auth.user.role !== "ADMIN") return NextResponse.json({ code: "PUSH_ADMIN_REQUIRED", message: "管理者の設定が必要です。" }, { status: 403 });
       const keys = webpush.generateVAPIDKeys();

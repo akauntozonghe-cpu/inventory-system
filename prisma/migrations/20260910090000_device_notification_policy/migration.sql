@@ -1,0 +1,1 @@
+ALTER TABLE "DevicePushSetting" ADD COLUMN "policy" JSONB NOT NULL DEFAULT '{}';
