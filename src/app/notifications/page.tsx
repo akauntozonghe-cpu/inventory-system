@@ -320,12 +320,7 @@ export default function NotificationsPage() {
               更新
             </button>
 
-            <Link
-              href="/"
-              className="rounded-xl bg-slate-800 px-4 py-3 font-bold text-white hover:bg-slate-700"
-            >
-              ホームへ戻る
-            </Link>
+
           </div>
         </header>
 

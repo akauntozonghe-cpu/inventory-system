@@ -1,3 +1,4 @@
+import {updateDeviceBadge} from "./device-badge";
 export const PUSH_ENABLED = "inventory:device-push-enabled";
 export function supportsDevicePush() { return typeof window !== "undefined" && window.isSecureContext && "serviceWorker" in navigator && "PushManager" in window && "Notification" in window; }
 export async function pushRegistration() {
@@ -12,6 +13,8 @@ export async function saveDevicePush(subscription: PushSubscription, action = "S
   return value.message as string;
 }
 export async function detachDevicePush(strict=false) {
+  void updateDeviceBadge(0);
+  try{sessionStorage.removeItem("inventory:recovery-return");}catch{}
   if (!supportsDevicePush()) return;
   try {
     const registration = await navigator.serviceWorker.getRegistration();

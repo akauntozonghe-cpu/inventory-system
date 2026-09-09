@@ -216,7 +216,7 @@ export default function ErrorReportsPage() {
         );
       case "ADMIN_REQUIRED":
         return reports.filter(
-          (report) => report.recoveryStatus === "ADMIN_REQUIRED"
+          (report) => report.recoveryStatus === "ADMIN_REQUIRED" && (report.status === "OPEN" || report.status === "INVESTIGATING")
         );
       case "RESOLVED":
         return reports.filter(
@@ -235,7 +235,7 @@ export default function ErrorReportsPage() {
   ).length;
 
   const adminRequiredCount = reports.filter(
-    (report) => report.recoveryStatus === "ADMIN_REQUIRED"
+    (report) => report.recoveryStatus === "ADMIN_REQUIRED" && (report.status === "OPEN" || report.status === "INVESTIGATING")
   ).length;
 
   const updateReport = async (action: "RESOLVE" | "DISMISS") => {
@@ -243,6 +243,7 @@ export default function ErrorReportsPage() {
       return;
     }
 
+    if(action==="RESOLVE"){const report=selected;setSelected(null);sessionStorage.setItem("inventory:recovery-return",JSON.stringify({route:report.route??"/admin/recovery",reportId:report.id}));window.dispatchEvent(new Event("inventory:recovery-return-changed"));window.dispatchEvent(new Event("inventory:resume-recovery"));return;}
     setSaving(true);
     setMessage("");
 
@@ -294,12 +295,7 @@ export default function ErrorReportsPage() {
           </div>
 
           <div className="flex gap-2">
-            <Link
-              href="/admin"
-              className="rounded-xl bg-slate-200 px-4 py-3 font-bold hover:bg-slate-300"
-            >
-              管理画面へ戻る
-            </Link>
+
 
             <button
               type="button"
@@ -534,7 +530,7 @@ export default function ErrorReportsPage() {
               <button
                 type="button"
                 onClick={() => void updateReport("DISMISS")}
-                disabled={saving}
+                disabled={saving||!note.trim()}
                 className="rounded-xl bg-slate-200 px-5 py-3 font-bold text-slate-800 hover:bg-slate-300 disabled:opacity-50"
               >
                 対応不要として記録
@@ -543,10 +539,10 @@ export default function ErrorReportsPage() {
               <button
                 type="button"
                 onClick={() => void updateReport("RESOLVE")}
-                disabled={saving}
+                disabled={saving||selected.recoveryStatus!=="ADMIN_REQUIRED"||!["OPEN","INVESTIGATING"].includes(selected.status)}
                 className="rounded-xl bg-emerald-600 px-5 py-3 font-bold text-white hover:bg-emerald-700 disabled:opacity-50"
               >
-                {saving ? "記録中…" : "解決済みとして記録"}
+                {saving ? "記録中…" : "共通の復旧手順を開く"}
               </button>
             </div>
           </section>
@@ -562,6 +558,6 @@ function recoveryGuide(report: ErrorReport) {
   if (suppliedSteps.length) return { href: typeof detail.recoveryRoute === "string" ? detail.recoveryRoute : "/admin/system-check", steps: suppliedSteps };
   if (report.code.includes("STOCKTAKE")) return { href: report.sessionId ? `/stocktake/${report.sessionId}` : "/admin/stocktake", steps: ["対象の棚卸を開く", "簡易保存・競合・未反映の件数を確認", "画面の再送信または競合解決を実行", "最新状態を再取得して正常を確認"] };
   if (report.code.includes("BARCODE") || report.code.includes("ITEM")) return { href: "/items", steps: ["商品・在庫一覧を開く", "JAN・商品名・管理コードの重複候補を確認", "詳細・すべて編集から正しい情報へ統合", "再度対象操作を実行して正常を確認"] };
-  return { href: "/admin/system-check", steps: ["システム点検を開いて最新の自動点検を実行", "異常項目に表示される対応操作を実行", "同じ点検が正常になることを確認", "この画面に戻り、対応内容を記録して解決済みにする"] };
+  return { href: "/admin/system-check", steps: ["システム点検を開いて最新の自動点検を実行", "異常項目に表示される対応操作を実行", "同じ点検が正常になることを確認", "共通の復旧手順で再チェックし、元の操作を確認して完了する"] };
 }
 

@@ -195,7 +195,7 @@ export async function PATCH(request: NextRequest) {
     const action = input.action;
     if (typeof input.contextRoute === "string") {
       const report = typeof input.reportId === "string" ? await prisma.errorReport.findUnique({where:{id:input.reportId}}) : null;
-      if (!report || report.route !== input.contextRoute || !recoveryActionAllowed(String(action), recoveryCheckCodes(report.route??undefined,report.code)) || (String(action).endsWith("_SESSION") && input.sessionId !== recoverySessionId(report.route??undefined,report.sessionId))) return NextResponse.json({code:"RECOVERY_TARGET_MISMATCH",message:"このエラーに対応した処置と対象を選び直してください。"},{status:409});
+      if (!report || (report.route??"/admin/recovery") !== input.contextRoute || !recoveryActionAllowed(String(action), recoveryCheckCodes(report.route??undefined,report.code)) || (String(action).endsWith("_SESSION") && input.sessionId !== recoverySessionId(report.route??undefined,report.sessionId))) return NextResponse.json({code:"RECOVERY_TARGET_MISMATCH",message:"このエラーに対応した処置と対象を選び直してください。"},{status:409});
     }
     if (action === "SYNC_PRODUCT_METADATA") {
       const result = await repairProductLinks(elevation?.adminUserId ?? auth.user.id, typeof input.reason === "string" ? input.reason.trim().slice(0,1000) : undefined);

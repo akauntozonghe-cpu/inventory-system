@@ -531,12 +531,7 @@ export default function SystemCheckPage() {
             </p>
           </div>
 
-          <Link
-            href="/admin"
-            className="inline-flex min-h-12 items-center justify-center rounded-2xl bg-slate-800 px-5 font-bold text-white hover:bg-slate-700"
-          >
-            管理者設定へ戻る
-          </Link>
+
         </header>
 
         {message && (

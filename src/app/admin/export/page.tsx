@@ -1,6 +1,6 @@
 "use client";
 
-import Link from "next/link";
+
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 
@@ -228,12 +228,7 @@ export default function AdminExportPage() {
               再読み込み
             </button>
 
-            <Link
-              href="/"
-              className="rounded-xl bg-slate-800 px-5 py-3 font-bold text-white hover:bg-slate-700"
-            >
-              ホームへ戻る
-            </Link>
+
           </div>
         </section>
       </main>
@@ -256,12 +251,7 @@ export default function AdminExportPage() {
             </p>
           </div>
 
-          <Link
-            href="/admin"
-            className="inline-flex min-h-12 items-center justify-center rounded-xl bg-slate-700 px-5 font-bold text-white hover:bg-slate-800"
-          >
-            管理者メニューへ戻る
-          </Link>
+
         </header>
 
         <section className="mb-6 rounded-2xl border border-blue-200 bg-blue-50 p-5">

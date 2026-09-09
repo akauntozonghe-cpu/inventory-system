@@ -1,14 +1,14 @@
 "use client";
-import { useLiveRefresh } from "@/hooks/useLiveRefresh";
-import { leaveCurrentStocktakes } from "@/hooks/useStocktakePresence";
-import { detachDevicePush } from "@/lib/device-push-client";
+
+
+
 
 import Link from "next/link";
 import { fetchFresh } from "@/lib/fetch-fresh";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { FeatureKey } from "@/lib/feature-permissions";
-import { ArrowUpRight, BarChart3, Bell, Boxes, CalendarClock, History, LogOut, ScanLine, Search, Settings2, Store, type LucideIcon } from "lucide-react";
+import { ArrowUpRight, BarChart3, Boxes, CalendarClock, History, ScanLine, Search, Settings2, Store, type LucideIcon } from "lucide-react";
 
 type CurrentUser = {
   id: string;
@@ -23,9 +23,7 @@ type ApiError = {
   message?: string;
 };
 
-type NotificationResponse = {
-  unreadCount: number;
-};
+
 
 type Menu = {
   href: string;
@@ -113,16 +111,7 @@ function isCurrentUser(value: unknown): value is CurrentUser {
   );
 }
 
-function isNotificationResponse(
-  value: unknown
-): value is NotificationResponse {
-  return (
-    value !== null &&
-    typeof value === "object" &&
-    "unreadCount" in value &&
-    typeof (value as NotificationResponse).unreadCount === "number"
-  );
-}
+
 
 function getMessage(value: unknown, fallback: string) {
   if (
@@ -157,7 +146,7 @@ export default function HomePage() {
   const router = useRouter();
 
   const [user, setUser] = useState<CurrentUser | null>(null);
-  const [unreadCount, setUnreadCount] = useState(0);
+
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
@@ -192,21 +181,7 @@ export default function HomePage() {
         setUser(authData);
         setLoading(false);
 
-        try {
-          const notificationResponse = await fetchFresh("/api/notifications", {
-            cache: "no-store",
-          });
 
-          if (!notificationResponse.ok) return;
-
-          const notificationData = await readJson(notificationResponse);
-
-          if (!cancelled && isNotificationResponse(notificationData)) {
-            setUnreadCount(notificationData.unreadCount);
-          }
-        } catch {
-          // 通知の取得失敗はホーム画面自体を止めない
-        }
       } catch (caughtError) {
         if (!cancelled) {
           setError(
@@ -229,22 +204,8 @@ export default function HomePage() {
     };
   }, [router]);
 
-  useLiveRefresh(async () => {
-    const response = await fetchFresh("/api/notifications");
-    if (!response.ok) throw new Error("NOTIFICATION_SYNC_FAILED");
-    const value=await response.json();if(isNotificationResponse(value))setUnreadCount(value.unreadCount);
-  });
-  const logout = async () => {
-    try {
-      await leaveCurrentStocktakes(); await detachDevicePush();
-      await fetch("/api/auth/logout", {
-        method: "POST",
-      });
-    } finally {
-      router.replace("/login");
-      router.refresh();
-    }
-  };
+
+
 
   if (loading) {
     return (
@@ -324,27 +285,9 @@ export default function HomePage() {
           </div>
 
           <div className="flex items-center gap-2">
-            <Link
-              href="/notifications"
-              aria-label="通知を開く"
-              className="relative grid h-11 w-11 place-items-center rounded-xl border border-white/10 bg-white/5 text-slate-200 transition hover:bg-white/10"
-            >
-              <Bell size={20} />
-              {unreadCount > 0 && (
-                <span className="absolute -right-1 -top-1 grid min-h-5 min-w-5 place-items-center rounded-full bg-rose-500 px-1 text-[10px] font-black text-white ring-2 ring-[#0b1220]">
-                  {unreadCount > 99 ? "99+" : unreadCount}
-                </span>
-              )}
-            </Link>
 
-            <button
-              type="button"
-              onClick={() => void logout()}
-              aria-label="ログアウト"
-              className="grid h-11 w-11 place-items-center rounded-xl border border-white/10 bg-white/5 text-slate-200 transition hover:bg-white/10"
-            >
-              <LogOut size={20} />
-            </button>
+
+
           </div>
           </div>
         </header>

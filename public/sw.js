@@ -1,4 +1,4 @@
-const CACHE_NAME = "inventory-os-shell-v6";
+const CACHE_NAME = "inventory-os-shell-v7";
 const SHELL = ["/offline", "/pwa/icon-192?v=4", "/pwa/icon-512?v=4"];
 
 self.addEventListener("install", (event) => { event.waitUntil(caches.open(CACHE_NAME).then((cache) => cache.addAll(SHELL))); });
@@ -19,7 +19,7 @@ self.addEventListener("fetch", (event) => {
 
 self.addEventListener("push", event => {
   let payload = {}; try { payload = event.data?.json() ?? {}; } catch {}
-  event.waitUntil(self.registration.showNotification("Inventory OS", { body: payload.body === "端末通知のテストです。" ? payload.body : "新しい通知があります。アプリで内容を確認してください。", icon: "/pwa/icon-192?v=4", badge: "/pwa/icon-192?v=4", tag: typeof payload.tag === "string" ? payload.tag.slice(0,120) : "inventory-notification", data: { url: "/notifications" } }));
+  event.waitUntil(Promise.all([Promise.resolve().then(()=>self.navigator.setAppBadge?.()).catch(()=>{}),self.registration.showNotification("Inventory OS", { body: payload.body === "端末通知のテストです。" ? payload.body : "新しい通知があります。アプリで内容を確認してください。", icon: "/pwa/icon-192?v=4", badge: "/pwa/icon-192?v=4", tag: typeof payload.tag === "string" ? payload.tag.slice(0,120) : "inventory-notification", data: { url: "/notifications" } })]));
 });
 self.addEventListener("notificationclick", event => {
   event.notification.close();

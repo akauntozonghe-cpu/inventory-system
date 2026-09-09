@@ -404,12 +404,7 @@ export default function StocktakeStartPage() {
             </p>
           </div>
 
-          <Link
-            href="/"
-            className="rounded-xl bg-slate-700 px-5 py-3 text-center font-bold text-white transition hover:bg-slate-600"
-          >
-            ホームへ戻る
-          </Link>
+
         </div>
       </header>
 

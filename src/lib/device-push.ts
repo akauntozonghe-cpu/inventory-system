@@ -1,5 +1,5 @@
 import webpush from "web-push";
-import { createHash, createCipheriv, createDecipheriv, randomBytes } from "node:crypto";
+import { createECDH, createHash, createCipheriv, createDecipheriv, randomBytes } from "node:crypto";
 import { after } from "next/server";
 import { prisma } from "./prisma";
 
@@ -17,6 +17,9 @@ function decryptPushKey(value: string) {
   const [iv, tag, data] = value.split(".").map(value => Buffer.from(value, "base64url"));
   const decipher = createDecipheriv("aes-256-gcm", secret(), iv); decipher.setAuthTag(tag);
   return Buffer.concat([decipher.update(data), decipher.final()]).toString("utf8");
+}
+export function pushSettingsUsable(settings: {publicKey:string;privateKey:string;subject:string}|null) {
+  if(!settings)return false;try{const key=createECDH("prime256v1");key.setPrivateKey(Buffer.from(decryptPushKey(settings.privateKey),"base64url"));const subject=new URL(settings.subject);return ["https:","mailto:"].includes(subject.protocol)&&key.getPublicKey().toString("base64url")===settings.publicKey;}catch{return false;}
 }
 export function validPushEndpoint(endpoint: unknown): endpoint is string {
   if (typeof endpoint !== "string" || endpoint.length > 2048) return false;

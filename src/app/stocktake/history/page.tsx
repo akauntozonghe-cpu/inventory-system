@@ -240,12 +240,7 @@ export default function StocktakeHistoryPage() {
               </Link>
             )}
 
-            <Link
-              href="/"
-              className="rounded-xl bg-slate-700 px-4 py-3 font-bold text-white"
-            >
-              ホームへ戻る
-            </Link>
+
           </div>
         </header>
 

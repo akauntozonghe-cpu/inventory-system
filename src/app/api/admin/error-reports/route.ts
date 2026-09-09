@@ -113,6 +113,8 @@ export async function PATCH(request: NextRequest) {
       );
     }
 
+    if(action === "RESOLVE") return NextResponse.json({code:"RECOVERY_WIZARD_REQUIRED",message:"復旧ウィザードで再診断と動作確認を行ってください。"},{status:409});
+    if(!note) return NextResponse.json({code:"RECOVERY_REASON_REQUIRED",message:"対応不要と判断した理由を入力してください。"},{status:400});
     const report = await prisma.errorReport.findUnique({
       where: {
         id: reportId,
@@ -142,15 +144,7 @@ export async function PATCH(request: NextRequest) {
           id: reportId,
         },
         data:
-          action === "RESOLVE"
-            ? {
-                status: "RESOLVED",
-                resolvedAt: now,
-                recoveryStatus: "RECOVERED",
-                recoveredAt: now,
-                recoveryNote: note || "管理者が解決済みにしました。",
-              }
-            : {
+          {
                 status: "DISMISSED",
                 resolvedAt: now,
                 recoveryNote: note || "管理者が対応不要として記録しました。",
@@ -160,9 +154,7 @@ export async function PATCH(request: NextRequest) {
       await tx.adminActionLog.create({
         data: {
           action:
-            action === "RESOLVE"
-              ? "ERROR_REPORT_RESOLVED"
-              : "ERROR_REPORT_DISMISSED",
+            "ERROR_REPORT_DISMISSED",
           route: request.nextUrl.pathname,
           adminUserId: currentUser.id,
           errorReportId: reportId,
@@ -180,9 +172,7 @@ export async function PATCH(request: NextRequest) {
     return NextResponse.json({
       success: true,
       message:
-        action === "RESOLVE"
-          ? "エラーレポートを解決済みにしました。"
-          : "エラーレポートを対応不要として記録しました。",
+        "エラーレポートを対応不要として記録しました。",
       report: updated,
     });
   } catch (error) {

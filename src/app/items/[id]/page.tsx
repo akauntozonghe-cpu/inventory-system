@@ -570,12 +570,7 @@ export default function ItemDetailPage() {
             {error || "商品情報を取得できませんでした。"}
           </p>
 
-          <Link
-            href="/items"
-            className="mt-5 inline-flex rounded-xl bg-slate-800 px-5 py-3 font-bold text-white"
-          >
-            商品一覧へ戻る
-          </Link>
+
         </div>
       </main>
     );

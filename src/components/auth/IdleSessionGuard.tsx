@@ -1,6 +1,4 @@
 "use client";
-import {useLiveRefresh} from "@/hooks/useLiveRefresh";
-import {fetchFresh} from "@/lib/fetch-fresh";
 import { leaveCurrentStocktakes } from "@/hooks/useStocktakePresence";
 import { detachDevicePush } from "@/lib/device-push-client";
 
@@ -19,7 +17,6 @@ export default function IdleSessionGuard() {
   const lastWriteRef = useRef(0);
   const loggingOutRef = useRef(false);
 
-  useLiveRefresh(async()=>{const response=await fetchFresh("/api/auth/me");if(!response.ok)throw new Error("AUTH_REFRESH_FAILED");},!PUBLIC_PATHS.has(pathname));
 
   useEffect(() => {
     if (PUBLIC_PATHS.has(pathname)) {

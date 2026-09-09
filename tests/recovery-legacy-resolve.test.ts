@@ -1,0 +1,10 @@
+import {expect,it,vi,beforeEach} from "vitest";
+import {NextRequest} from "next/server";
+const state=vi.hoisted(()=>({admin:true}));const db=vi.hoisted(()=>({errorReport:{findUnique:vi.fn()},$transaction:vi.fn()}));
+vi.mock("@/lib/auth",()=>({getLoggedInUser:()=>({id:"admin"}),isAdmin:()=>state.admin}));vi.mock("@/lib/prisma",()=>({prisma:db}));
+import {PATCH} from "../src/app/api/admin/error-reports/route";
+const request=(action:string,note="")=>new NextRequest("http://localhost/api/admin/error-reports",{method:"PATCH",body:JSON.stringify({reportId:"r1",action,note})});
+beforeEach(()=>{vi.resetAllMocks();state.admin=true;});
+it("does not allow the legacy resolve button to bypass the diagnostic",async()=>{const r=await PATCH(request("RESOLVE","直った"));expect(r.status).toBe(409);expect((await r.json()).code).toBe("RECOVERY_WIZARD_REQUIRED");expect(db.$transaction).not.toHaveBeenCalled();});
+it("requires a reason before dismissing an error",async()=>{expect((await PATCH(request("DISMISS"))).status).toBe(400);expect(db.$transaction).not.toHaveBeenCalled();});
+it("requires administrator permission for all report changes",async()=>{state.admin=false;expect((await PATCH(request("DISMISS","対象外"))).status).toBe(403);expect(db.errorReport.findUnique).not.toHaveBeenCalled();});

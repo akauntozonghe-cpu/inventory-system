@@ -1,4 +1,4 @@
-import { scheduleDeviceNotifications } from "@/lib/device-push";
+import { scheduleDeviceNotifications, pushSettingsUsable } from "@/lib/device-push";
 import { recoveryCheckCodes, recoverySessionId } from "@/lib/recovery-context";
 import { publicErrorMessage as getErrorMessage } from "@/lib/public-error";
 import { countProductLinkProblems } from "@/lib/product-integrity";
@@ -158,7 +158,7 @@ export async function POST(request: NextRequest) {
       const contextRoute = typeof input.contextRoute === "string" ? input.contextRoute : null;
       const reportId = typeof input.reportId === "string" ? input.reportId : null;
       const report = reportId ? await prisma.errorReport.findUnique({where:{id:reportId}}) : null;
-      if (reportId && (!report || report.route !== contextRoute)) return NextResponse.json({code:"RECOVERY_CONTEXT_INVALID",message:"復旧対象を選び直してください。"},{status:409});
+      if (reportId && (!report || (report.route??"/admin/recovery") !== contextRoute)) return NextResponse.json({code:"RECOVERY_CONTEXT_INVALID",message:"復旧対象を選び直してください。"},{status:409});
       const relevant = recoveryCheckCodes(contextRoute ?? undefined, report?.code ?? (typeof input.errorCode === "string" ? input.errorCode : undefined));
 
       const needs = (code:string) => !relevant || relevant.includes(code);
@@ -352,6 +352,13 @@ export async function POST(request: NextRequest) {
         },
       ];
 
+      if (needs("CHECK_PUSH_CONFIGURATION")) {
+        const settings=await prisma.devicePushSetting.findUnique({where:{id:"system"}});
+        const usable=pushSettingsUsable(settings);
+        checks.push({code:"CHECK_PUSH_CONFIGURATION",title:"端末通知の配信設定",status:usable?"PASS":"FAIL",detail:usable?"配信設定と暗号鍵を利用できます。端末への到着はテスト通知で確認してください。":settings?"配信設定を利用できません。認証用の暗号鍵と配信設定の復元が必要です。":"通知画面で管理者が「端末通知を準備する」を実行してください。",expected:"配信設定が有効",actual:usable?"有効":"利用不可"});
+      }
+      if (relevant?.includes("CHECK_DEVICE_NOTIFICATION")) checks.push({code:"CHECK_DEVICE_NOTIFICATION",title:"エラーの出た端末で通知を確認",status:"WARNING",detail:"サーバーから端末の通知許可や実際の表示は確認できません。対象端末の通知画面で「端末の通知表示をテスト」、続いて「再接続して配信をテスト」を実行してください。",expected:"対象端末での表示・配信確認",actual:"端末で確認が必要"});
+      if (relevant?.includes("CHECK_APP_UPDATE")) checks.push({code:"CHECK_APP_UPDATE",title:"アプリ更新を対象端末で再実行",status:"WARNING",detail:"入力を保存し、共通メニューの「アプリの更新を確認」を実行してください。切替の進行と失敗理由は画面下部に表示されます。",expected:"対象端末で更新完了",actual:"端末で確認が必要"});
       if (relevant) checks = checks.filter(check => relevant.includes(check.code));
       const status = calculateRunStatus(checks);
       const summary = summarizeChecks(checks);

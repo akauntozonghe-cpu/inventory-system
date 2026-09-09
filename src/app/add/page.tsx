@@ -3,7 +3,7 @@ import SelectOrCreate from "@/components/SelectOrCreate";
 import { useRegistrationOptions } from "@/hooks/useRegistrationOptions";
 import { unitValidationMessage } from "@/lib/unit";
 
-import Link from "next/link";
+
 import { type FormEvent, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { normalizeAsciiCodeInput, normalizeJanInput } from "@/lib/input-normalization";
@@ -306,12 +306,7 @@ export default function AddPage() {
             </p>
           </div>
 
-          <Link
-            href="/"
-            className="rounded-xl bg-slate-700 px-5 py-3 text-center font-bold text-white transition hover:bg-slate-800"
-          >
-            ホームへ戻る
-          </Link>
+
         </header>
 
         {!loading && currentUser && (

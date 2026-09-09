@@ -1,15 +1,10 @@
 "use client";
-import {useLiveRefresh} from "@/hooks/useLiveRefresh";
-import {fetchFresh} from "@/lib/fetch-fresh";
+import { useLiveRefresh } from "@/hooks/useLiveRefresh";
+import { fetchFresh } from "@/lib/fetch-fresh";
 import { displayUnit } from "@/lib/unit";
 
 import Link from "next/link";
-import {
-  type FormEvent,
-  useCallback,
-  useEffect,
-  useState,
-} from "react";
+import { type FormEvent, useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import FeedbackToast from "@/components/common/FeedbackToast";
 
@@ -356,12 +351,7 @@ export default function RegistrationRequestsPage() {
               更新
             </button>
 
-            <Link
-              href="/admin"
-              className="rounded-xl bg-slate-800 px-4 py-3 font-bold text-white hover:bg-slate-700"
-            >
-              管理者メニューへ戻る
-            </Link>
+
           </div>
         </header>
 

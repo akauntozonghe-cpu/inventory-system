@@ -2,7 +2,7 @@
 import UnifiedScanner from "@/components/stocktake/UnifiedScanner";
 import { useAdminMode } from "@/components/auth/PageAdminMode";
 import Pagination from "@/components/common/Pagination";
-import SectionNavigation, { marketplaceLinks } from "@/components/common/SectionNavigation";
+
 
 import { useLiveRefresh } from "@/hooks/useLiveRefresh";
 import { fetchFresh } from "@/lib/fetch-fresh";
@@ -165,7 +165,7 @@ useEffect(() => {
       <FeedbackToast tone="error" title="フリマエラー" message={error?.message ?? ""} errorCode={error?.code} reportId={error?.reportId} recoveryStatus={error?.status} onRetry={() => void load()} retrying={error?.status === "RECOVERING"} onClose={() => setError(null)} />
       <FeedbackToast tone="success" title="完了" message={notice} onClose={() => setNotice("")} />
       <div className="mx-auto max-w-7xl space-y-7">
-        <header className="flex flex-wrap items-center justify-between gap-4"><div><p className="text-sm font-black tracking-[0.2em] text-violet-700">PERSONAL FLEA MARKET</p><h1 className="mt-1 text-3xl font-black">個人フリマ統合管理</h1><p className="mt-2 text-slate-600">出品原稿、併売、在庫、梱包、発送、利益まで一か所で管理します。</p></div><div className="flex gap-2"><a href="/api/admin/marketplace/listings?format=csv" className="rounded-xl bg-emerald-600 px-4 py-3 font-black text-white">取引CSV</a><Link href="/" className="rounded-xl bg-slate-800 px-4 py-3 font-black text-white">ホーム</Link></div></header><section aria-label="フリマの進め方" className="mt-5 rounded-2xl border bg-white p-4"><h2 className="font-black">在庫から販売する手順</h2><ol className="mt-2 grid gap-2 text-sm sm:grid-cols-4"><li>1. JAN・QR・商品名で在庫を選ぶ</li><li>2. 数量と価格を入れ、出品準備を保存</li><li>3. 出品文を販売サイトに登録し「出品済み」にする</li><li>4. 売れたら販売を記録 → 在庫を減算 → 発送を記録</li></ol><p className="mt-3 text-sm text-slate-600">保存だけでは外部サイトに出品されません。取消・差戻しは管理者操作から行えます。</p></section><SectionNavigation label="フリマ" current="/marketplace" links={marketplaceLinks} />
+        <header className="flex flex-wrap items-center justify-between gap-4"><div><p className="text-sm font-black tracking-[0.2em] text-violet-700">PERSONAL FLEA MARKET</p><h1 className="mt-1 text-3xl font-black">個人フリマ統合管理</h1><p className="mt-2 text-slate-600">出品原稿、併売、在庫、梱包、発送、利益まで一か所で管理します。</p></div><div className="flex gap-2"><a href="/api/admin/marketplace/listings?format=csv" className="rounded-xl bg-emerald-600 px-4 py-3 font-black text-white">取引CSV</a></div></header><section aria-label="フリマの進め方" className="mt-5 rounded-2xl border bg-white p-4"><h2 className="font-black">在庫から販売する手順</h2><ol className="mt-2 grid gap-2 text-sm sm:grid-cols-4"><li>1. JAN・QR・商品名で在庫を選ぶ</li><li>2. 数量と価格を入れ、出品準備を保存</li><li>3. 出品文を販売サイトに登録し「出品済み」にする</li><li>4. 売れたら販売を記録 → 在庫を減算 → 発送を記録</li></ol><p className="mt-3 text-sm text-slate-600">保存だけでは外部サイトに出品されません。取消・差戻しは管理者操作から行えます。</p></section>
 
         <section className="grid grid-cols-2 gap-3 lg:grid-cols-4">{[["出品準備", summary.preparing], ["出品中", summary.listed], ["発送対応", summary.shipping], ["確定利益", `${summary.settledProfit.toLocaleString("ja-JP")}円`]].map(([label, value]) => <div key={String(label)} className="rounded-2xl bg-white p-4 shadow-sm"><p className="text-sm font-bold text-slate-500">{label}</p><p className="mt-1 text-2xl font-black">{value}</p></div>)}</section>
 

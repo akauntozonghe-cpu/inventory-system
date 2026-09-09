@@ -1,6 +1,8 @@
 export function recoveryCheckCodes(route?: string, errorCode?: string): string[] | null {
   if (!route) return null; // The dedicated system inspection remains comprehensive.
   const base = ["CHECK_DATABASE_CONNECTION"];
+  if (/PUSH|NOTIFICATION/.test(errorCode??"") || route==="/notifications") return [...base,"CHECK_PUSH_CONFIGURATION","CHECK_DEVICE_NOTIFICATION"];
+  if (/PWA|SERVICE_WORKER/.test(errorCode??"")) return [...base,"CHECK_APP_UPDATE"];
   if (errorCode && /NETWORK|HTTP_50|FETCH|TIMEOUT|CONNECTION/.test(errorCode)) return base;
   if (/AUTH|LOGIN|PERMISSION|FORBIDDEN/.test(errorCode ?? "") || /login|account|users/.test(route)) return [...base, "CHECK_ACTIVE_ADMIN"];
   if (/BARCODE|JAN|IDENTIFIER/.test(errorCode ?? "")) return [...base, "CHECK_PRODUCT_IDENTIFIERS"];

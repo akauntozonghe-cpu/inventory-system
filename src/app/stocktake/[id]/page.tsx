@@ -8,13 +8,7 @@ import { canReopenStocktake } from "@/lib/stocktake-reopening";
 import ReopenStocktakeButton from "@/components/stocktake/ReopenStocktakeButton";
 import ProductEditDialog from "@/components/ProductEditDialog";
 import { displayUnit } from "@/lib/unit";
-import {
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-} from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import UnifiedScanner from "@/components/stocktake/UnifiedScanner";
 import StocktakeLotPicker from "@/components/stocktake/StocktakeLotPicker";
@@ -735,12 +729,7 @@ export default function StocktakePage() {
           <p className="mt-3 text-slate-600">
             {error || "棚卸情報を取得できませんでした。"}
           </p>
-          <Link
-            href="/stocktake/start"
-            className="mt-6 inline-flex rounded-xl bg-indigo-600 px-5 py-3 font-bold text-white"
-          >
-            棚卸開始へ戻る
-          </Link>
+
         </div>
       </main>
     );

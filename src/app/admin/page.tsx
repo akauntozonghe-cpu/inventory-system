@@ -282,12 +282,7 @@ export default function AdminPage() {
               再読み込み
             </button>
 
-            <Link
-              href="/"
-              className="rounded-xl bg-slate-700 px-4 py-3 font-bold text-white hover:bg-slate-800"
-            >
-              ホームへ戻る
-            </Link>
+
           </div>
         </section>
       </main>
@@ -327,12 +322,7 @@ export default function AdminPage() {
               <p className="font-black text-slate-950">{user.displayName}</p>
             </div>
 
-            <Link
-              href="/"
-              className="inline-flex min-h-12 items-center justify-center rounded-2xl bg-slate-800 px-5 font-bold text-white hover:bg-slate-700"
-            >
-              ホームへ戻る
-            </Link>
+
           </div>
         </header>
 
