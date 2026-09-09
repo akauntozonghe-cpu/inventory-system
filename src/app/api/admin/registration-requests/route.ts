@@ -1,3 +1,4 @@
+import { scheduleDeviceNotifications } from "@/lib/device-push";
 import { randomInt } from "node:crypto";
 import {
   InventoryEventType,
@@ -73,6 +74,7 @@ function isReviewAction(value: unknown): value is ReviewAction {
 }
 
 export async function GET(request: NextRequest) {
+  scheduleDeviceNotifications(false);
   const authorization = requireAdmin(request);
 
   if (authorization.response) {
@@ -131,6 +133,7 @@ export async function GET(request: NextRequest) {
 }
 
 export async function PATCH(request: NextRequest) {
+  scheduleDeviceNotifications(true);
   const authorization = requireAdmin(request);
 
   if (authorization.response) {

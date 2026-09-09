@@ -1,0 +1,11 @@
+import {beforeEach,expect,it,vi} from "vitest";
+import {NextRequest} from "next/server";
+const state=vi.hoisted(()=>({id:"worker-a",role:"WORKER"}));
+const db=vi.hoisted(()=>({notification:{findMany:vi.fn()},notificationRead:{createMany:vi.fn()}}));
+vi.mock("@/lib/auth",()=>({getLoggedInUser:()=>state}));vi.mock("@/lib/prisma",()=>({prisma:db}));vi.mock("@/lib/device-push",()=>({scheduleDeviceNotifications:()=>{}}));
+import {GET,PATCH} from "../src/app/api/notifications/route";
+const request=()=>new NextRequest("http://localhost/api/notifications",{method:"PATCH",body:JSON.stringify({notificationIds:["n"]})});
+beforeEach(()=>{vi.resetAllMocks();state.id="worker-a";state.role="WORKER";db.notificationRead.createMany.mockResolvedValue({count:1});});
+it("marks only the signed-in user's notification read",async()=>{db.notification.findMany.mockResolvedValue([{id:"n",recipientUserId:"worker-a",audience:"USER"}]);expect((await PATCH(request())).status).toBe(200);expect(db.notificationRead.createMany).toHaveBeenCalledWith({data:[{notificationId:"n",userId:"worker-a"}],skipDuplicates:true});});
+it("never marks another user's notification read",async()=>{db.notification.findMany.mockResolvedValue([{id:"n",recipientUserId:"worker-b",audience:"USER"}]);expect((await PATCH(request())).status).toBe(404);expect(db.notificationRead.createMany).not.toHaveBeenCalled();});
+it("uses the same user's read receipt across devices",async()=>{db.notification.findMany.mockResolvedValue([{id:"n",recipientUserId:"worker-a",readAt:null,readReceipts:[{readAt:new Date("2026-09-01")}]},{id:"n2",recipientUserId:"worker-a",readAt:null,readReceipts:[]}]);const value=await (await GET(new NextRequest("http://localhost/api/notifications"))).json();expect(value.unreadCount).toBe(1);expect(value.notifications[0].readAt).toBe("2026-09-01T00:00:00.000Z");expect(value.notifications[0].readReceipts).toBeUndefined();});

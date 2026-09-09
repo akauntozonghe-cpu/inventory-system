@@ -1,4 +1,6 @@
 "use client";
+import {useLiveRefresh} from "@/hooks/useLiveRefresh";
+import {fetchFresh} from "@/lib/fetch-fresh";
 import { displayUnit } from "@/lib/unit";
 
 import Link from "next/link";
@@ -153,10 +155,10 @@ export default function RegistrationRequestsPage() {
   const [generateSystemBarcode, setGenerateSystemBarcode] =
     useState(false);
 
-  const loadRequests = useCallback(async () => {
+  const loadRequests = useCallback(async (silent=false) => {
     try {
-      setLoading(true);
-      setError("");
+      if(!silent)setLoading(true);
+      if(!silent)setError("");
 
       const [authResponse, requestResponse] = await Promise.all([
         fetch("/api/auth/me", { cache: "no-store" }),
@@ -203,6 +205,7 @@ export default function RegistrationRequestsPage() {
 
       setRequests(requestData.requests as RegistrationRequest[]);
     } catch (caughtError) {
+      if(silent)throw caughtError;
       setError(
         caughtError instanceof Error
           ? caughtError.message
@@ -216,6 +219,7 @@ export default function RegistrationRequestsPage() {
   useEffect(() => {
     void loadRequests();
   }, [loadRequests]);
+  useLiveRefresh(async()=>{if(processing)throw new Error("EDIT_IN_PROGRESS");await loadRequests(true);});
 
   const openReview = (
     request: RegistrationRequest,
@@ -272,7 +276,7 @@ export default function RegistrationRequestsPage() {
       setError("");
       setNotice("");
 
-      const response = await fetch("/api/admin/registration-requests", {
+      const response = await fetchFresh("/api/admin/registration-requests", {
         method: "PATCH",
         headers: {
           "Content-Type": "application/json",

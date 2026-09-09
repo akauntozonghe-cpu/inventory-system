@@ -7,7 +7,7 @@ export default function OperationModeBanner() {
   useEffect(() => {
     const load = () => fetch("/api/system-status", { cache: "no-store" }).then((r) => r.ok ? r.json() : null).then(setStatus).catch(() => undefined);
     void load();
-    const timer = window.setInterval(load, 30_000);
+    const timer = window.setInterval(load, 2_000);
     return () => window.clearInterval(timer);
   }, []);
   if (!status || status.mode === "NORMAL") return null;

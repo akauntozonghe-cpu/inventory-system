@@ -45,7 +45,7 @@ export default function FeedbackToast({
   return (
     <div className="pointer-events-none fixed inset-x-3 bottom-3 z-[200] flex justify-center sm:inset-x-auto sm:bottom-5 sm:right-5">
       <section
-        data-admin-recovery-title={tone === "error" ? "true" : undefined}
+        data-error-code={code} data-error-message={message} data-admin-recovery-title={tone === "error" ? "true" : undefined}
         role={tone === "error" ? "alert" : "status"}
         aria-live={tone === "error" ? "assertive" : "polite"}
         className={`pointer-events-auto w-full max-w-xl rounded-2xl border p-4 shadow-[0_20px_60px_rgba(16,24,40,.18)] sm:min-w-[380px] ${styles[tone]}`}

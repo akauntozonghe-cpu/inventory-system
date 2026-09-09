@@ -1,3 +1,4 @@
+import { scheduleDeviceNotifications } from "@/lib/device-push";
 import { ErrorSeverity, Prisma } from "@prisma/client";
 import { NextRequest, NextResponse } from "next/server";
 import { getLoggedInUser } from "@/lib/auth";
@@ -52,6 +53,7 @@ function toJsonValue(value: unknown): Prisma.InputJsonValue | undefined {
 }
 
 export async function POST(request: NextRequest) {
+  scheduleDeviceNotifications(true);
   try {
     const currentUser = getLoggedInUser(request);
 

@@ -1,4 +1,7 @@
 "use client";
+import DeviceNotifications from "@/components/pwa/DeviceNotifications";
+import { useLiveRefresh } from "@/hooks/useLiveRefresh";
+import { fetchFresh } from "@/lib/fetch-fresh";
 
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -141,9 +144,9 @@ export default function NotificationsPage() {
     return notifications;
   }, [filter, notifications]);
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (silent = false) => {
     try {
-      setLoading(true);
+      if (!silent) setLoading(true);
       setError("");
 
       const [authResponse, notificationResponse] = await Promise.all([
@@ -179,6 +182,7 @@ export default function NotificationsPage() {
           ? caughtError.message
           : "通知を取得できませんでした。"
       );
+      if (silent) throw caughtError;
     } finally {
       setLoading(false);
     }
@@ -187,6 +191,8 @@ export default function NotificationsPage() {
   useEffect(() => {
     void load();
   }, [load]);
+
+  useLiveRefresh(() => load(true));
 
   const markAsRead = async (notificationIds: string[]) => {
     if (notificationIds.length === 0) {
@@ -198,7 +204,7 @@ export default function NotificationsPage() {
       setError("");
       setNotice("");
 
-      const response = await fetch("/api/notifications", {
+      const response = await fetchFresh("/api/notifications", {
         method: "PATCH",
         headers: {
           "Content-Type": "application/json",
@@ -247,7 +253,7 @@ export default function NotificationsPage() {
       setError("");
       setNotice("");
 
-      const response = await fetch("/api/notifications", {
+      const response = await fetchFresh("/api/notifications", {
         method: "PATCH",
         headers: {
           "Content-Type": "application/json",
@@ -476,6 +482,7 @@ export default function NotificationsPage() {
           )}
         </section>
       </div>
-    </main>
+    <DeviceNotifications/>
+</main>
   );
 }

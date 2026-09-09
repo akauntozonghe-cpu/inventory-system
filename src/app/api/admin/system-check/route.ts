@@ -1,3 +1,5 @@
+import { scheduleDeviceNotifications } from "@/lib/device-push";
+import { recoveryCheckCodes, recoverySessionId } from "@/lib/recovery-context";
 import { publicErrorMessage as getErrorMessage } from "@/lib/public-error";
 import { countProductLinkProblems } from "@/lib/product-integrity";
 import { unitValidationMessage } from "@/lib/unit";
@@ -67,6 +69,7 @@ function isManualCheck(value: unknown): value is ManualCheckInput {
 }
 
 export async function GET(request: NextRequest) {
+  scheduleDeviceNotifications(false);
   const auth = requireAdmin(request);
 
   if (auth.response || !auth.user) {
@@ -84,6 +87,7 @@ export async function GET(request: NextRequest) {
 
   try {
     const runs = await prisma.systemCheckRun.findMany({
+        where: {contextRoute:null},
       take: 30,
       orderBy: {
         createdAt: "desc",
@@ -125,6 +129,7 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
+  scheduleDeviceNotifications(true);
   const auth = requireAdmin(request);
 
   if (auth.response || !auth.user) {
@@ -150,7 +155,16 @@ export async function POST(request: NextRequest) {
 
     if (input.action === "RUN_AUTO") {
       const startedAt = Date.now();
+      const contextRoute = typeof input.contextRoute === "string" ? input.contextRoute : null;
+      const reportId = typeof input.reportId === "string" ? input.reportId : null;
+      const report = reportId ? await prisma.errorReport.findUnique({where:{id:reportId}}) : null;
+      if (reportId && (!report || report.route !== contextRoute)) return NextResponse.json({code:"RECOVERY_CONTEXT_INVALID",message:"復旧対象を選び直してください。"},{status:409});
+      const relevant = recoveryCheckCodes(contextRoute ?? undefined, report?.code ?? (typeof input.errorCode === "string" ? input.errorCode : undefined));
 
+      const needs = (code:string) => !relevant || relevant.includes(code);
+      const sessionId = recoverySessionId(contextRoute??undefined, report?.sessionId);
+      const sessionWhere = sessionId ? {id:sessionId} : {};
+      await prisma.$queryRaw`SELECT 1`;
       const [
         adminCount,
         activeSessionCount,
@@ -163,48 +177,51 @@ export async function POST(request: NextRequest) {
         stocktakeRecordsForIntegrity,
         stocktakeTargetsForIntegrity,
       ] = await Promise.all([
-        prisma.appUser.count({
+        needs("CHECK_ACTIVE_ADMIN") ? prisma.appUser.count({
           where: {
             role: "ADMIN",
             isActive: true,
           },
-        }),
-        prisma.stocktakeSession.count({
+        }) : 0,
+        needs("CHECK_ACTIVE_STOCKTAKE") ? prisma.stocktakeSession.count({
           where: {
             status: {
               in: ["IN_PROGRESS", "PAUSED", "REVIEW", "CONFLICT"],
             },
           },
-        }),
-        prisma.stocktakeSession.count({
+        }) : 0,
+        needs("CHECK_REVIEW_RECORDS") ? prisma.stocktakeSession.count({
           where: {
+            ...sessionWhere,
             status: "REVIEW",
             records: {
               none: {},
             },
           },
-        }),
-        prisma.inventoryInstance.count({
+        }) : 0,
+        needs("CHECK_PRODUCT_IDENTIFIERS") ? prisma.inventoryInstance.count({
           where: {
             item: {
               janCode: null,
               systemBarcode: null,
             },
           },
-        }),
-        prisma.inventoryInstance.count(),
-        prisma.item.count(),
-        prisma.storageLocation.count(),
-        prisma.item.findMany({
+        }) : 0,
+        needs("CHECK_MASTER_DATA") ? prisma.inventoryInstance.count() : 0,
+        needs("CHECK_MASTER_DATA") ? prisma.item.count() : 0,
+        needs("CHECK_MASTER_DATA") ? prisma.storageLocation.count() : 0,
+        needs("CHECK_DUPLICATE_PRODUCTS") ? prisma.item.findMany({
           where: { isArchived: false },
           select: { id: true, name: true, janCode: true, managementCode: true },
-        }),
-        prisma.stocktakeRecord.findMany({
+        }) : [],
+        needs("CHECK_STOCKTAKE_TARGET_LINK") ? prisma.stocktakeRecord.findMany({
+          where: sessionId ? {sessionId} : {},
           select: { sessionId: true, inventoryInstanceId: true },
-        }),
-        prisma.stocktakeTarget.findMany({
+        }) : [],
+        needs("CHECK_STOCKTAKE_TARGET_LINK") ? prisma.stocktakeTarget.findMany({
+          where: sessionId ? {sessionId} : {},
           select: { sessionId: true, inventoryInstanceId: true },
-        }),
+        }) : [],
       ]);
 
       const duplicateKeys = new Map<string, number>();
@@ -226,13 +243,13 @@ export async function POST(request: NextRequest) {
       ).length;
 
       const [linkProblems, units] = await Promise.all([
-        countProductLinkProblems(),
-        prisma.inventoryInstance.findMany({ select: { unit: true, item: { select: { defaultUnit: true } } } }),
+        needs("CHECK_PRODUCT_LINKS") ? countProductLinkProblems() : 0,
+        needs("CHECK_INVALID_UNITS") ? prisma.inventoryInstance.findMany({ select: { unit: true, item: { select: { defaultUnit: true } } } }) : [],
       ]);
       const invalidUnits = units.filter((row) => unitValidationMessage(row.unit) || unitValidationMessage(row.item.defaultUnit)).length;
       const responseTimeMs = Date.now() - startedAt;
 
-      const checks: Array<{
+      let checks: Array<{
         code: string;
         title: string;
         status: CheckStatus;
@@ -278,12 +295,12 @@ export async function POST(request: NextRequest) {
         {
           code: "CHECK_ACTIVE_STOCKTAKE",
           title: "進行中棚卸の整合性",
-          status: activeSessionCount <= 1 ? "PASS" : "WARNING",
+          status: "PASS",
           detail:
             activeSessionCount <= 1
-              ? "同時に進行中の棚卸はありません。"
-              : `進行中・確認中・競合中の棚卸が ${activeSessionCount}件あります。運用上問題がないか確認してください。`,
-          expected: "原則1件以下",
+              ? `進行中・確認中の棚卸は ${activeSessionCount}件です。`
+              : `進行中・確認中の棚卸は ${activeSessionCount}件です。複数件の並行作業は正常です。`,
+          expected: "複数の棚卸・端末で並行作業可能",
           actual: `${activeSessionCount}件`,
         },
         {
@@ -335,12 +352,14 @@ export async function POST(request: NextRequest) {
         },
       ];
 
+      if (relevant) checks = checks.filter(check => relevant.includes(check.code));
       const status = calculateRunStatus(checks);
       const summary = summarizeChecks(checks);
 
       const run = await prisma.systemCheckRun.create({
         data: {
           mode: "AUTO",
+          contextRoute, errorReportId: reportId,
           status,
           summary,
           executedByUserId: auth.user.id,

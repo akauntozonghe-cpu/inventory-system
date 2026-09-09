@@ -1,4 +1,6 @@
 "use client";
+import {useLiveRefresh} from "@/hooks/useLiveRefresh";
+import {fetchFresh} from "@/lib/fetch-fresh";
 
 import { FormEvent, useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
@@ -123,7 +125,7 @@ export default function UserManagementPage() {
     setError("");
     setSuccess("");
     try {
-      const response = await fetch(`/api/users/${user.id}`, {
+      const response = await fetchFresh(`/api/users/${user.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ featurePermissions: nextPermissions }),
@@ -157,12 +159,12 @@ export default function UserManagementPage() {
     );
   }, []);
 
-  const loadUsers = useCallback(async () => {
-    setLoading(true);
-    setError("");
+  const loadUsers = useCallback(async (silent=false) => {
+    if(!silent)setLoading(true);
+    if(!silent)setError("");
 
     try {
-      const response = await fetch("/api/users", {
+      const response = await fetchFresh("/api/users", {
         cache: "no-store",
       });
 
@@ -190,6 +192,7 @@ export default function UserManagementPage() {
 
       setUsers(data as User[]);
     } catch (caughtError) {
+      if(silent)throw caughtError;
       setError(
         caughtError instanceof Error
           ? caughtError.message
@@ -203,6 +206,7 @@ export default function UserManagementPage() {
   useEffect(() => {
     void loadUsers();
   }, [loadUsers]);
+  useLiveRefresh(async()=>{if(saving||actionUserId)throw new Error("EDIT_IN_PROGRESS");await loadUsers(true);});
 
   const createUser = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -215,7 +219,7 @@ export default function UserManagementPage() {
     const createdPassword = form.password;
 
     try {
-      const response = await fetch("/api/users", {
+      const response = await fetchFresh("/api/users", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -277,7 +281,7 @@ export default function UserManagementPage() {
     setSuccess("");
 
     try {
-      const response = await fetch(`/api/users/${statusTarget.id}`, {
+      const response = await fetchFresh(`/api/users/${statusTarget.id}`, {
         method: "PATCH",
         headers: {
           "Content-Type": "application/json",
@@ -342,7 +346,7 @@ export default function UserManagementPage() {
     setSuccess("");
 
     try {
-      const response = await fetch(
+      const response = await fetchFresh(
         `/api/users/${resetTarget.id}/password`,
         {
           method: "PATCH",

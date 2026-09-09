@@ -1,4 +1,6 @@
 "use client";
+import {useLiveRefresh} from "@/hooks/useLiveRefresh";
+import {fetchFresh} from "@/lib/fetch-fresh";
 
 import { useEffect, useState } from "react";
 import { displayActionLabel } from "@/lib/display-labels";
@@ -25,19 +27,22 @@ export default function HistoryPage() {
 
   const fetchHistories = async () => {
     const res =
-      await fetch("/api/history");
+      await fetchFresh("/api/history");
 
+    if(!res.ok)throw new Error("HISTORY_FETCH_FAILED");
     const data = await res.json();
 
     setHistories(data);
   };
 
   useEffect(() => {
-    fetchHistories();
+    void fetchHistories().catch(()=>{});
   }, []);
 
+  const syncFailed=useLiveRefresh(fetchHistories);
   return (
     <div className="p-8">
+      {syncFailed&&<p role="alert">HISTORY_SYNC_FAILED：履歴の更新を確認できませんでした。</p>}
       <h1 className="text-3xl font-bold mb-8">
         履歴
       </h1>

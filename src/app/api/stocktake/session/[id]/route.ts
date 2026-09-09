@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { publicErrorMessage as getErrorMessage } from "@/lib/public-error";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
@@ -139,6 +140,7 @@ export async function PATCH(
         },
         data: {
           status: "IN_PROGRESS",
+          presences: { create: { deviceId: "starting-"+randomUUID(), userId: user.id, expiresAt: new Date(Date.now()+120000) } },
           pausedAt: null,
         },
         select: {

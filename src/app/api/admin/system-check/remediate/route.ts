@@ -1,3 +1,6 @@
+import { randomUUID } from "node:crypto";
+import { scheduleDeviceNotifications } from "@/lib/device-push";
+import { recoveryCheckCodes, recoveryActionAllowed, recoverySessionId } from "@/lib/recovery-context";
 import { publicErrorMessage as getErrorMessage } from "@/lib/public-error";
 import { repairProductLinks } from "@/lib/product-integrity";
 import { NextRequest, NextResponse } from "next/server";
@@ -36,6 +39,7 @@ async function issueUniqueSystemBarcode() {
 }
 
 export async function GET(request: NextRequest) {
+  scheduleDeviceNotifications(false);
   const auth = requireAdmin(request);
 
   if (auth.response || !auth.user) {
@@ -155,6 +159,7 @@ export async function GET(request: NextRequest) {
 }
 
 export async function PATCH(request: NextRequest) {
+  scheduleDeviceNotifications(true);
   const auth = requireAdmin(request);
 
   if (auth.response || !auth.user) {
@@ -171,7 +176,7 @@ export async function PATCH(request: NextRequest) {
   }
 
   const elevation = getAdminElevation(request);
-  if (!elevation || elevation.authenticatedByUserId !== auth.user.id) return NextResponse.json({ code: "ADMIN_ELEVATION_REQUIRED", message: "復旧処置の実行前に再認証してください。" }, { status: 403 });
+  if (auth.user.role !== "ADMIN" && (!elevation || elevation.authenticatedByUserId !== auth.user.id)) return NextResponse.json({ code: "ADMIN_ELEVATION_REQUIRED", message: "復旧処置の実行前に再認証してください。" }, { status: 403 });
 
   try {
     const body: unknown = await request.json();
@@ -188,6 +193,10 @@ export async function PATCH(request: NextRequest) {
 
     const input = body as Record<string, unknown>;
     const action = input.action;
+    if (typeof input.contextRoute === "string") {
+      const report = typeof input.reportId === "string" ? await prisma.errorReport.findUnique({where:{id:input.reportId}}) : null;
+      if (!report || report.route !== input.contextRoute || !recoveryActionAllowed(String(action), recoveryCheckCodes(report.route??undefined,report.code)) || (String(action).endsWith("_SESSION") && input.sessionId !== recoverySessionId(report.route??undefined,report.sessionId))) return NextResponse.json({code:"RECOVERY_TARGET_MISMATCH",message:"このエラーに対応した処置と対象を選び直してください。"},{status:409});
+    }
     if (action === "SYNC_PRODUCT_METADATA") {
       const result = await repairProductLinks(elevation?.adminUserId ?? auth.user.id, typeof input.reason === "string" ? input.reason.trim().slice(0,1000) : undefined);
       return NextResponse.json({ success: true, message: "商品情報の紐付けを修復しました（" + result.updated + "件）。再チェックで結果を確認します。", result });
@@ -309,6 +318,7 @@ export async function PATCH(request: NextRequest) {
             },
             data: {
               status: "IN_PROGRESS",
+          presences: { create: { deviceId: "starting-"+randomUUID(), userId: auth.user.id, expiresAt: new Date(Date.now()+120000) } },
               pausedAt: null,
             },
           }),

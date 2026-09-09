@@ -1,3 +1,5 @@
+import PageNavigation from "@/components/common/PageNavigation";
+import DevicePushSession from "@/components/pwa/DevicePushSession";
 import PageAdminMode from "@/components/auth/PageAdminMode";
 import ScanAudioInitializer from "@/components/ScanAudioInitializer";
 import type { Metadata } from "next";
@@ -30,10 +32,10 @@ export default function RootLayout({
         <a href="#main-content" className="sr-only focus:not-sr-only focus:fixed focus:left-3 focus:top-3 focus:z-[300] focus:rounded-xl focus:bg-white focus:p-4 focus:font-bold focus:text-blue-800">本文へ移動</a>
         <OperationModeBanner />
         <IdleSessionGuard />
-        <PwaManager />
+        <PwaManager /><DevicePushSession />
         <ScanAudioInitializer />
         <LogoutButton />
-        <PageAdminMode><div id="main-content" tabIndex={-1} className="min-h-screen">{children}</div></PageAdminMode>
+        <PageAdminMode><PageNavigation/><div id="main-content" tabIndex={-1} className="min-h-screen">{children}</div></PageAdminMode>
       </body>
     </html>
   );

@@ -1,12 +1,16 @@
+import { scheduleDeviceNotifications } from "@/lib/device-push";
+import { expireStocktakePresence } from "@/lib/stocktake-presence";
 import { NextRequest, NextResponse } from "next/server";
 import { createHash } from "node:crypto";
 import { prisma } from "@/lib/prisma";
 import { requireLogin } from "@/lib/auth";
 export const dynamic = "force-dynamic";
 export async function GET(request: NextRequest) {
+  scheduleDeviceNotifications(false);
   const auth = requireLogin(request);
   if (auth.response) return auth.response;
   try {
+    await expireStocktakePresence();
     // MVCC snapshot changes when a writing transaction commits, even when its
     // updatedAt predates another transaction. This avoids table scans and the
     // missed-commit race of MAX(updatedAt). All readers use the same primary DB.

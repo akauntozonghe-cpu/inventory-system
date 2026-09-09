@@ -15,6 +15,7 @@ export async function fetchFresh(url: string, init: RequestInit = {}) {
         if([500,502,503,504].includes(response.status)&&attempt+1<attempts&&!controller.signal.aborted) {
           await new Promise(resolve=>setTimeout(resolve,250*(attempt+1)));continue;
         }
+        if(response.status===401 && typeof window!=="undefined" && !url.includes("/api/auth/login"))window.dispatchEvent(new Event("inventory:session-ended"));
         if(response.status>=500) {
           const value=await response.clone().json().catch(()=>null);
           notifyReadFailure(url,value?.code||`HTTP_${response.status}`,value?.message||"通信を回復できませんでした。");

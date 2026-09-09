@@ -1,3 +1,4 @@
+import { scheduleDeviceNotifications } from "@/lib/device-push";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getLoggedInUser } from "@/lib/auth";
@@ -10,6 +11,7 @@ export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  scheduleDeviceNotifications(true);
   const user = getLoggedInUser(request);
 
   if (!user) {

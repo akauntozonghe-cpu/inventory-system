@@ -1,4 +1,8 @@
 "use client";
+import {useLiveRefresh} from "@/hooks/useLiveRefresh";
+import {fetchFresh} from "@/lib/fetch-fresh";
+import { leaveCurrentStocktakes } from "@/hooks/useStocktakePresence";
+import { detachDevicePush } from "@/lib/device-push-client";
 
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
@@ -14,6 +18,8 @@ export default function IdleSessionGuard() {
   const [remainingSeconds, setRemainingSeconds] = useState<number | null>(null);
   const lastWriteRef = useRef(0);
   const loggingOutRef = useRef(false);
+
+  useLiveRefresh(async()=>{const response=await fetchFresh("/api/auth/me");if(!response.ok)throw new Error("AUTH_REFRESH_FAILED");},!PUBLIC_PATHS.has(pathname));
 
   useEffect(() => {
     if (PUBLIC_PATHS.has(pathname)) {
@@ -35,7 +41,7 @@ export default function IdleSessionGuard() {
     const logout = async () => {
       if (loggingOutRef.current) return;
       loggingOutRef.current = true;
-      try { await fetch("/api/auth/logout", { method: "POST" }); }
+      try { await leaveCurrentStocktakes(); await detachDevicePush(); await fetch("/api/auth/logout", { method: "POST" }); }
       finally { try { localStorage.removeItem(ACTIVITY_KEY); } catch {} window.location.replace("/login?reason=idle"); }
     };
 
@@ -53,9 +59,11 @@ export default function IdleSessionGuard() {
     const events: Array<keyof WindowEventMap> = ["pointerdown", "keydown", "touchstart", "scroll"];
     events.forEach((event) => window.addEventListener(event, recordActivity, { passive: true }));
     window.addEventListener("storage", check);
+    const ended = () => { void logout(); };
+    window.addEventListener("inventory:session-ended", ended);
     const timer = window.setInterval(check, 5_000);
     check();
-    return () => { events.forEach((event) => window.removeEventListener(event, recordActivity)); window.removeEventListener("storage", check); window.clearInterval(timer); };
+    return () => { events.forEach((event) => window.removeEventListener(event, recordActivity)); window.removeEventListener("storage", check); window.removeEventListener("inventory:session-ended", ended); window.clearInterval(timer); };
   }, [pathname, router]);
 
   if (remainingSeconds === null) return null;

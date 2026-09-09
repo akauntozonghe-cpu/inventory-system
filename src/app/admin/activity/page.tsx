@@ -1,4 +1,6 @@
 "use client";
+import {useLiveRefresh} from "@/hooks/useLiveRefresh";
+import {fetchFresh} from "@/lib/fetch-fresh";
 
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -45,11 +47,11 @@ export default function ActivityCalendarPage() {
   const [monthCounts, setMonthCounts] = useState<Record<string, number>>({});
   const days = useMemo(() => monthDays(month), [month]);
 
-  const load = useCallback(async (date: string) => {
-    setLoading(true);
-    setError("");
+  const load = useCallback(async (date: string, silent=false) => {
+    if(!silent)setLoading(true);
+    if(!silent)setError("");
     try {
-      const response = await fetch(`/api/admin/activity?date=${encodeURIComponent(date)}`, { cache: "no-store" });
+      const response = await fetchFresh(`/api/admin/activity?date=${encodeURIComponent(date)}`, { cache: "no-store" });
       const data: unknown = await response.json();
       if (!response.ok) {
         throw new Error(
@@ -60,6 +62,7 @@ export default function ActivityCalendarPage() {
       }
       setActivity(data as Activity);
     } catch (caught) {
+      if(silent)throw caught;
       setActivity(null);
       setError(caught instanceof Error ? caught.message : "作業履歴を取得できませんでした。");
     } finally {
@@ -80,6 +83,8 @@ export default function ActivityCalendarPage() {
       .catch(() => { if (!cancelled) setMonthCounts({}); });
     return () => { cancelled = true; };
   }, [month]);
+
+  useLiveRefresh(async()=>{await load(selectedDate,true);const response=await fetchFresh(`/api/admin/activity?month=${encodeURIComponent(month)}`);if(!response.ok)throw new Error("ACTIVITY_SYNC_FAILED");const data=await response.json();setMonthCounts(data.days??{});});
 
   const selectDate = (date: string) => {
     setSelectedDate(date);

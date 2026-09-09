@@ -1,3 +1,4 @@
+import { scheduleDeviceNotifications } from "@/lib/device-push";
 import {
   ErrorReportStatus,
   RecoveryStatus,
@@ -21,6 +22,7 @@ export async function PATCH(
   request: NextRequest,
   context: { params: Promise<{ id: string }> }
 ) {
+  scheduleDeviceNotifications(true);
   try {
     const currentUser = getLoggedInUser(request);
     const body = (await request.json()) as UpdatePayload;
@@ -188,6 +190,7 @@ export async function GET(
   request: NextRequest,
   context: { params: Promise<{ id: string }> }
 ) {
+  scheduleDeviceNotifications(false);
   try {
     const currentUser = getLoggedInUser(request);
 

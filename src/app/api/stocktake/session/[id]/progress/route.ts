@@ -1,3 +1,4 @@
+import { expireStocktakePresence } from "@/lib/stocktake-presence";
 import { publicErrorMessage as getErrorMessage } from "@/lib/public-error";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
@@ -21,6 +22,7 @@ export async function GET(
   }
 
   try {
+    await expireStocktakePresence();
     const { id: sessionId } = await params;
 
     const session = await prisma.stocktakeSession.findUnique({

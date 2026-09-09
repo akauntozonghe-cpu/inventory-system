@@ -32,7 +32,7 @@ export default function StocktakeSystemErrorDialog({
         className="w-full max-w-lg rounded-3xl border-2 border-red-300 bg-white p-6 shadow-2xl"
       >
         <p className="text-sm font-black text-red-700">システムエラー</p>
-        <h2 data-admin-recovery-title="true" id="stocktake-system-error-title" className="mt-1 text-2xl font-black text-slate-950">
+        <h2 data-error-code={code} data-error-message={message} data-admin-recovery-title="true" id="stocktake-system-error-title" className="mt-1 text-2xl font-black text-slate-950">
           自動復旧を完了できませんでした
         </h2>
         <p className="mt-4 font-semibold leading-7 text-slate-800">{message}</p>

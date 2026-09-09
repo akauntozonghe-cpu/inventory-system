@@ -1,3 +1,4 @@
+import { scheduleDeviceNotifications } from "@/lib/device-push";
 import { ensureClassification } from "@/lib/item-links";
 import { unitValidationMessage } from "@/lib/unit";
 import { randomInt } from "node:crypto";
@@ -96,6 +97,7 @@ async function createUniqueSystemBarcode() {
 }
 
 export async function POST(request: NextRequest) {
+  scheduleDeviceNotifications(true);
   const login = requireLogin(request);
 
   if (login.response) {

@@ -1,4 +1,6 @@
 "use client";
+import { leaveCurrentStocktakes } from "@/hooks/useStocktakePresence";
+import { detachDevicePush } from "@/lib/device-push-client";
 
 import { usePathname, useRouter } from "next/navigation";
 import { useState } from "react";
@@ -17,7 +19,7 @@ export default function LogoutButton() {
     setLoading(true);
 
     try {
-      await fetch("/api/auth/logout", { method: "POST" });
+      await leaveCurrentStocktakes(); await detachDevicePush(); await fetch("/api/auth/logout", { method: "POST" });
     } finally {
       router.replace("/login");
       router.refresh();

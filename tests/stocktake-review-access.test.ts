@@ -1,3 +1,4 @@
+vi.mock("@/lib/stocktake-presence", () => ({ expireStocktakePresence: async () => {} }));
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
 const state = vi.hoisted(() => ({

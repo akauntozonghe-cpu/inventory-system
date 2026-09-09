@@ -1,3 +1,4 @@
+import { scheduleDeviceNotifications } from "@/lib/device-push";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getLoggedInUser } from "@/lib/auth";
@@ -24,6 +25,7 @@ function canReadNotification(
 }
 
 export async function GET(request: NextRequest) {
+  scheduleDeviceNotifications(false);
   const user = getLoggedInUser(request);
 
   if (!user) {
@@ -102,14 +104,15 @@ export async function GET(request: NextRequest) {
         recipientUserId: true,
         stocktakeSessionId: true,
         readAt: true,
+        readReceipts: {where:{userId:user.id},select:{readAt:true}},
         createdAt: true,
       },
     });
 
     return NextResponse.json({
-      notifications,
+      notifications: notifications.map(({readReceipts,...notification})=>({...notification,readAt:readReceipts[0]?.readAt??(notification.recipientUserId===user.id?notification.readAt:null)})),
       unreadCount: notifications.filter(
-        (notification) => notification.readAt === null
+        (notification) => !notification.readReceipts.length && !(notification.recipientUserId===user.id&&notification.readAt)
       ).length,
     });
   } catch (error) {
@@ -126,6 +129,7 @@ export async function GET(request: NextRequest) {
 }
 
 export async function PATCH(request: NextRequest) {
+  scheduleDeviceNotifications(true);
   const user = getLoggedInUser(request);
 
   if (!user) {
@@ -211,17 +215,7 @@ export async function PATCH(request: NextRequest) {
       );
     }
 
-    const result = await prisma.notification.updateMany({
-      where: {
-        id: {
-          in: permittedIds,
-        },
-        readAt: null,
-      },
-      data: {
-        readAt: new Date(),
-      },
-    });
+    const result = await prisma.notificationRead.createMany({data:permittedIds.map(notificationId=>({notificationId,userId:user.id})),skipDuplicates:true});
 
     return NextResponse.json({
       success: true,

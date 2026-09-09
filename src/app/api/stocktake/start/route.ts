@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
@@ -187,6 +188,7 @@ export async function POST(request: NextRequest) {
             selectedScopeValue
           ),
           status: "IN_PROGRESS",
+          presences: { create: { deviceId: "starting-"+randomUUID(), userId: user.id, expiresAt: new Date(Date.now()+120000) } },
 
           targets: {
             create: inventories.map((inventory) => ({

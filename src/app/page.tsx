@@ -1,4 +1,7 @@
 "use client";
+import { useLiveRefresh } from "@/hooks/useLiveRefresh";
+import { leaveCurrentStocktakes } from "@/hooks/useStocktakePresence";
+import { detachDevicePush } from "@/lib/device-push-client";
 
 import Link from "next/link";
 import { fetchFresh } from "@/lib/fetch-fresh";
@@ -226,8 +229,14 @@ export default function HomePage() {
     };
   }, [router]);
 
+  useLiveRefresh(async () => {
+    const response = await fetchFresh("/api/notifications");
+    if (!response.ok) throw new Error("NOTIFICATION_SYNC_FAILED");
+    const value=await response.json();if(isNotificationResponse(value))setUnreadCount(value.unreadCount);
+  });
   const logout = async () => {
     try {
+      await leaveCurrentStocktakes(); await detachDevicePush();
       await fetch("/api/auth/logout", {
         method: "POST",
       });

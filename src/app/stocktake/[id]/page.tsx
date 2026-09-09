@@ -1,4 +1,5 @@
 "use client";
+import { useStocktakePresence } from "@/hooks/useStocktakePresence";
 import { fetchFresh } from "@/lib/fetch-fresh";
 import { parseStocktakeQuantity } from "@/lib/stocktake-quantity";
 
@@ -202,6 +203,7 @@ export default function StocktakePage() {
       id: selected.id,
       dirty: countedQuantity !== String(selected.countedQuantity ?? selected.expectedQuantity) || memo !== (selected.memo ?? ""),
     } : null;
+    window.dispatchEvent(new CustomEvent("inventory:draft", { detail: { dirty: Boolean(draftRef.current?.dirty) } }));
   }, [selected, countedQuantity, memo]);
 
   useEffect(() => {
@@ -257,6 +259,8 @@ export default function StocktakePage() {
 
     setProgress(data as ProgressData);
   }, [sessionId]);
+
+  useStocktakePresence(sessionId, canOperate, loadProgress);
 
   const loadItems = useCallback(
     async (

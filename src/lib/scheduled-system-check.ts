@@ -1,7 +1,7 @@
 import { prisma } from "@/lib/prisma";
 
 export async function maybeRunScheduledSystemCheck(intervalMinutes: number) {
-  const lastRun = await prisma.systemCheckRun.findFirst({ where: { mode: "AUTO" }, orderBy: { createdAt: "desc" }, select: { createdAt: true } });
+  const lastRun = await prisma.systemCheckRun.findFirst({ where: { mode: "AUTO", contextRoute: null }, orderBy: { createdAt: "desc" }, select: { createdAt: true } });
   if (lastRun && Date.now() - lastRun.createdAt.getTime() < intervalMinutes * 60_000) return;
 
   const admin = await prisma.appUser.findFirst({ where: { role: "ADMIN", isActive: true }, orderBy: { createdAt: "asc" }, select: { id: true } });

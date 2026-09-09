@@ -1,3 +1,4 @@
+import { expireStocktakePresence } from "@/lib/stocktake-presence";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getLoggedInUser, hasAdminAccess } from "@/lib/auth";
@@ -43,6 +44,7 @@ export async function GET(request: NextRequest) {
   }
 
   try {
+    await expireStocktakePresence();
     const isAdmin = hasAdminAccess(request);
 
     const showAll = isAdmin && request.nextUrl.searchParams.get("all") !== "false";

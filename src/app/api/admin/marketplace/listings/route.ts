@@ -1,3 +1,4 @@
+import { scheduleDeviceNotifications } from "@/lib/device-push";
 import { reverseMarketplace } from "@/lib/marketplace-reversal";
 import { NextRequest, NextResponse } from "next/server";
 import { Prisma } from "@prisma/client";
@@ -98,6 +99,7 @@ async function loadMarketplace(request: NextRequest) {
 }
 
 export async function GET(request: NextRequest) {
+  scheduleDeviceNotifications(false);
   try {
     return await loadMarketplace(request);
   } catch (error) {
@@ -266,5 +268,7 @@ function mutationError(error: unknown) {
   console.error("MARKETPLACE_MUTATION_FAILED", error);
   return NextResponse.json({ code: conflict ? "MARKETPLACE_CONFLICT" : "MARKETPLACE_UPDATE_FAILED", message: conflict ? "在庫または出品状態が変わりました。最新の内容を確認してから再操作してください。" : "出品情報を更新できませんでした。再読み込みして状態を確認してください。" }, { status: conflict ? 409 : 500 });
 }
-export async function POST(request: NextRequest) { try { return await createListing(request); } catch (error) { return mutationError(error); } }
-export async function PATCH(request: NextRequest) { try { return await changeListing(request); } catch (error) { return mutationError(error); } }
+export async function POST(request: NextRequest) {
+  scheduleDeviceNotifications(true); try { return await createListing(request); } catch (error) { return mutationError(error); } }
+export async function PATCH(request: NextRequest) {
+  scheduleDeviceNotifications(true); try { return await changeListing(request); } catch (error) { return mutationError(error); } }

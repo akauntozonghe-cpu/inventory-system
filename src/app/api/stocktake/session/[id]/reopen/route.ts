@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { randomUUID } from "node:crypto";
 import { prisma } from "@/lib/prisma";
 import { canReopenStocktake } from "@/lib/stocktake-reopening";
 import { requireAdmin } from "@/lib/auth";
@@ -18,6 +19,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       const previousRecords = before.status === "COMPLETED" ? await tx.stocktakeRecord.findMany({ where: { sessionId: id }, select: { inventoryInstanceId: true, countedQuantity: true, memo: true, updatedAt: true } }) : [];
       const changed = await tx.stocktakeSession.updateMany({ where: { id, status: before.status, updatedAt: before.updatedAt }, data: { status: "IN_PROGRESS", pausedAt: null, ...(before.status === "COMPLETED" && !before.completedAt ? { completedAt: new Date() } : {}) } });
       if (changed.count !== 1) throw new Error("REOPEN_CHANGED");
+      await tx.stocktakePresence.create({data:{sessionId:id,deviceId:"starting-"+randomUUID(),userId:auth.user!.id,expiresAt:new Date(Date.now()+120000)}});
       await tx.adminActionLog.create({ data: { adminUserId: auth.user!.id, action: "STOCKTAKE_REOPEN", route: `/stocktake/${id}`, detail: { sessionId: id, title: before.title, reason, previousStatus: before.status, newStatus: "IN_PROGRESS", recordsPreserved: true, operatorUserId: before.operatorUserId, previousCompletedAt: before.completedAt?.toISOString() ?? null, previousRecords: JSON.parse(JSON.stringify(previousRecords)) } } });
       return { id, title: before.title, status: "IN_PROGRESS" };
     });

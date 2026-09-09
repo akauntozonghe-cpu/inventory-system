@@ -25,7 +25,7 @@ export default function PageAdminMode({children}:{children:ReactNode}) {
     const check=async()=>{try{const response=await fetchFresh("/admin/re-auth");const value=response.ok?await response.json():null;if(!cancelled){setRole(value?.role||"");setExpiresAt(value?.expiresAt>Date.now()?value.expiresAt:0);}}catch{if(!cancelled){setRole("");setExpiresAt(0);}}};
     void check();window.addEventListener("focus",check);
     let count=0,last=0,target:Element|null=null;
-    const click=(event:MouseEvent)=>{const title=(event.target as Element)?.closest?.("[data-admin-recovery-title], h1");if(!title)return;const now=Date.now();count=target===title&&now-last<900?count+1:1;last=now;target=title;if(count===3){count=0;showRef.current(title.hasAttribute("data-admin-recovery-title")?"recovery":"page");}};
+    const click=(event:MouseEvent)=>{const title=(event.target as Element)?.closest?.("[data-admin-recovery-title], h1");if(!title)return;const now=Date.now();count=target===title&&now-last<900?count+1:1;last=now;target=title;if(count===3){count=0;const source=title.closest("[data-error-code]");if(source)setLastFailure({code:source.getAttribute("data-error-code")||"UNKNOWN",message:source.getAttribute("data-error-message")||""});showRef.current(title.hasAttribute("data-admin-recovery-title")?"recovery":"page");}};
     const failure=(event:Event)=>{const value=(event as CustomEvent).detail;if(value?.code&&value?.message)setLastFailure(value);};
     document.addEventListener("click",click);window.addEventListener("inventory:recovery-failed",failure);
     return()=>{cancelled=true;window.removeEventListener("focus",check);document.removeEventListener("click",click);window.removeEventListener("inventory:recovery-failed",failure);};
@@ -36,10 +36,9 @@ export default function PageAdminMode({children}:{children:ReactNode}) {
   const stocktakeId=stocktake&&!['start','history'].includes(stocktake[1])?stocktake[1]:null;
   const catalog=pathname.startsWith("/items");
   return <Context.Provider value={{active,isAdmin,open:()=>show("page")}}>{children}
-    {!publicPaths.has(pathname)&&<button type="button" onClick={()=>show("page")} className="fixed bottom-3 right-3 z-40 rounded-full border bg-white px-3 py-2 text-xs font-bold text-slate-700 shadow">{isAdmin?"このページの管理操作":active?"管理者操作中":"管理者操作"}</button>}
     <AdminModeDialog open={authOpen} sessionId={stocktakeId||""} purpose="このページの保護された操作・復旧を有効にします。" onClose={()=>setAuthOpen(false)} onAuthenticated={()=>{setExpiresAt(Date.now()+600000);setAuthOpen(false);setView(intent.current);}}/>
     {view&&active&&<div className="fixed inset-0 z-[300] overflow-auto bg-slate-950/60 p-4"><section role="dialog" aria-modal="true" aria-labelledby="page-admin-title" className="mx-auto my-5 w-full max-w-3xl rounded-2xl bg-white p-5 text-slate-950"><header className="mb-4 flex items-start justify-between gap-3"><h2 id="page-admin-title" className="text-xl font-black">{view==="recovery"?"管理者復旧":"このページの管理操作"}</h2><button className="rounded-xl border px-3 py-2" onClick={()=>setView(null)}>閉じる</button></header>{error&&<p role="alert">{error}</p>}
-      {view==="recovery"?<>{lastFailure&&<p className="mb-3 rounded-xl bg-red-50 p-3">{lastFailure.code}：{lastFailure.message}</p>}<RecoveryWizard contextRoute={pathname}/></>:<div className="grid gap-3">
+      {view==="recovery"?<>{lastFailure&&<p className="mb-3 rounded-xl bg-red-50 p-3">{lastFailure.code}：{lastFailure.message}</p>}<RecoveryWizard contextRoute={pathname} errorCode={lastFailure?.code}/></>:<div className="grid gap-3">
         {pathname==="/marketplace"&&<button className="rounded-xl bg-violet-700 p-3 font-bold text-white" onClick={()=>{setView(null);window.dispatchEvent(new Event("inventory:marketplace-admin"));}}>このページの出品を取消・差戻し</button>}
         {stocktakeId&&<PageStocktakeActions sessionId={stocktakeId}/>}
         {catalog&&<button className="rounded-xl border p-3 font-bold" onClick={()=>setView(null)}>商品・在庫の編集操作へ戻る</button>}

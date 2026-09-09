@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { NextRequest, NextResponse } from "next/server";
 const mock = vi.hoisted(() => ({
   admin: true,
-  db: { stocktakeSession: { findUnique: vi.fn(), updateMany: vi.fn() }, stocktakeRecord: { findMany: vi.fn() }, adminActionLog: { create: vi.fn() }, $transaction: vi.fn() },
+  db: { stocktakePresence: { create: vi.fn() }, stocktakeSession: { findUnique: vi.fn(), updateMany: vi.fn() }, stocktakeRecord: { findMany: vi.fn() }, adminActionLog: { create: vi.fn() }, $transaction: vi.fn() },
 }));
 vi.mock("@/lib/prisma", () => ({ prisma: mock.db }));
 vi.mock("@/lib/auth", () => ({ requireAdmin: () => mock.admin ? { user: { id: "admin" } } : { response: NextResponse.json({ message: "管理者のみ" }, { status: 403 }) } }));
@@ -29,6 +29,7 @@ describe("administrator reopens a finished stocktake", () => {
   it("reopens review while preserving records, targets and the operator", async () => {
     const response = await request();
     expect(response.status).toBe(200);
+    expect(mock.db.stocktakePresence.create).toHaveBeenCalledWith({data:{sessionId:"s",deviceId:expect.stringMatching(/^starting-/),userId:"admin",expiresAt:expect.any(Date)}});
     expect(mock.db.stocktakeSession.updateMany).toHaveBeenCalledWith({ where: { id: "s", status: "REVIEW", updatedAt: date }, data: { status: "IN_PROGRESS", pausedAt: null } });
     expect(mock.db.adminActionLog.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ adminUserId: "admin", action: "STOCKTAKE_REOPEN", detail: expect.objectContaining({ reason: "数量を確認し直す", recordsPreserved: true }) }) }));
   });
