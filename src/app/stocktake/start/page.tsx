@@ -282,7 +282,7 @@ export default function StocktakeStartPage() {
         },
         body: JSON.stringify({
           title: title.trim(),
-          operator: operator.trim() || currentUser?.displayName || "管理者",
+          operator: operator.trim() || currentUser?.displayName || "担当者",
           memo: memo.trim() || null,
           scopeType,
           scopeValue: scopeType === "ALL" ? null : scopeValue.trim(),

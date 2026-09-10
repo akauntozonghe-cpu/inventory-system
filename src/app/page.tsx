@@ -81,15 +81,15 @@ const adminMenus: Menu[] = [
   {
     href: "/admin",
     icon: Settings2,
-    title: "管理者設定",
-    description: "ユーザー、商品・在庫、エラー、棚卸全体を管理します。",
+    title: "システム設定",
+    description: "利用者、商品・在庫、エラー、棚卸全体を整えます。",
     accent: "from-slate-700 to-slate-900",
   },
   {
     href: "/admin/stocktake",
     icon: BarChart3,
-    title: "全棚卸管理",
-    description: "全担当者の棚卸進捗、中断、差異、競合を横断して確認します。",
+    title: "棚卸の状況",
+    description: "すべての棚卸の進捗、中断、差異、競合をまとめて確認します。",
     accent: "from-indigo-500 to-blue-600",
   },
 ];
