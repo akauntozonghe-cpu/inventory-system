@@ -1,6 +1,7 @@
 "use client";
 import {createContext,useCallback,useContext,useEffect,useRef,useState,type ReactNode} from "react";
 import {usePathname} from "next/navigation";
+import {useLiveRefresh} from "@/hooks/useLiveRefresh";
 import {publicPage} from "@/lib/page-flow";
 type CameraState = PermissionState | "unknown" | "unsupported";
 const Context=createContext({loaded:false,cameraRequired:true,canManage:false,camera:"unknown" as CameraState,notification:"unknown",deferred:false,error:"",defer:()=>{},refresh:async()=>{},requestCamera:async()=>{}});
@@ -22,6 +23,7 @@ export default function PermissionProvider({children}:{children:ReactNode}){
       setError("");
     }catch(error){if(version===generation.current)setError(error instanceof Error?error.message:"PERMISSION_STATUS_FAILED：設定を確認できません。");}
   },[pathname]);
+  useLiveRefresh(refresh,!publicPage(pathname));
   useEffect(()=>{void refresh();const wake=()=>{if(document.visibilityState==="visible")void refresh();};window.addEventListener("focus",wake);document.addEventListener("visibilitychange",wake);window.addEventListener("inventory:permission-policy",wake);return()=>{invalidate();window.removeEventListener("focus",wake);document.removeEventListener("visibilitychange",wake);window.removeEventListener("inventory:permission-policy",wake);};},[refresh,invalidate]);
   useEffect(()=>{
     let active=true;const statuses:PermissionStatus[]=[];

@@ -6,9 +6,11 @@ const db = vi.hoisted(() => ({
   stocktakeTarget: { findMany: vi.fn() },
   inventoryInstance: { findMany: vi.fn(), updateMany: vi.fn() },
   inventoryHistory: { create: vi.fn() },
+  notification:{create:vi.fn()},
   $transaction: vi.fn(),
 }));
 vi.mock("@/lib/prisma", () => ({ prisma: db }));
+vi.mock("@/lib/device-push",()=>({scheduleDeviceNotifications:vi.fn()}));
 vi.mock("@/lib/auth", () => ({ getLoggedInUser: () => ({ id: "worker" }), hasAdminAccess: () => true }));
 import { POST } from "../src/app/api/stocktake/session/[id]/apply/route";
 
@@ -30,6 +32,7 @@ describe("stocktake confirmation guards", () => {
     db.stocktakeRecord.findMany.mockResolvedValue([{ inventoryInstanceId: "inventory", countedQuantity: 5, updatedAt: new Date(date.getTime() - 1000) }]);
     const response = await request();
     expect(response.status).toBe(200);
+    expect(db.notification.create).toHaveBeenCalledWith(expect.objectContaining({data:expect.objectContaining({recipientUserId:"worker",stocktakeSessionId:"s",type:"STOCKTAKE_COMPLETED"})}));
     expect(db.inventoryInstance.updateMany).not.toHaveBeenCalled();
     expect(db.inventoryHistory.create).not.toHaveBeenCalled();
   });

@@ -1,3 +1,4 @@
+import {scheduleDeviceNotifications} from "@/lib/device-push";
 import { publicErrorMessage as getErrorMessage } from "@/lib/public-error";
 import { recordsForConfirmation } from "@/lib/stocktake-reopening";
 import { NextRequest, NextResponse } from "next/server";
@@ -203,7 +204,9 @@ export async function POST(
           pausedAt: null,
         },
       });
+      await transaction.notification.create({data:{type:"STOCKTAKE_COMPLETED",audience:"ADMIN",recipientUserId:session.operatorUserId??user.id,stocktakeSessionId:sessionId,title:"棚卸を正式確定しました",message:`「${session.title}」の結果を在庫へ反映しました。`}});
     });
+    scheduleDeviceNotifications(true);
 
     return NextResponse.json({
       success: true,

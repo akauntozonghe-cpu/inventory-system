@@ -2,9 +2,9 @@ import {beforeEach,expect,it,vi} from "vitest";
 import {NextRequest} from "next/server";
 import {AUTH_COOKIE,ADMIN_ELEVATION_COOKIE,createSessionToken,createAdminElevationToken} from "../src/lib/auth";
 import {CAMERA_EXEMPTION_COOKIE,CAMERA_EXEMPTION_SECONDS,createCameraExemption,hasCameraExemption} from "../src/lib/camera-exemption";
-const log=vi.hoisted(()=>vi.fn());vi.mock("@/lib/prisma",()=>({prisma:{adminActionLog:{create:log}}}));
+const log=vi.hoisted(()=>vi.fn());const findUser=vi.hoisted(()=>vi.fn());vi.mock("@/lib/prisma",()=>({prisma:{adminActionLog:{create:log},appUser:{findUnique:findUser}}}));
 import {GET,POST} from "../src/app/api/device/permissions/route";
-beforeEach(()=>{vi.resetAllMocks();vi.stubEnv("AUTH_SECRET","test-camera-permission-secret-at-least-32-characters");});
+beforeEach(()=>{vi.resetAllMocks();findUser.mockResolvedValue({featurePermissions:[]});vi.stubEnv("AUTH_SECRET","test-camera-permission-secret-at-least-32-characters");});
 const user=(role:"ADMIN"|"WORKER"="WORKER")=>({id:"worker",username:"worker",displayName:"作業者",role,mustChangePassword:false});
 function request(role:"ADMIN"|"WORKER"="WORKER",body:unknown={cameraRequired:false},extra=""){
  return new NextRequest("https://inventory.test/api/device/permissions",{method:"POST",headers:{cookie:`${AUTH_COOKIE}=${createSessionToken(user(role))};${extra}`},body:JSON.stringify(body)});
@@ -16,3 +16,5 @@ it("persists only an HttpOnly signed browser exemption and logs the actor",async
 it("accepts elevation for this user, but rejects another user's elevation",async()=>{const elevation=createAdminElevationToken({adminUserId:"admin",authenticatedByUserId:"worker"});expect((await POST(request("WORKER",{cameraRequired:false},`${ADMIN_ELEVATION_COOKIE}=${elevation}`)))?.status).toBe(200);expect(log).toHaveBeenCalledWith(expect.objectContaining({data:expect.objectContaining({adminUserId:"admin"})}));const other=createAdminElevationToken({adminUserId:"admin",authenticatedByUserId:"other"});expect((await POST(request("WORKER",{cameraRequired:false},`${ADMIN_ELEVATION_COOKIE}=${other}`)))?.status).toBe(403);});
 it("restores required status and rejects malformed changes",async()=>{const response=await POST(request("ADMIN",{cameraRequired:true}));expect(response?.cookies.get(CAMERA_EXEMPTION_COOKIE)?.value).toBe("");expect(response?.headers.get("set-cookie")).toMatch(/Max-Age=0/);expect((await POST(request("ADMIN",{cameraRequired:"false"})))?.status).toBe(400);});
 it("does not issue an exemption when the audit record cannot be saved",async()=>{log.mockRejectedValue(new Error("DB unavailable"));const response=await POST(request("ADMIN"));expect(response?.status).toBe(503);expect(response?.headers.get("set-cookie")).toBeNull();});
+
+it("uses the live user permission for camera exemption",async()=>{findUser.mockResolvedValue({featurePermissions:["CAMERA_OPTIONAL"]});expect((await (await GET(request()))!.json()).cameraRequired).toBe(false);findUser.mockResolvedValue({featurePermissions:[]});expect((await (await GET(request()))!.json()).cameraRequired).toBe(true);});

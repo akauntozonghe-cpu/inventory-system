@@ -1,10 +1,11 @@
 import JsBarcode from "jsbarcode";
 
+export type LabelProfile = "STANDARD" | "COMPACT";
 export type LabelScale = 0.8 | 1;
 export const escapeLabelText = (value: string) => value.replace(/[&<>"']/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[char]!));
 
 /** GS1 Japan: X=0.33mm, JAN-13 37.29×25.93mm, JAN-8 26.73×21.31mm at 100%. */
-export function barcodeLabel(value: string, scale: LabelScale = 0.8) {
+export function barcodeLabel(value: string, scale: LabelScale = 0.8, profile: LabelProfile = "STANDARD") {
   if (scale !== 0.8 && scale !== 1) throw new Error("印刷倍率は80%または100%を選択してください。");
   const ean = /^\d{13}$/.test(value) ? "EAN13" : /^\d{8}$/.test(value) ? "EAN8" : null;
   if (!ean && !/^SYS-[A-Z0-9-]+$/.test(value)) throw new Error(`コード「${value || "入力なし"}」は${value.length}文字です。商品に印字された8桁または13桁の数字を確認してください。桁を勝手に追加・省略せず、JANがない商品はシステムJANを発行してください。`);
@@ -17,8 +18,11 @@ export function barcodeLabel(value: string, scale: LabelScale = 0.8) {
   const left = ean === "EAN13" ? 11 : ean === "EAN8" ? 7 : 10;
   const right = ean ? 7 : 10;
   const modules = left + bits.length + right;
-  const barHeight = (ean === "EAN8" ? 18.23 : 22.85) / 0.33;
-  const height = (ean === "EAN8" ? 21.31 : 25.93) * scale;
+  // GS1 Japan truncation guidance: JAN-13 bars >=9mm at 80%, >=11mm at 100%.
+  // This compact profile is deliberately separate from the JIS standard dimensions.
+  const compact = profile === "COMPACT" && ean === "EAN13";
+  const barHeight = compact ? (scale === 0.8 ? 9 : 11) / x : (ean === "EAN8" ? 18.23 : 22.85) / 0.33;
+  const height = compact ? barHeight * x + 3.08 * scale : (ean === "EAN8" ? 21.31 : 25.93) * scale;
   const width = modules * x;
   const baseline = height / x - 2;
   const middle = ean === "EAN13" ? 45 : 31;
@@ -36,9 +40,9 @@ export function barcodeLabel(value: string, scale: LabelScale = 0.8) {
   return { svg, bits, width, height, quietLeft: left * x, quietRight: right * x, moduleWidth: x, labelWidth: Math.ceil(width + 2), labelHeight: Math.ceil(height + 5) };
 }
 
-export function barcodePrintDocument(items: Array<{ name: string; barcode: string }>, layout: "A4" | "LABEL" = "A4", scale: LabelScale = 0.8, includeName = true) {
+export function barcodePrintDocument(items: Array<{ name: string; barcode: string }>, layout: "A4" | "LABEL" = "A4", scale: LabelScale = 0.8, includeName = true, profile: LabelProfile = "STANDARD") {
   if (!items.length) throw new Error("印刷する商品を選択してください。");
-  const labels = items.map((item) => {try{return { ...barcodeLabel(item.barcode, scale), name: item.name };}catch(error){throw new Error(`商品「${item.name}」：${error instanceof Error?error.message:"ラベルを作成できません。"}`);}});
+  const labels = items.map((item) => {try{return { ...barcodeLabel(item.barcode, scale, profile), name: item.name };}catch(error){throw new Error(`商品「${item.name}」：${error instanceof Error?error.message:"ラベルを作成できません。"}`);}});
   const labelHeight = Math.max(...labels.map(label=>includeName?label.labelHeight:Math.ceil(label.height+2)));
   const pageWidth = layout === "A4" ? 194 : Math.max(...labels.map((label) => label.labelWidth));
   const pageHeight = layout === "A4" ? 281 : labelHeight;

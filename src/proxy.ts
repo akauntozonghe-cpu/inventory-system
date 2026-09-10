@@ -8,7 +8,7 @@ import {
   verifySessionToken,
 } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { requiredFeature } from "@/lib/feature-permissions";
+import { requiredFeatures } from "@/lib/feature-permissions";
 
 function isMutation(method: string) {
   return ["POST", "PUT", "PATCH", "DELETE"].includes(method);
@@ -222,11 +222,11 @@ export async function proxy(request: NextRequest) {
     }
   }
 
-  const feature = requiredFeature(
+  const feature = requiredFeatures(
     pathname,
     method,
     request.nextUrl.searchParams.has("sessionId")
-  );
+  ).find(key=>!liveUser.featurePermissions.includes(key as never));
   if (
     liveUser.role !== "ADMIN" &&
     feature &&

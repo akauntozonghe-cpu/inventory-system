@@ -128,7 +128,7 @@ export default function UserManagementPage() {
       const response = await fetchFresh(`/api/users/${user.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ featurePermissions: nextPermissions }),
+        body: JSON.stringify({ featurePermissions: nextPermissions, expectedPermissions:user.featurePermissions }),
       });
       const data: unknown = await response.json();
       if (!response.ok) throw new Error(getMessage(data, "利用機能を変更できませんでした。"));
@@ -662,8 +662,8 @@ export default function UserManagementPage() {
                           </button>
                         </div>
                       </div>
-                      <div className="mt-4 border-t border-slate-200 pt-4">
-                        <p className="text-sm font-black text-slate-900">利用できる機能</p>
+                      <details className="mt-4 border-t border-slate-200 pt-4">
+                        <summary className="cursor-pointer py-2 text-sm font-black text-slate-900">利用できる機能・使用許可（{user.role==="ADMIN"?"すべて":user.featurePermissions.filter(feature=>FEATURE_KEYS.includes(feature)).length+"項目"}）</summary><p className="mt-1 text-xs text-slate-600">変更は保存後の操作から反映されます。新規棚卸には「棚卸作業」、販売設定には「フリマ作業」も必要です。</p>
                         {user.role === "ADMIN" ? (
                           <p className="mt-2 text-sm font-bold text-violet-700">
                             すべての機能を利用できます。
@@ -694,7 +694,7 @@ export default function UserManagementPage() {
                             ))}
                           </div>
                         )}
-                      </div>
+                      </details>
                     </article>
                   );
                 })}

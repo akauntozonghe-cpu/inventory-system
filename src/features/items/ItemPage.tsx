@@ -132,6 +132,7 @@ export default function ItemPage() {
       }
 
       if (requestId === listRequestRef.current) setItems(data as Item[]);
+      return data as Item[];
     } catch (loadError) {
       if (requestId !== listRequestRef.current) return;
       if (silent) throw loadError;
@@ -340,10 +341,9 @@ export default function ItemPage() {
 
         <p role="status" className="mb-3 text-sm font-bold text-slate-700">{syncFailed ? "同期できていません。表示は前回取得時点です。通信回復後に再取得します。" : "他端末の登録・在庫変更を自動取得（通信時間＋約1秒）。"}</p>
         {isAdmin && (
-          <details className="mb-5 rounded-2xl border border-indigo-200 bg-indigo-50 p-3"><summary className="cursor-pointer font-bold">廃止商品の表示・管理権限</summary>
+          <details className="mb-5 rounded-2xl border border-indigo-200 bg-indigo-50 p-3"><summary className="cursor-pointer font-bold">廃止商品の表示</summary>
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <div>
-                <p className="font-bold text-indigo-900">管理者として操作できます</p>
                 <p className="mt-1 text-sm text-indigo-800">
                   商品の編集・廃止・復元・複数選択による一括操作ができます。
                 </p>
@@ -459,7 +459,7 @@ export default function ItemPage() {
               items={sortedItems}
               isAdmin={isAdmin}
               filterKey={JSON.stringify([search, majorCategory, sort, todayOnly, registeredDate, showArchived,stockFilter])}
-              reload={fetchItems}
+              reload={async()=>{await fetchItems(true);}}
               onEdit={startEdit}
             />
           )}
@@ -469,7 +469,7 @@ export default function ItemPage() {
       {scannerOpen && <UnifiedScanner
         onClose={() => setScannerOpen(false)}
         onCategory={async name => { handleQrDetected(name); await fetchItems(true); }}
-        onProduct={async code => { setStockFilter("ALL");setSearch(code.normalize("NFKC")); setMajorCategory(""); setTodayOnly(false); setRegisteredDate(""); await fetchItems(true); }}
+        onProduct={async code => { const latest=await fetchItems(true);if(!latest?.some(item=>[item.id,item.janCode,item.systemBarcode].includes(code)))throw new Error("SCAN_JAN_NOT_MANAGED：このJAN・商品コードは管理対象の商品に登録されていません。登録済みの商品か確認してください。");setStockFilter("ALL");setSearch(code.normalize("NFKC")); setMajorCategory(""); setTodayOnly(false); setRegisteredDate(""); await fetchItems(true); }}
       />}
     </main>
   );

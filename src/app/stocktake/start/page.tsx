@@ -1,4 +1,5 @@
 "use client";
+import FieldScanButton from "@/components/FieldScanButton";
 import { fetchFresh } from "@/lib/fetch-fresh";
 
 import StocktakeGroupFilter from "@/components/stocktake/StocktakeGroupFilter";
@@ -29,6 +30,7 @@ type CurrentUser = {
   username: string;
   displayName: string;
   role: "ADMIN" | "WORKER";
+  featurePermissions?:string[];
 };
 
 type StocktakeSession = {
@@ -492,7 +494,7 @@ export default function StocktakeStartPage() {
           <p className="text-sm font-bold text-indigo-600">新しい棚卸</p>
           <h2 className="mt-1 text-2xl font-black">棚卸を開始する</h2>
 
-          <form className="mt-6 space-y-6" onSubmit={startStocktake}>
+          <form className="mt-6 space-y-6" onSubmit={startStocktake}><fieldset disabled={currentUser?.role!=="ADMIN"&&!currentUser?.featurePermissions?.includes("STOCKTAKE_START")} className="space-y-6">{currentUser?.role!=="ADMIN"&&!currentUser?.featurePermissions?.includes("STOCKTAKE_START")&&<p role="status">新しい棚卸の作成は許可されていません。既存の棚卸は上の一覧から続けられます。</p>}
             <div>
               <label className="block font-bold" htmlFor="stocktake-title">
                 棚卸名
@@ -523,7 +525,7 @@ export default function StocktakeStartPage() {
             </div>
 
             <div>
-              <p className="font-bold">棚卸範囲</p>
+              <div className="flex items-center justify-between gap-2"><p className="font-bold">棚卸範囲</p><FieldScanButton kind="SCOPE" onRead={scan=>{setScopeType(scan.kind==="LOCATION"?"LOCATION":scan.kind==="MINOR"?"MINOR_CATEGORY":"MAJOR_CATEGORY");setScopeValue(scan.value);}}/></div>
 
               <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-4">
                 {(
@@ -604,7 +606,7 @@ export default function StocktakeStartPage() {
             >
               {starting ? "棚卸を開始しています…" : "棚卸を開始する"}
             </button>
-          </form>
+          </fieldset></form>
         </section>
       </div>
     </main>

@@ -47,6 +47,7 @@ const workerMenus: Menu[] = [
     href: "/marketplace",
     icon: Store,
     title: "フリマ販売",
+    feature: "MARKETPLACE",
     description: "出品、価格・送料・利益、販売先設定をまとめて管理します。",
     accent: "from-violet-500 to-indigo-500",
   },
@@ -56,7 +57,7 @@ const workerMenus: Menu[] = [
     title: "期限管理",
     description: "期限切れ・期限接近・確認済み・対応記録を優先順に管理します。",
     accent: "from-orange-500 to-amber-400",
-    feature: "CATALOG",
+    feature: "EXPIRY",
   },
   {
     href: "/items",

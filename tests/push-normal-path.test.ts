@@ -1,0 +1,15 @@
+import { beforeEach, expect, it, vi } from "vitest";
+import { NextRequest } from "next/server";
+import { defaultPushPolicy } from "../src/lib/device-notification-policy";
+const db = vi.hoisted(() => ({ devicePushSubscription: { findFirst: vi.fn() }, devicePushSetting: { findUnique: vi.fn() }, notification: { create: vi.fn() } }));
+const schedule = vi.hoisted(() => vi.fn());
+const send = vi.hoisted(() => vi.fn());
+vi.mock("@/lib/prisma", () => ({ prisma: db }));
+vi.mock("@/lib/auth", () => ({ AUTH_COOKIE: "auth", requireLogin: () => ({ user: { id: "me" } }), hasAdminAccess: () => false }));
+vi.mock("@/lib/device-push", () => ({ pushSettingsUsable: vi.fn(), scheduleDeviceNotifications: schedule, encryptPushKey: vi.fn(), sessionHash: () => "my-session", validPushEndpoint: () => true, validPushKeys: () => true, sendDeviceNotification: send }));
+import { POST } from "../src/app/api/notifications/device/route";
+beforeEach(() => { vi.resetAllMocks(); db.devicePushSubscription.findFirst.mockResolvedValue({ id: "sub" }); db.devicePushSetting.findUnique.mockResolvedValue({ policy: defaultPushPolicy }); db.notification.create.mockResolvedValue({ id: "note" }); });
+const request = () => POST(new NextRequest("https://inventory.test/api/notifications/device", { method: "POST", body: JSON.stringify({ action: "TEST_NORMAL", recipientUserId: "someone-else", subscription: { endpoint: "https://fcm.googleapis.com/test", keys: {} } }) }));
+it("exercises the ordinary queue path and only creates a notification for the signed-in user", async () => { expect((await request())?.status).toBe(200); expect(db.notification.create).toHaveBeenCalledWith({ data: expect.objectContaining({ recipientUserId: "me", audience: "USER" }) }); expect(schedule).toHaveBeenCalledWith(true); expect(send).not.toHaveBeenCalled(); });
+it("explains policy exclusions instead of pretending that a normal test was sent", async () => { db.devicePushSetting.findUnique.mockResolvedValue({ policy: { ...defaultPushPolicy, enabled: false } }); const response = await request(); expect(response?.status).toBe(409); expect(await response?.json()).toMatchObject({ code: "PUSH_POLICY_EXCLUDED" }); expect(db.notification.create).not.toHaveBeenCalled(); });
+it("does not queue a test before this session has a registered device", async () => { db.devicePushSubscription.findFirst.mockResolvedValue(null); expect((await request())?.status).toBe(409); expect(db.notification.create).not.toHaveBeenCalled(); });

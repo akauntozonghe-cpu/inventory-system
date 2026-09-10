@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   DEFAULT_WORKER_FEATURES,
   normalizeFeaturePermissions,
-  requiredFeature,
+  requiredFeature, requiredFeatures,
 } from "../src/lib/feature-permissions";
 
 describe("feature permissions", () => {
@@ -21,7 +21,7 @@ describe("feature permissions", () => {
     expect(DEFAULT_WORKER_FEATURES).toEqual([
       "STOCKTAKE",
       "CATALOG",
-      "STOCKTAKE_HISTORY",
+      "STOCKTAKE_HISTORY", "STOCKTAKE_START", "MARKETPLACE", "MARKETPLACE_SETTINGS", "EXPIRY", "LABEL_PRINT",
     ]);
   });
 
@@ -43,3 +43,6 @@ describe("feature permissions", () => {
     expect(requiredFeature("/api/inventory/search", "GET", true)).toBe("STOCKTAKE");
   });
 });
+
+it.each([["/marketplace","GET","MARKETPLACE"],["/api/admin/marketplace/listings","PATCH","MARKETPLACE"],["/admin/marketplace/settings","GET","MARKETPLACE_SETTINGS"],["/api/stocktake/start","POST","STOCKTAKE_START"],["/api/print/authorize","GET","LABEL_PRINT"],["/api/expiry","GET","EXPIRY"]])("enforces granular access for %s",(path,method,expected)=>expect(requiredFeature(path,method)).toBe(expected));
+it("requires the base work permission as well as special actions",()=>{expect(requiredFeatures("/api/stocktake/start","POST")).toEqual(["STOCKTAKE","STOCKTAKE_START"]);expect(requiredFeatures("/admin/marketplace/settings","GET")).toEqual(["MARKETPLACE","MARKETPLACE_SETTINGS"]);});

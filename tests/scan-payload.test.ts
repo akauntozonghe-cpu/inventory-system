@@ -27,7 +27,7 @@ describe("QR payload routing", () => {
     const raw = '{"classificationLabelCode":"label","majorCategory":"旧分類"}';
     expect(await resolveScan(raw)).toMatchObject({ type: "CLASSIFICATION", name: "新分類" });
     fetcher.mockResolvedValueOnce(new Response(JSON.stringify({ message: "SELECT secret FROM Item" }), { status: 500 }));
-    await expect(resolveScan(raw)).rejects.toThrow("大分類ラベルを確認できませんでした");
+    await expect(resolveScan(raw)).rejects.toThrow("SCAN_QR_NOT_FOUND");
   });
   it("resolves renamed locations by ID rather than stale label names", async () => {
     fetcher.mockResolvedValueOnce(new Response(JSON.stringify([{ id: "shelf", name: "新しい棚" }])));
@@ -37,3 +37,5 @@ describe("QR payload routing", () => {
 
 it("prioritizes product identity over category metadata in a product QR",()=>{expect(parseScan(JSON.stringify({inventoryInstanceId:"lot-1",majorCategory:"食品",janCode:"4901234567894"}))).toEqual({type:"ITEM",code:"lot-1"});});
 it("keeps a minor category tied to its major category",()=>{expect(parseScan(JSON.stringify({type:"INVENTORY_CLASSIFICATION_LABEL",kind:"MINOR",classificationLabelCode:"minor-label",minorCategory:"飲料",parentName:"食品"}))).toMatchObject({type:"CLASSIFICATION",kind:"MINOR",name:"飲料",parentName:"食品",code:"minor-label"});});
+
+it("rejects unmanaged legacy category labels instead of creating a new form option",async()=>{fetcher.mockResolvedValueOnce(new Response(JSON.stringify({majorCategories:["食品"]})));await expect(resolveScan("CATEGORY:未登録分類")).rejects.toThrow("SCAN_QR_NOT_MANAGED");});

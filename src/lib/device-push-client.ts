@@ -7,7 +7,7 @@ export async function pushRegistration() {
   return Promise.race([navigator.serviceWorker.ready, new Promise<never>((_, reject) => setTimeout(() => reject(new Error("PUSH_PREPARING：アプリの準備中です。少し待ってから操作してください。")), 8000))]);
 }
 export async function saveDevicePush(subscription: PushSubscription, action = "SUBSCRIBE") {
-  const response = await fetch("/api/notifications/device", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action, subscription: subscription.toJSON() }), signal: AbortSignal.timeout(10000) });
+  const response = await fetch("/api/notifications/device", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action, subscription: subscription.toJSON() }), signal: AbortSignal.timeout(action === "TEST" || action === "TEST_NORMAL" ? 20000 : 10000) });
   const value = await response.json();
   if (!response.ok) throw new Error(`${value.code ?? "PUSH_FAILED"}：${value.message ?? "通知の設定を保存できませんでした。"}`);
   return value.message as string;
@@ -26,4 +26,12 @@ export async function detachDevicePush(strict=false) {
     }
     for (const notification of await registration?.getNotifications() ?? []) notification.close();
   } catch (error) { if(strict)throw error; /* Logout also removes this session's server-side subscriptions. */ }
+}
+
+export async function ensurePushSubscription(registration:ServiceWorkerRegistration,publicKey:string){
+ const bytes=Uint8Array.from(atob(publicKey.replace(/-/g,"+").replace(/_/g,"/")),c=>c.charCodeAt(0));
+ let subscription=await registration.pushManager.getSubscription();
+ const existing=subscription?.options.applicationServerKey;
+ if(subscription&&existing&& (existing.byteLength!==bytes.length||new Uint8Array(existing).some((b,i)=>b!==bytes[i]))){if(!await subscription.unsubscribe())throw new Error("PUSH_RECONNECT_FAILED：古い通知接続を解除できませんでした。少し待って再接続してください。");subscription=null;}
+ return subscription??await registration.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:bytes});
 }

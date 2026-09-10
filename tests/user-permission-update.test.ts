@@ -1,0 +1,12 @@
+import { beforeEach, expect, it, vi } from "vitest";
+import { NextRequest } from "next/server";
+const state = vi.hoisted(() => ({ admin: true }));
+const db = vi.hoisted(() => ({ appUser: { findUnique: vi.fn(), update: vi.fn(), count: vi.fn() }, adminActionLog: { create: vi.fn() }, $transaction: vi.fn() }));
+vi.mock("@/lib/prisma", () => ({ prisma: db }));
+vi.mock("@/lib/auth", () => ({ getLoggedInUser: () => ({ id: "admin" }), isAdmin: () => state.admin }));
+import { PATCH } from "../src/app/api/users/[id]/route";
+beforeEach(() => { vi.resetAllMocks(); state.admin = true; db.appUser.findUnique.mockResolvedValue({ id: "worker", role: "WORKER", isActive: true, featurePermissions: ["STOCKTAKE"] }); db.appUser.update.mockResolvedValue({ id: "worker", isActive: true, featurePermissions: ["STOCKTAKE", "LABEL_PRINT"] }); db.$transaction.mockImplementation(fn => fn(db)); });
+const request = (expected = ["STOCKTAKE"]) => PATCH(new NextRequest("https://inventory.test/api/users/worker", { method: "PATCH", body: JSON.stringify({ expectedPermissions: expected, featurePermissions: ["STOCKTAKE", "LABEL_PRINT"] }) }), { params: Promise.resolve({ id: "worker" }) });
+it("rejects changes from non administrators", async () => { state.admin = false; expect((await request()).status).toBe(403); expect(db.appUser.update).not.toHaveBeenCalled(); });
+it("rejects a stale permission edit without replacing newer settings", async () => { expect((await request([])).status).toBe(409); expect(db.appUser.update).not.toHaveBeenCalled(); });
+it("saves the access change and audit record together with a version condition", async () => { let inside = false; db.$transaction.mockImplementation(async (fn) => { inside = true; const result = await fn(db); inside = false; return result; }); db.adminActionLog.create.mockImplementation(async () => expect(inside).toBe(true)); expect((await request()).status).toBe(200); expect(db.appUser.update.mock.calls[0][0].where).toMatchObject({ featurePermissions: { equals: ["STOCKTAKE"] } }); expect(db.adminActionLog.create).toHaveBeenCalledOnce(); });

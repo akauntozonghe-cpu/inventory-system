@@ -18,7 +18,7 @@ model AppUser {
   role               UserRole @default(WORKER)
   isActive           Boolean  @default(true)
   mustChangePassword Boolean  @default(false)
-  featurePermissions FeaturePermission[] @default([STOCKTAKE, CATALOG, STOCKTAKE_HISTORY])
+  featurePermissions FeaturePermission[] @default([STOCKTAKE, CATALOG, STOCKTAKE_HISTORY, STOCKTAKE_START, MARKETPLACE, MARKETPLACE_SETTINGS, EXPIRY, LABEL_PRINT])
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -644,6 +644,12 @@ enum FeaturePermission {
   STOCKTAKE_HISTORY
   ITEM_REGISTER
   CATALOG
+  STOCKTAKE_START
+  MARKETPLACE
+  MARKETPLACE_SETTINGS
+  EXPIRY
+  LABEL_PRINT
+  CAMERA_OPTIONAL
 }
 
 model StocktakePresence {

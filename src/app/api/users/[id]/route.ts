@@ -52,6 +52,7 @@ export async function PATCH(
         id: true,
         role: true,
         isActive: true,
+        featurePermissions:true,
       },
     });
 
@@ -89,8 +90,10 @@ export async function PATCH(
       }
     }
 
-    const user = await prisma.appUser.update({
-      where: { id },
+    if(hasPermissions&&Array.isArray(body.expectedPermissions)&&JSON.stringify([...body.expectedPermissions].sort())!==JSON.stringify([...targetUser.featurePermissions].sort()))return NextResponse.json({code:"USER_PERMISSIONS_CHANGED",message:"別の画面で権限が変更されています。最新の設定を確認してから変更してください。"},{status:409});
+    const user = await prisma.$transaction(async tx=>{
+      const changed = await tx.appUser.update({
+      where: { id,featurePermissions:{equals:targetUser.featurePermissions},isActive:targetUser.isActive },
       data: {
         ...(hasStatus ? { isActive: body.isActive } : {}),
         ...(hasPermissions && targetUser.role !== "ADMIN"
@@ -107,8 +110,12 @@ export async function PATCH(
       },
     });
 
+      await tx.adminActionLog.create({data:{adminUserId:currentUser.id,action:"USER_PERMISSION_UPDATE",route:"/admin/users",detail:{userId:id,before:targetUser.featurePermissions,after:changed.featurePermissions,isActive:changed.isActive}}});
+      return changed;
+    });
     return NextResponse.json(user);
   } catch (error) {
+    if(error&&typeof error==="object"&&"code" in error&&error.code==="P2025")return NextResponse.json({code:"USER_PERMISSIONS_CHANGED",message:"別の画面で設定が変更されました。最新の設定を確認してください。"},{status:409});
     console.error(error);
 
     return NextResponse.json(

@@ -1,10 +1,10 @@
 "use client";
+import JanInput from "@/components/JanInput";
 import SelectOrCreate from "@/components/SelectOrCreate";
 import { useRegistrationOptions } from "@/hooks/useRegistrationOptions";
 import { unitValidationMessage } from "@/lib/unit";
 
 import { useEffect, useRef, useState } from "react";
-import { normalizeJanInput } from "@/lib/input-normalization";
 import Link from "next/link";
 import FeedbackToast from "@/components/common/FeedbackToast";
 
@@ -204,6 +204,7 @@ export default function UnregisteredItemDialog({
     setForm((previous) => ({
       ...previous,
       [key]: value,
+      ...(key === "janCode" && value ? {systemBarcode:""} : key === "systemBarcode" && value ? {janCode:""} : {}),
     }));
   };
 
@@ -349,14 +350,7 @@ export default function UnregisteredItemDialog({
           <label>
             <span className="text-sm font-bold">JANコード</span>
 
-            <input
-              value={form.janCode}
-              onChange={(event) => update("janCode", normalizeJanInput(event.target.value))}
-              inputMode="numeric"
-              maxLength={13}
-              placeholder="JANがあれば入力"
-              className="mt-2 w-full rounded-xl border border-slate-300 px-4 py-3 outline-none focus:border-blue-600"
-            />
+            <JanInput value={form.janCode} onChange={value=>update("janCode",value)} />
           </label>
 
           <label>
@@ -392,7 +386,7 @@ export default function UnregisteredItemDialog({
           <label>
             <span className="text-sm font-bold">大分類</span>
 
-            <SelectOrCreate label="大分類" value={form.majorCategory} options={registrationOptions.majorCategories} onChange={(value) => { update("majorCategory", value); update("minorCategory", ""); }} />
+            <SelectOrCreate scanKind="MAJOR" label="大分類" value={form.majorCategory} options={registrationOptions.majorCategories} onChange={(value) => { update("majorCategory", value); update("minorCategory", ""); }} />
           </label>
 
           <label>

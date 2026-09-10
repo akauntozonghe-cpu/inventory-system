@@ -44,7 +44,8 @@ export async function sendDeviceNotification(subscription: { endpoint: string; p
   if (!settings) throw new Error("PUSH_NOT_READY");
   const policy = readPushPolicy(settings.policy);
   if (!test && (!policy.enabled || (notification && !policy.types.includes(notification.type)))) return false;
-  await webpush.sendNotification({ endpoint: subscription.endpoint, keys: { p256dh: subscription.p256dh, auth: subscription.auth } }, JSON.stringify({ ...pushMessage(policy,notification,test), tag, url: notification?.id ? "/notifications/"+encodeURIComponent(notification.id) : "/notifications" }), { TTL: policy.ttl, timeout: 5000, urgency: "normal", vapidDetails: { subject: settings.subject, publicKey: settings.publicKey, privateKey: decryptPushKey(settings.privateKey) } });
+  const send=()=>webpush.sendNotification({ endpoint: subscription.endpoint, keys: { p256dh: subscription.p256dh, auth: subscription.auth } }, JSON.stringify({ ...pushMessage(policy,notification,test), tag, url: notification?.id ? "/notifications/"+encodeURIComponent(notification.id) : "/notifications" }), { TTL: policy.ttl, timeout: 5000, urgency: "normal", vapidDetails: { subject: settings.subject, publicKey: settings.publicKey, privateKey: decryptPushKey(settings.privateKey) } });
+  try{await send();}catch(error){const status=error&&typeof error==="object"&&"statusCode" in error?Number(error.statusCode):0;const networkCode=error&&typeof error==="object"&&"code" in error?String(error.code):"";if(!test||(![408,429,500,502,503,504].includes(status)&&!["ECONNRESET","ETIMEDOUT","EAI_AGAIN"].includes(networkCode)))throw error;await new Promise(resolve=>setTimeout(resolve,500));await send();}
   return true;
 }
 

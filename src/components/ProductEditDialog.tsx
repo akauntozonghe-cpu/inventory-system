@@ -57,7 +57,7 @@ export default function ProductEditDialog({ itemId, onClose, onSaved }: { itemId
         <label className="block font-bold">商品名<input required maxLength={200} value={product.name} onChange={(event) => change("name", event.target.value)} className="mt-1 w-full rounded-lg border p-3"/></label>
         <ProductCodeField janCode={product.janCode} systemBarcode={product.systemBarcode} onChange={codes=>setProduct({...product,...codes})}/>
         <label className="block font-bold">メーカー<input maxLength={200} value={product.manufacturer} onChange={(event) => change("manufacturer", event.target.value)} className="mt-1 w-full rounded-lg border p-3"/></label>
-        <SelectOrCreate label="大分類" value={product.majorCategory} options={options.majorCategories} onChange={(value) => change("majorCategory", value)}/>
+        <SelectOrCreate scanKind="MAJOR" label="大分類" value={product.majorCategory} options={options.majorCategories} onChange={(value) => change("majorCategory", value)}/>
         <SelectOrCreate key={product.majorCategory} label="小分類" value={product.minorCategory} options={options.minorsFor(product.majorCategory)} onChange={(value) => change("minorCategory", value)}/>
         <SelectOrCreate label="単位" value={product.defaultUnit} options={options.units} onChange={(value) => change("defaultUnit", value)} required/>
         <label className="block font-bold">変更理由<input required maxLength={300} value={reason} onChange={(event) => setReason(event.target.value)} className="mt-1 w-full rounded-lg border p-3"/></label>

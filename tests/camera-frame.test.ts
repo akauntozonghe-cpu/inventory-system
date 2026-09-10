@@ -33,3 +33,5 @@ it("uses smaller JAN-8 paper without shrinking the regulated symbol", () => {
 it("identifies the specific invalid product among a batch", () => {
     expect(() => barcodePrintDocument([{ name: "正常商品", barcode: "96385074" }, { name: "修正する商品", barcode: "123" }])).toThrow(/修正する商品.*123.*3文字/);
 });
+
+it("reads the compact product label while preserving JAN width and quiet zones",async()=>{for(const scale of [0.8,1] as const){const compact=barcodeLabel("4901234567894",scale,"COMPACT"),standard=barcodeLabel("4901234567894",scale);expect(compact.width).toBe(standard.width);expect(compact.quietLeft).toBe(standard.quietLeft);expect(compact.height).toBeLessThan(standard.height);const {data,info}=await pixels(Buffer.from(compact.svg));expect(decodeCameraFrame(new Uint8ClampedArray(data),info.width,info.height,true,true)).toBe("4901234567894");}expect(barcodePrintDocument([{name:"商品",barcode:"4901234567894"}],"LABEL",0.8,false,"COMPACT")).toContain("size:32mm 14mm");},20000);

@@ -1,0 +1,12 @@
+import { beforeEach, expect, it, vi } from "vitest";
+import { NextRequest } from "next/server";
+const schedule = vi.hoisted(() => vi.fn());
+const db = vi.hoisted(() => ({ stocktakeSession: { findUnique: vi.fn(), update: vi.fn() }, notification: { create: vi.fn() }, $transaction: vi.fn() }));
+vi.mock("@/lib/prisma", () => ({ prisma: db }));
+vi.mock("@/lib/device-push", () => ({ scheduleDeviceNotifications: schedule }));
+vi.mock("@/lib/auth", () => ({ getLoggedInUser: () => ({ id: "worker" }), hasAdminAccess: () => false }));
+import { PATCH } from "../src/app/api/stocktake/session/[id]/route";
+beforeEach(() => { vi.resetAllMocks(); db.stocktakeSession.findUnique.mockResolvedValue({ id: "s", operatorUserId: "worker", title: "棚卸A", status: "IN_PROGRESS", updatedAt: new Date() }); db.stocktakeSession.update.mockResolvedValue({ id: "s", title: "棚卸A", status: "REVIEW" }); db.$transaction.mockImplementation(callback => callback(db)); });
+const request = () => PATCH(new NextRequest("https://inventory.test/api/stocktake/session/s", { method: "PATCH", body: JSON.stringify({ action: "COMPLETE" }) }), { params: Promise.resolve({ id: "s" }) });
+it("creates a navigable ordinary notification in the same transaction as review state", async () => { let inside = false; db.$transaction.mockImplementation(async (fn) => { inside = true; const value = await fn(db); inside = false; return value; }); db.notification.create.mockImplementation(async () => { expect(inside).toBe(true); }); expect((await request()).status).toBe(200); expect(db.notification.create).toHaveBeenCalledWith({ data: expect.objectContaining({ recipientUserId: "worker", audience: "ADMIN", stocktakeSessionId: "s" }) }); expect(schedule).toHaveBeenCalledWith(true); });
+it("never reports success or schedules delivery when the notification transaction fails", async () => { db.notification.create.mockRejectedValue(new Error("DB failure")); expect((await request()).status).toBe(500); expect(schedule).not.toHaveBeenCalled(); });

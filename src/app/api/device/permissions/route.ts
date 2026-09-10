@@ -4,7 +4,8 @@ import {CAMERA_EXEMPTION_COOKIE,CAMERA_EXEMPTION_SECONDS,createCameraExemption,h
 import {prisma} from "@/lib/prisma";
 export async function GET(request:NextRequest){
   const auth=requireLogin(request);if(auth.response||!auth.user)return auth.response;
-  return NextResponse.json({cameraRequired:!hasCameraExemption(request.cookies.get(CAMERA_EXEMPTION_COOKIE)?.value),canManage:hasAdminAccess(request),sessionKey:auth.user.id+":"+auth.user.expiresAt},{headers:{"Cache-Control":"no-store"}});
+  const user=await prisma.appUser.findUnique({where:{id:auth.user.id},select:{featurePermissions:true}});
+  return NextResponse.json({cameraRequired:!user?.featurePermissions.includes("CAMERA_OPTIONAL" as never)&&!hasCameraExemption(request.cookies.get(CAMERA_EXEMPTION_COOKIE)?.value),canManage:hasAdminAccess(request),sessionKey:auth.user.id+":"+auth.user.expiresAt},{headers:{"Cache-Control":"no-store"}});
 }
 export async function POST(request:NextRequest){
   const auth=requireAdmin(request);if(auth.response||!auth.user)return auth.response;

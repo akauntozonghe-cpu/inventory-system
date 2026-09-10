@@ -1,4 +1,5 @@
 "use client";
+import JanInput from "@/components/JanInput";
 import SelectOrCreate from "@/components/SelectOrCreate";
 import { useRegistrationOptions } from "@/hooks/useRegistrationOptions";
 import { unitValidationMessage } from "@/lib/unit";
@@ -6,7 +7,7 @@ import { unitValidationMessage } from "@/lib/unit";
 
 import { type FormEvent, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { normalizeAsciiCodeInput, normalizeJanInput } from "@/lib/input-normalization";
+import { normalizeAsciiCodeInput } from "@/lib/input-normalization";
 import FeedbackToast from "@/components/common/FeedbackToast";
 
 type Location = {
@@ -319,7 +320,7 @@ export default function AddPage() {
 
             <p className="mt-1 text-sm text-slate-700">
               {isAdmin
-                ? "管理者として正式登録できます。登録内容は操作ログに記録されます。"
+                ? "正式登録できます。登録内容は操作ログに記録されます。"
                 : "登録内容は申請として保存され、管理者が確認・承認します。"}
             </p>
           </section>
@@ -351,17 +352,7 @@ export default function AddPage() {
                   JANコード
                 </span>
 
-                <input
-                  value={form.janCode}
-                  onChange={(event) =>
-                    change("janCode", normalizeJanInput(event.target.value))
-                  }
-                  disabled={generateSystemBarcode}
-                  inputMode="numeric"
-                  maxLength={13}
-                  placeholder="例：4901234567890"
-                  className="mt-2 w-full rounded-xl border border-slate-300 px-4 py-3 outline-none transition focus:border-blue-600 focus:ring-2 focus:ring-blue-100 disabled:bg-slate-100"
-                />
+                <JanInput value={form.janCode} onChange={value=>change("janCode",value)} disabled={generateSystemBarcode} />
 
                 <span className="mt-1 block text-xs text-slate-500">
                   商品に印字されているJANコードを優先して入力します。
@@ -442,7 +433,7 @@ export default function AddPage() {
                   大分類
                 </span>
 
-                <SelectOrCreate label="大分類" value={form.majorCategory} options={registrationOptions.majorCategories} onChange={(value) => { change("majorCategory", value); change("minorCategory", ""); }} />
+                <SelectOrCreate scanKind="MAJOR" label="大分類" value={form.majorCategory} options={registrationOptions.majorCategories} onChange={(value) => { change("majorCategory", value); change("minorCategory", ""); }} />
               </label>
 
               <label>

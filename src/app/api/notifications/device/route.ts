@@ -41,9 +41,16 @@ export async function POST(request: NextRequest) {
     const subscription = input.subscription;
     if (!subscription || !validPushEndpoint(subscription.endpoint) || !validPushKeys(subscription.keys)) return NextResponse.json({ code: "PUSH_SUBSCRIPTION_INVALID", message: "この端末の通知情報を確認できません。通知を許可し直してください。" }, { status: 400 });
     const hash = sessionHash(request.cookies.get(AUTH_COOKIE)?.value ?? "");
-    if (input.action === "TEST") {
+    if (input.action === "TEST" || input.action === "TEST_NORMAL") {
       const saved = await prisma.devicePushSubscription.findFirst({ where: { endpoint: subscription.endpoint, userId: auth.user.id, sessionHash: hash, expiresAt: { gt: new Date() } } });
       if (!saved) return NextResponse.json({ code: "PUSH_ENABLE_FIRST", message: "先にこの端末の通知を有効にしてください。" }, { status: 409 });
+      if(input.action === "TEST_NORMAL"){
+        const settings=await prisma.devicePushSetting.findUnique({where:{id:"system"}});const policy=readPushPolicy(settings?.policy);
+        if(!policy.enabled||!policy.types.includes("SYSTEM_ERROR"))return NextResponse.json({code:"PUSH_POLICY_EXCLUDED",message:"通常通知の配信設定で、配信全体またはシステムエラー通知がOFFになっています。配信設定を確認してください。"},{status:409});
+        const notification=await prisma.notification.create({data:{type:"SYSTEM_ERROR",audience:"USER",recipientUserId:auth.user.id,title:"通常通知の配信確認",message:"通知作成・配信待ち・端末送信を通した確認です。通知を押すとこの内容が開きます。"}});
+        scheduleDeviceNotifications(true);
+        return NextResponse.json({message:"通常通知を作成しました。端末の通知欄と、下の配信状態を確認してください。",notificationId:notification.id});
+      }
       await sendDeviceNotification(saved, "inventory-test", true);
       return NextResponse.json({ message: "テスト通知を送信しました。端末の通知欄を確認してください。" });
     }
@@ -57,7 +64,7 @@ export async function POST(request: NextRequest) {
     });
     scheduleDeviceNotifications(true);
     return NextResponse.json({ message: "この端末の通知を有効にしました。ログアウトすると停止します。" });
-  } catch { return NextResponse.json({ code: "PUSH_DELIVERY_FAILED", message: "端末通知の設定・送信ができませんでした。通信と通知の許可を確認してください。" }, { status: 503 }); }
+  } catch(error) { const status=error&&typeof error==="object"&&"statusCode" in error?Number(error.statusCode):0;const code=status?"PUSH_HTTP_"+status:"PUSH_DELIVERY_FAILED";const message=status===404||status===410?"端末の配信先が期限切れです。通知を停止してから再び許可し、接続を作り直してください。":status===401||status===403?"配信サービスがサーバーの認証設定を拒否しました。管理者が通知設定を確認してください。":status===429?"配信サービスが混み合っています。少し待って配信状態を再確認してください。":"送信を完了できませんでした。通知許可・ネットワークを確認し、再接続してください。";return NextResponse.json({code,message},{status:503}); }
 }
 export async function DELETE(request: NextRequest) {
   const auth = requireLogin(request); if (auth.response || !auth.user) return auth.response;

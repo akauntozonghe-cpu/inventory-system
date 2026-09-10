@@ -1,7 +1,7 @@
 "use client";
 import { usePathname } from "next/navigation";
 import { useEffect } from "react";
-import { PUSH_ENABLED, supportsDevicePush, pushRegistration, saveDevicePush, detachDevicePush } from "@/lib/device-push-client";
+import { ensurePushSubscription, PUSH_ENABLED, supportsDevicePush, pushRegistration, saveDevicePush, detachDevicePush } from "@/lib/device-push-client";
 export default function DevicePushSession() {
   const pathname = usePathname();
   useEffect(() => {
@@ -15,7 +15,7 @@ export default function DevicePushSession() {
         const response = await fetch("/api/notifications/device", { cache:"no-store",signal:AbortSignal.timeout(8000) });
         if (!response.ok) return; const settings=await response.json();if(!settings.ready||stopped)return;
         const registration = await pushRegistration();if(stopped)return;
-        const subscription=await registration.pushManager.getSubscription() ?? await registration.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:Uint8Array.from(atob(settings.publicKey.replace(/-/g,"+").replace(/_/g,"/")), c=>c.charCodeAt(0))});
+        const subscription=await ensurePushSubscription(registration,settings.publicKey);
         if(!stopped)await saveDevicePush(subscription);
       } catch { /* Permission is never requested here. The notifications page offers a test. */ }
     };

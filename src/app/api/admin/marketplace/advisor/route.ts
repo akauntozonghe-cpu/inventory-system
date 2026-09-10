@@ -30,6 +30,7 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   const auth = requireLogin(request); if (auth.response || !auth.user) return auth.response;
   const body = await request.json().catch(() => null) as Record<string, unknown> | null; const action = stringValue(body?.action, 50);
+  if(["SAVE_RECOMMENDATION_SETTING","SAVE_SHIPPING_RATE","UPDATE_CHANNEL"].includes(action)){const user=await prisma.appUser.findUnique({where:{id:auth.user.id},select:{role:true,featurePermissions:true}});if(user?.role!=="ADMIN"&&!user?.featurePermissions.includes("MARKETPLACE_SETTINGS" as never))return NextResponse.json({code:"MARKETPLACE_SETTINGS_DISABLED",message:"販売設定の変更は許可されていません。"},{status:403});}
   if (action === "SAVE_RECOMMENDATION_SETTING") {
     const latitude = Number(body?.latitude); const longitude = Number(body?.longitude);
     if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) return NextResponse.json({ message: "地域の緯度・経度を確認してください。" }, { status: 400 });

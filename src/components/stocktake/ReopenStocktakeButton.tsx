@@ -11,7 +11,7 @@ export default function ReopenStocktakeButton({ sessionId, sessionTitle, owner, 
   useEffect(() => { if (open) dialog.current?.showModal(); else dialog.current?.close(); }, [open]);
   if (!canReopenStocktake(status)) return null;
   return <>
-    <button type="button" disabled={disabled || busy} onClick={() => { setError(""); setOpen(true); }} className="rounded-xl bg-blue-700 px-4 py-3 font-bold text-white disabled:opacity-50">管理者として途中から再開</button>
+    <button type="button" disabled={disabled || busy} onClick={() => { setError(""); setOpen(true); }} className="rounded-xl bg-blue-700 px-4 py-3 font-bold text-white disabled:opacity-50">途中から再開</button>
     <dialog ref={dialog} aria-labelledby={`reopen-${sessionId}`} onCancel={event => { event.preventDefault(); if (!busy) setOpen(false); }} className="m-auto w-[min(94vw,32rem)] rounded-2xl p-6 text-slate-950 shadow-xl backdrop:bg-slate-950/60">
       <h2 id={`reopen-${sessionId}`} className="text-2xl font-black">{sessionTitle?`「${sessionTitle}」を再開`:"この担当者の棚卸を再開"}</h2>{owner&&<p className="my-2 text-sm">担当者：{owner}</p>}
       <p className="my-4">入力済みの数量・対象商品・担当者を残して作業中へ戻します。再開理由は管理者の操作履歴に記録されます。在庫は再開時には変更されません。</p>

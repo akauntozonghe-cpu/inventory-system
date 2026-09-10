@@ -635,12 +635,6 @@ export default function ItemDetailPage() {
           onClose={() => setError("")}
         />
 
-        {isAdmin && (
-          <div className="mb-5 rounded-2xl border border-blue-200 bg-blue-50 px-5 py-4 text-sm text-blue-900">
-            <span className="font-black">管理者モード：</span>
-            商品・在庫情報の変更には理由の入力が必要です。すべての変更は操作ログへ記録されます。
-          </div>
-        )}
 
         <div className="space-y-6">
           {editingItem && itemForm ? (
@@ -828,7 +822,7 @@ export default function ItemDetailPage() {
                           <div className="flex items-start justify-between gap-3">
                             <div>
                               <p className="text-sm font-bold text-blue-600">
-                                管理者編集
+                                編集
                               </p>
                               <h3 className="mt-1 text-lg font-black text-slate-950">
                                 在庫情報を編集

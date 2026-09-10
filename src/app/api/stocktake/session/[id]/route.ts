@@ -1,3 +1,4 @@
+import {scheduleDeviceNotifications} from "@/lib/device-push";
 import { randomUUID } from "node:crypto";
 import { publicErrorMessage as getErrorMessage } from "@/lib/public-error";
 import { NextRequest, NextResponse } from "next/server";
@@ -172,7 +173,8 @@ export async function PATCH(
       );
     }
 
-    const updated = await prisma.stocktakeSession.update({
+    const updated = await prisma.$transaction(async tx => {
+      const changed = await tx.stocktakeSession.update({
       where: {
         id, status: session.status, updatedAt: session.updatedAt,
       },
@@ -186,6 +188,10 @@ export async function PATCH(
         status: true,
       },
     });
+      await tx.notification.create({data:{type:"STOCKTAKE_COMPLETED",audience:"ADMIN",recipientUserId:session.operatorUserId??user.id,stocktakeSessionId:id,title:"棚卸入力が完了しました",message:`「${changed.title}」の入力が終わりました。結果を確認して正式確定してください。`}});
+      return changed;
+    });
+    scheduleDeviceNotifications(true);
 
     return NextResponse.json({
       success: true,
