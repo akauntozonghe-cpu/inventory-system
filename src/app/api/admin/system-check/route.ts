@@ -352,6 +352,7 @@ export async function POST(request: NextRequest) {
         },
       ];
 
+      if(needs("CHECK_STOCKTAKE_LEGACY_STATE")){const count=await prisma.stocktakeSession.count({where:{...sessionWhere,status:"CONFLICT"}});checks.push({code:"CHECK_STOCKTAKE_LEGACY_STATE",title:"過去の停止状態の棚卸",status:count?"WARNING":"PASS",detail:count?`${count}件が過去の停止状態です。担当者別の入力を残して、対象の棚卸だけを再開できます。複数ユーザーの棚卸は正常です。`:"過去の停止状態の棚卸はありません。担当者別の並行作業は正常です。",expected:"対象の担当者が継続できる状態",actual:`${count}件`});}
       if (needs("CHECK_PUSH_CONFIGURATION")) {
         const settings=await prisma.devicePushSetting.findUnique({where:{id:"system"}});
         const usable=pushSettingsUsable(settings);

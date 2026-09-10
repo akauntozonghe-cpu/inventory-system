@@ -1,5 +1,5 @@
 export function canReopenStocktake(status: string) {
-  return status === "REVIEW" || status === "COMPLETED";
+  return status === "REVIEW" || status === "COMPLETED" || status === "CONFLICT";
 }
 
 /** CompletedAt retains the previous confirmation boundary while a session is reopened. */

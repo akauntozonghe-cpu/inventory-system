@@ -1,18 +1,12 @@
 "use client";
-import { displayUnit } from "@/lib/unit";
+import InspectionTargets,{hasInspectionTargets} from "@/components/InspectionTargets";
 
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { getErrorGuidance } from "@/lib/error-guidance";
-import AdminModeDialog from "@/components/stocktake/AdminModeDialog";
 
 type CheckStatus = "PASS" | "WARNING" | "FAIL" | "NOT_RUN";
 type RunStatus = "PASSED" | "WARNING" | "FAILED";
-type StocktakeStatus =
-  | "IN_PROGRESS"
-  | "PAUSED"
-  | "REVIEW"
-  | "CONFLICT";
 
 type CheckItem = {
   id: string;
@@ -41,55 +35,8 @@ type CheckRun = {
   items: CheckItem[];
 };
 
-type ActiveSession = {
-  id: string;
-  title: string;
-  operator: string | null;
-  status: StocktakeStatus;
-  scopeLabel: string | null;
-  startedAt: string;
-  pausedAt: string | null;
-  updatedAt: string;
-  operatorUser: {
-    displayName: string;
-    username: string;
-  } | null;
-  _count: {
-    targets: number;
-    records: number;
-  };
-};
-
-type InventoryWithoutIdentifier = {
-  id: string;
-  quantity: number;
-  unit: string | null;
-  updatedAt: string;
-  item: {
-    id: string;
-    name: string;
-    janCode: string | null;
-    systemBarcode: string | null;
-    managementCode: string | null;
-  };
-  storageLocation: {
-    id: string;
-    name: string;
-  } | null;
-};
-
-type ManualCheck = {
-  code: string;
-  title: string;
-  status: CheckStatus;
-  detail: string;
-};
-
-type ApiError = {
-  code?: string;
-  message?: string;
-};
-
+type ManualCheck = {code:string;title:string;status:CheckStatus;detail:string};
+type ApiError = {code?:string;message?:string};
 const initialManualChecks: ManualCheck[] = [
   {
     code: "MANUAL_LOGIN",
@@ -201,50 +148,16 @@ function statusClass(status: CheckStatus | RunStatus) {
   return "bg-rose-100 text-rose-800";
 }
 
-function stocktakeStatusLabel(status: StocktakeStatus) {
-  const labels: Record<StocktakeStatus, string> = {
-    IN_PROGRESS: "作業中",
-    PAUSED: "中断中",
-    REVIEW: "確認待ち",
-    CONFLICT: "競合中",
-  };
-
-  return labels[status];
-}
-
-function stocktakeStatusClass(status: StocktakeStatus) {
-  const classes: Record<StocktakeStatus, string> = {
-    IN_PROGRESS: "bg-blue-100 text-blue-800",
-    PAUSED: "bg-amber-100 text-amber-800",
-    REVIEW: "bg-violet-100 text-violet-800",
-    CONFLICT: "bg-rose-100 text-rose-800",
-  };
-
-  return classes[status];
-}
-
 export default function SystemCheckPage() {
   const [runs, setRuns] = useState<CheckRun[]>([]);
-  const [activeSessions, setActiveSessions] = useState<ActiveSession[]>([]);
-  const [inventoriesWithoutIdentifier, setInventoriesWithoutIdentifier] =
-    useState<InventoryWithoutIdentifier[]>([]);
   const [manualChecks, setManualChecks] =
     useState<ManualCheck[]>(initialManualChecks);
 
   const [loading, setLoading] = useState(true);
   const [runningAuto, setRunningAuto] = useState(false);
   const [savingManual, setSavingManual] = useState(false);
-  const [workingId, setWorkingId] = useState("");
-  const [pendingRecovery, setPendingRecovery] = useState<{
-    action: "PAUSE_SESSION" | "RESUME_SESSION" | "CANCEL_SESSION" | "ISSUE_SYSTEM_BARCODE";
-    values: { sessionId?: string; itemId?: string; reason?: string };
-  } | null>(null);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
-
-  const [cancelTarget, setCancelTarget] =
-    useState<ActiveSession | null>(null);
-  const [cancelReason, setCancelReason] = useState("");
 
   const latestRun = useMemo(() => runs[0] ?? null, [runs]);
 
@@ -272,46 +185,12 @@ export default function SystemCheckPage() {
     setRuns(Array.isArray(rawRuns) ? (rawRuns as CheckRun[]) : []);
   }, []);
 
-  const loadRemediationTargets = useCallback(async () => {
-    const response = await fetch("/api/admin/system-check/remediate", {
-      cache: "no-store",
-    });
-
-    const data = await readJson(response);
-    const payload = getErrorPayload(data);
-
-    if (!response.ok) {
-      throw new Error(
-        `${payload.code ?? "SYSTEM_REMEDIATION_LIST_FAILED"}: ${
-          payload.message ?? "復旧対象の情報を取得できませんでした。"
-        }`
-      );
-    }
-
-    const result =
-      data && typeof data === "object"
-        ? (data as Record<string, unknown>)
-        : {};
-
-    setActiveSessions(
-      Array.isArray(result.activeSessions)
-        ? (result.activeSessions as ActiveSession[])
-        : []
-    );
-
-    setInventoriesWithoutIdentifier(
-      Array.isArray(result.inventoriesWithoutIdentifier)
-        ? (result.inventoriesWithoutIdentifier as InventoryWithoutIdentifier[])
-        : []
-    );
-  }, []);
-
   const loadPageData = useCallback(async () => {
     setLoading(true);
     setError("");
 
     try {
-      await Promise.all([loadRuns(), loadRemediationTargets()]);
+      await loadRuns();
     } catch (caught) {
       setError(
         caught instanceof Error
@@ -321,7 +200,7 @@ export default function SystemCheckPage() {
     } finally {
       setLoading(false);
     }
-  }, [loadRemediationTargets, loadRuns]);
+  }, [loadRuns]);
 
   useEffect(() => {
     void loadPageData();
@@ -413,75 +292,6 @@ export default function SystemCheckPage() {
       );
     } finally {
       setSavingManual(false);
-    }
-  }
-
-  async function remediate(
-    action:
-      | "PAUSE_SESSION"
-      | "RESUME_SESSION"
-      | "CANCEL_SESSION"
-      | "ISSUE_SYSTEM_BARCODE",
-    values: {
-      sessionId?: string;
-      itemId?: string;
-      reason?: string;
-    }
-  ) {
-    const targetId = values.sessionId ?? values.itemId ?? "";
-
-    if (!targetId) {
-      return;
-    }
-
-    setWorkingId(`${action}-${targetId}`);
-    setMessage("");
-    setError("");
-
-    try {
-      const response = await fetch("/api/admin/system-check/remediate", {
-        method: "PATCH",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          action,
-          ...values,
-        }),
-      });
-
-      const data = await readJson(response);
-      const payload = getErrorPayload(data);
-
-      if (!response.ok) {
-        if (payload.code === "ADMIN_ELEVATION_REQUIRED") {
-          setPendingRecovery({ action, values });
-          return;
-        }
-        throw new Error(
-          `${payload.code ?? "SYSTEM_REMEDIATION_FAILED"}: ${
-            payload.message ?? "管理者操作を実行できませんでした。"
-          }`
-        );
-      }
-
-      setMessage(
-        payload.message ??
-          "SYSTEM_REMEDIATION_COMPLETED: 管理者操作が完了しました。"
-      );
-
-      setCancelTarget(null);
-      setCancelReason("");
-
-      await loadPageData();
-    } catch (caught) {
-      setError(
-        caught instanceof Error
-          ? caught.message
-          : "SYSTEM_REMEDIATION_FAILED: 管理者操作を実行できませんでした。"
-      );
-    } finally {
-      setWorkingId("");
     }
   }
 
@@ -591,231 +401,7 @@ export default function SystemCheckPage() {
           )}
         </section>
 
-        <section className="mt-7 rounded-3xl bg-white p-5 shadow-sm sm:p-6">
-          <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
-            <div>
-              <h2 className="text-xl font-black">復旧対象：進行中の棚卸</h2>
-              <p className="mt-1 text-sm leading-6 text-slate-600">
-                不要な棚卸は理由を残して取消できます。取消済みの入力は監査用に保持されます。
-              </p>
-            </div>
-
-            <Link
-              href="/admin/stocktake"
-              className="text-sm font-bold text-blue-700 hover:text-blue-900"
-            >
-              棚卸管理を開く →
-            </Link>
-          </div>
-
-          {loading ? (
-            <p className="py-8 text-center text-slate-500">
-              復旧対象を読み込んでいます…
-            </p>
-          ) : activeSessions.length === 0 ? (
-            <p className="mt-5 rounded-2xl bg-emerald-50 p-4 text-sm font-bold text-emerald-800">
-              整理が必要な進行中・中断中・確認待ちの棚卸はありません。
-            </p>
-          ) : (
-            <div className="mt-5 space-y-4">
-              {activeSessions.map((session) => {
-                const progress =
-                  session._count.targets === 0
-                    ? 0
-                    : Math.round(
-                        (session._count.records / session._count.targets) *
-                          100
-                      );
-
-                const pauseWorking =
-                  workingId === `PAUSE_SESSION-${session.id}`;
-                const resumeWorking =
-                  workingId === `RESUME_SESSION-${session.id}`;
-
-                return (
-                  <article
-                    key={session.id}
-                    className="rounded-2xl border border-slate-200 p-4"
-                  >
-                    <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-                      <div className="min-w-0">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <h3 className="text-lg font-black">{session.title}</h3>
-
-                          <span
-                            className={`rounded-full px-3 py-1 text-xs font-black ${stocktakeStatusClass(
-                              session.status
-                            )}`}
-                          >
-                            {stocktakeStatusLabel(session.status)}
-                          </span>
-                        </div>
-
-                        <p className="mt-2 text-sm text-slate-600">
-                          担当者：
-                          {session.operatorUser?.displayName ??
-                            session.operator ??
-                            "-"}
-                          ・対象：
-                          {session.scopeLabel ?? "全在庫"}
-                        </p>
-
-                        <p className="mt-1 text-sm text-slate-600">
-                          進捗：{session._count.records} /{" "}
-                          {session._count.targets}件（{progress}%）
-                        </p>
-
-                        <p className="mt-1 text-xs text-slate-500">
-                          最終更新：{formatDate(session.updatedAt)}
-                        </p>
-                      </div>
-
-                      <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap">
-                        <Link
-                          href={`/stocktake/${session.id}`}
-                          className="inline-flex min-h-11 items-center justify-center rounded-xl bg-slate-800 px-4 text-sm font-bold text-white hover:bg-slate-700"
-                        >
-                          開く
-                        </Link>
-
-                        {session.status === "IN_PROGRESS" && (
-                          <button
-                            type="button"
-                            onClick={() =>
-                              void remediate("PAUSE_SESSION", {
-                                sessionId: session.id,
-                              })
-                            }
-                            disabled={Boolean(workingId)}
-                            className="min-h-11 rounded-xl bg-amber-500 px-4 text-sm font-bold text-white hover:bg-amber-600 disabled:bg-slate-400"
-                          >
-                            {pauseWorking ? "中断中…" : "中断"}
-                          </button>
-                        )}
-
-                        {(session.status === "PAUSED" ||
-                          session.status === "CONFLICT") && (
-                          <button
-                            type="button"
-                            onClick={() =>
-                              void remediate("RESUME_SESSION", {
-                                sessionId: session.id,
-                              })
-                            }
-                            disabled={Boolean(workingId)}
-                            className="min-h-11 rounded-xl bg-emerald-600 px-4 text-sm font-bold text-white hover:bg-emerald-700 disabled:bg-slate-400"
-                          >
-                            {resumeWorking ? "再開中…" : "再開"}
-                          </button>
-                        )}
-
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setCancelTarget(session);
-                            setCancelReason("");
-                          }}
-                          disabled={Boolean(workingId)}
-                          className="min-h-11 rounded-xl bg-rose-600 px-4 text-sm font-bold text-white hover:bg-rose-700 disabled:bg-slate-400"
-                        >
-                          取消
-                        </button>
-                      </div>
-                    </div>
-                  </article>
-                );
-              })}
-            </div>
-          )}
-        </section>
-
-        <section className="mt-7 rounded-3xl bg-white p-5 shadow-sm sm:p-6">
-          <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
-            <div>
-              <h2 className="text-xl font-black">
-                復旧対象：識別コードがない商品
-              </h2>
-              <p className="mt-1 text-sm leading-6 text-slate-600">
-                JANが存在しない商品だけに、システムJANを発行できます。
-                既存JANがある場合は商品詳細からJANを登録してください。
-              </p>
-            </div>
-
-            <Link
-              href="/items"
-              className="text-sm font-bold text-blue-700 hover:text-blue-900"
-            >
-              商品・在庫一覧を開く →
-            </Link>
-          </div>
-
-          {loading ? (
-            <p className="py-8 text-center text-slate-500">
-              商品情報を読み込んでいます…
-            </p>
-          ) : inventoriesWithoutIdentifier.length === 0 ? (
-            <p className="mt-5 rounded-2xl bg-emerald-50 p-4 text-sm font-bold text-emerald-800">
-              JANまたはシステムJANがない在庫はありません。
-            </p>
-          ) : (
-            <div className="mt-5 space-y-4">
-              {inventoriesWithoutIdentifier.map((inventory) => {
-                const issueWorking =
-                  workingId === `ISSUE_SYSTEM_BARCODE-${inventory.item.id}`;
-
-                return (
-                  <article
-                    key={inventory.id}
-                    className="rounded-2xl border border-slate-200 p-4"
-                  >
-                    <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-                      <div>
-                        <h3 className="text-lg font-black">
-                          {inventory.item.name}
-                        </h3>
-
-                        <p className="mt-2 text-sm text-slate-600">
-                          保管場所：
-                          {inventory.storageLocation?.name ?? "未設定"} ・
-                          在庫：{inventory.quantity}
-                          {displayUnit(inventory.unit)}
-                        </p>
-
-                        <p className="mt-1 text-xs text-slate-500">
-                          管理番号：
-                          {inventory.item.managementCode ?? "-"} ・ JAN：未登録
-                        </p>
-                      </div>
-
-                      <div className="grid grid-cols-2 gap-2 sm:flex">
-                        <Link
-                          href={`/items/${inventory.item.id}`}
-                          className="inline-flex min-h-11 items-center justify-center rounded-xl bg-slate-800 px-4 text-sm font-bold text-white hover:bg-slate-700"
-                        >
-                          商品詳細
-                        </Link>
-
-                        <button
-                          type="button"
-                          onClick={() =>
-                            void remediate("ISSUE_SYSTEM_BARCODE", {
-                              itemId: inventory.item.id,
-                            })
-                          }
-                          disabled={Boolean(workingId)}
-                          className="min-h-11 rounded-xl bg-indigo-600 px-4 text-sm font-bold text-white hover:bg-indigo-700 disabled:bg-slate-400"
-                        >
-                          {issueWorking ? "発行中…" : "コード発行"}
-                        </button>
-                      </div>
-                    </div>
-                  </article>
-                );
-              })}
-            </div>
-          )}
-        </section>
-
+        <p className="mt-5 rounded-xl bg-blue-50 p-4">担当者別の棚卸は独立した作業です。正常な並行作業は復旧対象に含めません。下の点検結果を開くと、問題のある対象と処置を確認できます。</p>
         <section className="mt-7 rounded-3xl bg-white p-5 shadow-sm sm:p-6">
           <div>
             <h2 className="text-xl font-black">手動点検</h2>
@@ -971,7 +557,8 @@ export default function SystemCheckPage() {
                             {item.actual ?? "-"}
                           </p>
                         )}
-                        {item.status !== "PASS" && guidance && (
+                        {item.status !== "PASS" && hasInspectionTargets(item.code)&&<InspectionTargets checkCode={item.code} runId={run.id} onChanged={runAutoCheck}/>}
+                        {item.status !== "PASS" && !hasInspectionTargets(item.code) && guidance && (
                           <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 p-3 text-amber-950">
                             <p><span className="font-black">次に行うこと：</span>{guidance.action}</p>
                             <details className="mt-2">
@@ -991,82 +578,6 @@ export default function SystemCheckPage() {
         </section>
       </div>
 
-      {cancelTarget && (
-        <div
-          role="dialog"
-          aria-modal="true"
-          className="fixed inset-0 z-50 grid place-items-center bg-slate-950/50 p-4"
-        >
-          <section className="w-full max-w-lg rounded-3xl bg-white p-6 shadow-2xl">
-            <p className="text-sm font-black text-rose-600">
-              棚卸の取消確認
-            </p>
-
-            <h2 className="mt-1 text-2xl font-black">
-              「{cancelTarget.title}」を取り消しますか？
-            </h2>
-
-            <p className="mt-3 text-sm leading-6 text-slate-600">
-              作業中の棚卸は停止します。保存済みの入力記録は監査用に保持されますが、
-              この棚卸は通常作業として再開できなくなります。
-            </p>
-
-            <label className="mt-5 block text-sm font-bold">
-              取消理由
-              <textarea
-                value={cancelReason}
-                onChange={(event) => setCancelReason(event.target.value)}
-                rows={4}
-                placeholder="例：テスト用に作成した棚卸のため"
-                className="mt-2 w-full rounded-xl border border-slate-300 p-3"
-              />
-            </label>
-
-            <div className="mt-5 grid grid-cols-2 gap-3">
-              <button
-                type="button"
-                onClick={() => {
-                  setCancelTarget(null);
-                  setCancelReason("");
-                }}
-                disabled={Boolean(workingId)}
-                className="min-h-12 rounded-xl bg-slate-200 font-bold text-slate-800 hover:bg-slate-300"
-              >
-                戻る
-              </button>
-
-              <button
-                type="button"
-                disabled={
-                  !cancelReason.trim() || Boolean(workingId)
-                }
-                onClick={() =>
-                  void remediate("CANCEL_SESSION", {
-                    sessionId: cancelTarget.id,
-                    reason: cancelReason,
-                  })
-                }
-                className="min-h-12 rounded-xl bg-rose-600 font-bold text-white hover:bg-rose-700 disabled:cursor-not-allowed disabled:bg-slate-400"
-              >
-                {workingId === `CANCEL_SESSION-${cancelTarget.id}`
-                  ? "取消中…"
-                  : "理由を記録して取消"}
-              </button>
-            </div>
-          </section>
-        </div>
-      )}
-      <AdminModeDialog
-        open={Boolean(pendingRecovery)}
-        sessionId={pendingRecovery?.values.sessionId ?? ""}
-        purpose="自動復旧で解決できなかった項目を変更します。手順と対象を確認し、IDとパスワードで認証してください。認証と実行結果はレポートへ記録されます。"
-        onClose={() => setPendingRecovery(null)}
-        onAuthenticated={() => {
-          const pending = pendingRecovery;
-          setPendingRecovery(null);
-          if (pending) void remediate(pending.action, pending.values);
-        }}
-      />
     </main>
   );
 }

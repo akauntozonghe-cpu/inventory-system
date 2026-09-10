@@ -416,7 +416,7 @@ export default function StocktakeStartPage() {
             </p>
             <h2 className="mt-1 text-2xl font-black">棚卸一覧</h2>
             <p className="mt-2 text-slate-600">
-              中断した棚卸は再開できます。確認待ち・競合中の棚卸は結果を確認してください。
+              中断した棚卸は再開できます。確認待ち・再開確認待ちの棚卸は結果を確認してください。
             </p>
 
             <div className="mt-6 space-y-3">
@@ -458,7 +458,7 @@ export default function StocktakeStartPage() {
                       </p>
                     </div>
 
-                    {session.isAdminView && <ReopenStocktakeButton sessionId={session.id} status={session.status} />}
+                    {session.isAdminView && <ReopenStocktakeButton sessionTitle={session.title} sessionId={session.id} status={session.status} />}
                     {session.status === "REVIEW" ||
                     session.status === "CONFLICT" || session.status === "COMPLETED" || session.status === "CANCELLED" ? (
                       <Link

@@ -19,7 +19,8 @@ type StocktakeStatus =
   | "PAUSED"
   | "REVIEW"
   | "COMPLETED"
-  | "CANCELLED";
+  | "CANCELLED"
+  | "CONFLICT";
 
 type ResultRecord = {
   id: string;
@@ -70,6 +71,7 @@ type ResultData = {
     unrecordedCount: number;
   };
   records: ResultRecord[];
+  unlinkedRecords?:Array<{id:string;inventoryInstanceId:string;name:string;lotNo?:string|null;location?:string|null;countedQuantity:number;memo?:string|null}>;
 };
 
 function readMessage(value: unknown, fallback: string) {
@@ -217,12 +219,14 @@ export default function StocktakeResultPage() {
   };
 
   const syncFailed = useLiveRefresh(loadResult);
+  const [focusedInventory,setFocusedInventory]=useState("");
+  useEffect(()=>{setFocusedInventory(new URLSearchParams(window.location.search).get("inventoryId")??"");},[]);
 
   const matchingRecords = (data?.records ?? []).filter(record => {
     const text = [record.item.name, record.item.janCode, record.lotNo, record.inventoryInstanceId, record.memo, record.storageLocation?.name].filter(Boolean).join(" ").normalize("NFKC").toLowerCase();
-    return (!memoOnly || record.memo?.trim()) && (!differenceOnly || record.difference !== 0) && resultSearch.normalize("NFKC").toLowerCase().trim().split(/\s+/).every(word => text.includes(word));
+    return (!focusedInventory||record.inventoryInstanceId===focusedInventory)&&(!memoOnly || record.memo?.trim()) && (!differenceOnly || record.difference !== 0) && resultSearch.normalize("NFKC").toLowerCase().trim().split(/\s+/).every(word => text.includes(word));
   });
-  const pagination = usePagedItems(matchingRecords, JSON.stringify([memoOnly, differenceOnly, resultSearch]));
+  const pagination = usePagedItems(matchingRecords, JSON.stringify([memoOnly, differenceOnly, resultSearch, focusedInventory]));
 
   if (loading) {
     return (
@@ -300,7 +304,7 @@ export default function StocktakeResultPage() {
       </header>
 
       <div className="mx-auto max-w-7xl space-y-6 p-5 sm:p-8">
-        {data.permissions.isAdmin && <ReopenStocktakeButton sessionId={sessionId} status={data.session.status} disabled={applying} />}
+        {data.permissions.isAdmin && <ReopenStocktakeButton sessionTitle={data.session.title} sessionId={sessionId} status={data.session.status} disabled={applying} />}
         {isWorking && (
           <section className="rounded-3xl border border-amber-200 bg-amber-50 p-6">
             <h2 className="text-2xl font-black text-amber-900">
@@ -406,7 +410,7 @@ export default function StocktakeResultPage() {
             </p>
           </div>
 
-          <SearchBar value={resultSearch} onChange={setResultSearch} placeholder="商品・Lot・保管場所・メモで検索" className="mt-5" />
+          {focusedInventory&&<p className="mb-3 rounded-xl bg-blue-50 p-3 font-bold">点検で指定された在庫の記録を表示中<button className="ml-3 underline" onClick={()=>setFocusedInventory("")}>この棚卸の全記録を表示</button><Link href="/admin/recovery" className="ml-3 underline">点検へ戻る</Link></p>}{(data.unlinkedRecords??[]).filter(row=>!focusedInventory||row.inventoryInstanceId===focusedInventory).map(row=><article key={row.id} className="my-3 rounded-xl border border-amber-300 bg-amber-50 p-4"><h3 className="font-bold">対象登録の確認が必要：{row.name}</h3><p>Lot：{row.lotNo||"未設定"} ／ 保管場所：{row.location||"未設定"}</p><p className="break-all text-xs">在庫No.：{row.inventoryInstanceId}</p><p>保存済みの数量：{row.countedQuantity} ／ メモ：{row.memo||"なし"}</p><p>この担当者の入力は保存されていますが、この棚卸の対象登録がありません。数量を消さずに管理者が点検画面で対応してください。</p>{data.permissions.isAdmin&&<Link href="/admin/recovery" className="underline">点検でこの記録の対応を確認</Link>}</article>)}<SearchBar value={resultSearch} onChange={setResultSearch} placeholder="商品・Lot・保管場所・メモで検索" className="mt-5" />
           <label className="mt-3 flex items-center gap-3 rounded-xl bg-slate-100 p-3 font-bold"><input type="checkbox" checked={differenceOnly} onChange={event => setDifferenceOnly(event.target.checked)} className="h-5 w-5" />差異ありのみ表示</label>
           <label className="mt-5 flex items-center gap-3 rounded-xl bg-slate-100 p-3 font-bold">
             <input type="checkbox" checked={memoOnly} onChange={(event) => setMemoOnly(event.target.checked)} className="h-5 w-5" />

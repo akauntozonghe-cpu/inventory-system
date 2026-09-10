@@ -61,7 +61,7 @@ type ProgressData = {
     title: string;
     operator: string | null;
     scopeLabel: string | null;
-    status: "IN_PROGRESS" | "PAUSED" | "REVIEW" | "COMPLETED" | "CANCELLED";
+    status: "IN_PROGRESS" | "PAUSED" | "REVIEW" | "COMPLETED" | "CANCELLED" | "CONFLICT";
     startedAt: string;
     pausedAt: string | null;
     completedAt: string | null;
@@ -119,6 +119,7 @@ class StocktakeRequestError extends Error {
 }
 
 function statusLabel(status: ProgressData["session"]["status"]) {
+  if(status==="CONFLICT")return "再開確認待ち";
   switch (status) {
     case "IN_PROGRESS":
       return "棚卸作業中";
@@ -874,10 +875,10 @@ export default function StocktakePage() {
       <div className="mx-auto max-w-7xl space-y-6 p-5 sm:p-8">
         {canReopenStocktake(progress.session.status) && (
           <section className="rounded-2xl border-2 border-blue-300 bg-blue-50 p-5 text-blue-950">
-            <h2 className="text-xl font-black">{progress.session.status === "COMPLETED" ? "正式確定済み" : "入力終了・確認待ち"}</h2>
+            <h2 className="text-xl font-black">{progress.session.status === "COMPLETED" ? "正式確定済み" : progress.session.status === "CONFLICT" ? "この担当者の棚卸は再開確認待ちです" : "入力終了・確認待ち"}</h2>
             <p className="mt-2">入力済みの数量は保存されています。誤って終了した場合は、管理者が途中から再開できます。</p>
             <div className="mt-4 flex flex-wrap gap-3">
-              {isAdmin && <ReopenStocktakeButton sessionId={sessionId} status={progress.session.status} onReopened={() => { void refresh().catch(() => setError("再開は完了しました。画面更新に失敗したため、再読み込みしてください。")); }} />}
+              {isAdmin && <ReopenStocktakeButton sessionTitle={progress.session.title} sessionId={sessionId} status={progress.session.status} onReopened={() => { void refresh().catch(() => setError("再開は完了しました。画面更新に失敗したため、再読み込みしてください。")); }} />}
               <Link href={`/stocktake/${sessionId}/result`} className="rounded-xl bg-indigo-700 px-4 py-3 font-bold text-white">結果を確認して正式確定へ</Link>
             </div>
             {!isAdmin && <p className="mt-3 text-sm">入力を続ける場合は管理者に再開を依頼してください。再開後は同じ棚卸の続きを入力できます。</p>}

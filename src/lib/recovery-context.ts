@@ -6,7 +6,7 @@ export function recoveryCheckCodes(route?: string, errorCode?: string): string[]
   if (errorCode && /NETWORK|HTTP_50|FETCH|TIMEOUT|CONNECTION/.test(errorCode)) return base;
   if (/AUTH|LOGIN|PERMISSION|FORBIDDEN/.test(errorCode ?? "") || /login|account|users/.test(route)) return [...base, "CHECK_ACTIVE_ADMIN"];
   if (/BARCODE|JAN|IDENTIFIER/.test(errorCode ?? "")) return [...base, "CHECK_PRODUCT_IDENTIFIERS"];
-  if (/stocktake/.test(route)) return [...base, "CHECK_REVIEW_RECORDS", "CHECK_STOCKTAKE_TARGET_LINK"];
+  if (/stocktake/.test(route)) return [...base, "CHECK_REVIEW_RECORDS", "CHECK_STOCKTAKE_LEGACY_STATE", "CHECK_STOCKTAKE_TARGET_LINK"];
   if (/items|inventory|classifications|register|marketplace/.test(route)) return [...base, "CHECK_PRODUCT_LINKS", "CHECK_INVALID_UNITS", "CHECK_MASTER_DATA"];
   return base;
 }

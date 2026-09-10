@@ -8,6 +8,7 @@ const state = vi.hoisted(() => ({
     appUser: { findUnique: vi.fn() },
     stocktakeTarget: { findMany: vi.fn(), findUnique: vi.fn() },
     stocktakeRecord: { findMany: vi.fn(), upsert: vi.fn() },
+    inventoryInstance: {findMany:vi.fn()},
     $transaction: vi.fn(),
   },
 }));
@@ -46,6 +47,12 @@ describe("continued input after review is reopened", () => {
     expect((await response.json()).permissions).toMatchObject({ isOperator: false, isAdmin: true, canOperate: true });
     expect((await saveRecord()).status).toBe(200);
     expect(state.db.stocktakeRecord.upsert).toHaveBeenCalledOnce();
+  });
+  it("shows an unlinked saved record rather than dropping it from the result",async()=>{
+    state.db.stocktakeTarget.findMany.mockResolvedValue([]);
+    state.db.inventoryInstance.findMany.mockResolvedValue([{id:"i",lotNo:"LOT-A",item:{name:"水"},storageLocation:{name:"倉庫"}}]);
+    const response=await getResult();expect(response.status).toBe(200);const body=await response.json();
+    expect(body.unlinkedRecords).toEqual([expect.objectContaining({id:"r",inventoryInstanceId:"i",name:"水",lotNo:"LOT-A",location:"倉庫",countedQuantity:7})]);expect(body.permissions.canApply).toBe(false);
   });
   it("rejects an in-flight save if another device ended input before it acquired the session", async () => {
     state.db.stocktakeSession.updateMany.mockResolvedValue({ count: 0 });

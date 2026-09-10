@@ -177,7 +177,7 @@ export async function POST(request: NextRequest) {
       STOCKTAKE_NOT_IN_PROGRESS:
         "作業中ではない棚卸には入力できません。",
       STOCKTAKE_CONFLICT_LOCKED:
-        "在庫データの競合が検出されたため、この棚卸は管理者確認まで停止しています。",
+        "この担当者の棚卸は過去の停止状態です。入力記録は残っています。管理者が点検結果で担当者と対象を確認し、この棚卸だけを再開してください。別ユーザーの並行作業自体は異常ではありません。",
       STOCKTAKE_TARGET_NOT_FOUND:
         "この在庫は現在の棚卸対象に含まれていません。",
     };

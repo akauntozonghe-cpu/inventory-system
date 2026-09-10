@@ -33,7 +33,7 @@ describe("administrator reopens a finished stocktake", () => {
     expect(mock.db.stocktakeSession.updateMany).toHaveBeenCalledWith({ where: { id: "s", status: "REVIEW", updatedAt: date }, data: { status: "IN_PROGRESS", pausedAt: null } });
     expect(mock.db.adminActionLog.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ adminUserId: "admin", action: "STOCKTAKE_REOPEN", detail: expect.objectContaining({ reason: "数量を確認し直す", recordsPreserved: true }) }) }));
   });
-  it.each(["IN_PROGRESS", "PAUSED", "CANCELLED", "CONFLICT"])("does not reopen %s", async status => {
+  it.each(["IN_PROGRESS", "PAUSED", "CANCELLED"])("does not reopen %s", async status => {
     mock.db.stocktakeSession.findUnique.mockResolvedValue({ id: "s", status, updatedAt: date });
     expect((await request()).status).toBe(409);
     expect(mock.db.stocktakeSession.updateMany).not.toHaveBeenCalled();
@@ -48,6 +48,12 @@ describe("administrator reopens a finished stocktake", () => {
   it("returns not found for a missing session", async () => {
     mock.db.stocktakeSession.findUnique.mockResolvedValue(null);
     expect((await request()).status).toBe(404);
+  });
+  it("reopens legacy stopped work without changing its owner or another session",async()=>{
+    mock.db.stocktakeSession.findUnique.mockResolvedValue({id:"s",title:"田中さんの棚卸",status:"CONFLICT",operatorUserId:"worker-a",updatedAt:date});
+    expect((await request()).status).toBe(200);
+    expect(mock.db.stocktakeSession.updateMany.mock.calls[0][0]).toEqual({where:{id:"s",status:"CONFLICT",updatedAt:date},data:{status:"IN_PROGRESS",pausedAt:null}});
+    expect(mock.db.adminActionLog.create.mock.calls[0][0].data.detail).toMatchObject({operatorUserId:"worker-a",recordsPreserved:true});
   });
   it("rejects a concurrent confirmation or a second reopen without reporting success", async () => {
     mock.db.stocktakeSession.updateMany.mockResolvedValue({ count: 0 });

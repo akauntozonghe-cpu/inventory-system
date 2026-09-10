@@ -3,6 +3,7 @@ import { NextRequest } from "next/server";
 const db = vi.hoisted(() => ({
   stocktakeSession: { findUnique: vi.fn(), updateMany: vi.fn(), update: vi.fn() },
   stocktakeRecord: { findMany: vi.fn() },
+  stocktakeTarget: { findMany: vi.fn() },
   inventoryInstance: { findMany: vi.fn(), updateMany: vi.fn() },
   inventoryHistory: { create: vi.fn() },
   $transaction: vi.fn(),
@@ -18,6 +19,7 @@ describe("stocktake confirmation guards", () => {
     vi.clearAllMocks();
     db.stocktakeSession.findUnique.mockResolvedValue({ id: "s", title: "棚卸", status: "REVIEW", operatorUserId: "worker", updatedAt: date });
     db.stocktakeRecord.findMany.mockResolvedValue([{ inventoryInstanceId: "inventory", countedQuantity: 5 }]);
+    db.stocktakeTarget.findMany.mockResolvedValue([{inventoryInstanceId:"inventory"}]);
     db.inventoryInstance.findMany.mockResolvedValue([{ id: "inventory", quantity: 8, updatedAt: date }]);
     db.stocktakeSession.updateMany.mockResolvedValue({ count: 1 });
     db.inventoryInstance.updateMany.mockResolvedValue({ count: 1 });
@@ -58,4 +60,5 @@ describe("stocktake confirmation guards", () => {
     expect(db.inventoryHistory.create).toHaveBeenCalledOnce();
     expect(db.stocktakeSession.updateMany.mock.calls[0][0].where).toEqual({ id: "s", status: "REVIEW", updatedAt: date });
   });
+  it("does not apply a record without a target in this worker's session",async()=>{db.stocktakeTarget.findMany.mockResolvedValue([]);expect((await request()).status).toBe(409);expect(db.stocktakeTarget.findMany.mock.calls[0][0].where).toMatchObject({sessionId:"s"});expect(db.inventoryInstance.updateMany).not.toHaveBeenCalled();});
 });

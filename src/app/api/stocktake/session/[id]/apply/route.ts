@@ -101,6 +101,10 @@ export async function POST(
 
     const recordsToApply = recordsForConfirmation(records, session.completedAt);
     const inventoryIds = recordsToApply.map((record) => record.inventoryInstanceId);
+    const ownTargets=await prisma.stocktakeTarget.findMany({where:{sessionId,inventoryInstanceId:{in:inventoryIds}},select:{inventoryInstanceId:true}});
+    const ownIds=new Set(ownTargets.map(target=>target.inventoryInstanceId));
+    const unlinkedIds=inventoryIds.filter(id=>!ownIds.has(id));
+    if(unlinkedIds.length)return NextResponse.json({code:"STOCKTAKE_TARGET_LINK_MISSING",message:`「${session.title}」で対象登録のない入力が${unlinkedIds.length}件あります。結果画面に商品・Lot・保存済み数量を表示しています。管理者がこの棚卸の対象登録を確認してから確定してください。`,sessionId,inventoryIds:unlinkedIds},{status:409});
 
     const inventories = await prisma.inventoryInstance.findMany({
       where: {

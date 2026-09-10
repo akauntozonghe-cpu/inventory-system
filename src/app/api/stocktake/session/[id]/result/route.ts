@@ -168,6 +168,9 @@ export async function GET(
         ): record is NonNullable<typeof record> => record !== null
       );
 
+    const missingRecords=records.filter(record=>!targetMap.has(record.inventoryInstanceId));
+    const missingInventory=missingRecords.length?await prisma.inventoryInstance.findMany({where:{id:{in:missingRecords.map(record=>record.inventoryInstanceId)}},include:{item:true,storageLocation:true}}):[];
+    const unlinkedRecords=missingRecords.map(record=>{const inventory=missingInventory.find(row=>row.id===record.inventoryInstanceId);return {id:record.id,inventoryInstanceId:record.inventoryInstanceId,name:inventory?.item.name??"商品情報を確認できません",lotNo:inventory?.lotNo,location:inventory?.storageLocation?.name,countedQuantity:record.countedQuantity,memo:record.memo};});
     const recordedCount = recordsWithDetail.length;
     const matchedCount = recordsWithDetail.filter(
       (record) => record.difference === 0
@@ -194,7 +197,7 @@ export async function GET(
         isOperator,
         isAdmin,
         canApply:
-          (isOperator || isAdmin) && session.status === "REVIEW" && recordedCount > 0,
+          (isOperator || isAdmin) && session.status === "REVIEW" && recordedCount > 0 && unlinkedRecords.length===0,
       },
 
       summary: {
@@ -206,6 +209,7 @@ export async function GET(
       },
 
       records: recordsWithDetail,
+      unlinkedRecords,
     });
   } catch (error) {
     console.error("GET /api/stocktake/session/[id]/result", error);

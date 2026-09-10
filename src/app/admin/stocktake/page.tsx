@@ -530,7 +530,7 @@ export default function AdminStocktakePage() {
                   </div>
 
                   <div className="grid grid-cols-2 gap-2 sm:flex lg:w-72 lg:flex-wrap lg:justify-end">
-                    <ReopenStocktakeButton sessionId={session.id} status={session.status} />
+                    <ReopenStocktakeButton sessionTitle={session.title} sessionId={session.id} status={session.status} />
                     <Link
                       href={`/stocktake/${session.id}`}
                       className="flex min-h-11 items-center justify-center rounded-xl bg-slate-800 px-3 text-sm font-bold text-white hover:bg-slate-700"

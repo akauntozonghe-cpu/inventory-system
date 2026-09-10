@@ -13,7 +13,7 @@ export function getStocktakeStatusLabel(
     IN_PROGRESS: "作業中",
     PAUSED: "中断中",
     REVIEW: "確認待ち",
-    CONFLICT: "競合中",
+    CONFLICT: "再開確認待ち",
     COMPLETED: "正式確定済み",
     CANCELLED: "取消済み",
   };

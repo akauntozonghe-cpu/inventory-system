@@ -264,6 +264,8 @@ function allocationLabel(value: InventoryInstance["allocationType"]) {
 
 export default function ItemDetailPage() {
   const params = useParams();
+  const [focusedInventory,setFocusedInventory]=useState("");
+  useEffect(()=>{setFocusedInventory(new URLSearchParams(window.location.search).get("inventoryId")??"");},[]);
   const router = useRouter();
 
   const itemId = typeof params.id === "string" ? params.id : "";
@@ -580,7 +582,7 @@ export default function ItemDetailPage() {
     );
   }
 
-  const inventoryInstances = item.inventoryInstances ?? [];
+  const inventoryInstances = (item.inventoryInstances ?? []).filter(row=>!focusedInventory||row.id===focusedInventory);
 
   return (
     <main className="min-h-screen bg-slate-100 p-4 pb-24 sm:p-8">
@@ -885,6 +887,7 @@ export default function ItemDetailPage() {
               </span>
             </div>
 
+            {focusedInventory&&<p className="my-4 rounded-xl bg-blue-50 p-3 font-bold">点検で指定された在庫だけを表示しています。Lot・保管場所を確認して、この明細を編集してください。<button className="ml-3 underline" onClick={()=>setFocusedInventory("")}>この商品の全在庫を表示</button><Link href="/admin/recovery" className="ml-3 underline">点検へ戻って再確認</Link></p>}
             {inventoryInstances.length === 0 ? (
               <div className="mt-5 rounded-2xl bg-slate-100 p-7 text-center text-slate-600">
                 登録されている在庫はありません。
@@ -897,6 +900,7 @@ export default function ItemDetailPage() {
                   return (
                     <article
                       key={inventory.id}
+                      id={`inventory-${inventory.id}`}
                       className="rounded-2xl border border-slate-200 p-4 sm:p-5"
                     >
                       {editing && inventoryForm ? (

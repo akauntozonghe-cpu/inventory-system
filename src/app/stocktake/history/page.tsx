@@ -126,7 +126,7 @@ function statusInfo(status: StocktakeStatus) {
       className: "bg-amber-100 text-amber-800",
     },
     CONFLICT: {
-      label: "競合あり",
+      label: "再開確認待ち",
       className: "bg-red-100 text-red-800",
     },
     COMPLETED: {
@@ -357,7 +357,7 @@ export default function StocktakeHistoryPage() {
                     </div>
 
                     <div className="grid grid-cols-2 gap-2">
-                      {isAdmin && <ReopenStocktakeButton sessionId={session.id} status={session.status} />}
+                      {isAdmin && <ReopenStocktakeButton sessionTitle={session.title} sessionId={session.id} status={session.status} />}
                       <Link
                         href={`/stocktake/${encodeURIComponent(session.id)}`}
                         className="rounded-xl bg-slate-700 px-4 py-3 text-center font-bold text-white"
