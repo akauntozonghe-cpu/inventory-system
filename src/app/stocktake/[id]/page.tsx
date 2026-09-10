@@ -1,4 +1,5 @@
 "use client";
+import ProductIdentity from "@/components/inventory/ProductIdentity";
 import { useStocktakePresence } from "@/hooks/useStocktakePresence";
 import { fetchFresh } from "@/lib/fetch-fresh";
 import { parseStocktakeQuantity } from "@/lib/stocktake-quantity";
@@ -1057,14 +1058,9 @@ export default function StocktakePage() {
                             {item.item.name}
                           </h2>
                           <p className="mt-2 text-sm text-slate-600">
-                            Lot：{item.lotNo || "未設定"} ／ JAN：{item.item.janCode || "-"}
+                            Lot：{item.lotNo || "未設定"}
                           </p>
-                          <p className="mt-1 break-all text-xs text-slate-500">管理No.：{item.id}</p>
-                          {item.item.systemBarcode && (
-                            <p className="mt-1 text-sm text-slate-600">
-                              システムバーコード：{item.item.systemBarcode}
-                            </p>
-                          )}
+                          <ProductIdentity item={item.item} inventoryId={item.id}/>
                           <p className="mt-1 text-sm text-slate-600">
                             保管場所：{item.storageLocation?.name || "未設定"}
                           </p>

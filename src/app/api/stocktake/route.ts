@@ -1,3 +1,4 @@
+import {activeInventoryWhere} from "@/lib/product-scope";
 import { NextRequest, NextResponse } from "next/server";
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
@@ -83,7 +84,7 @@ export async function POST(request: NextRequest) {
 
     const result = await prisma.$transaction(async (tx) => {
       const inventories = await tx.inventoryInstance.findMany({
-        where,
+        where:{AND:[activeInventoryWhere,where]},
         select: {
           id: true,
           quantity: true,

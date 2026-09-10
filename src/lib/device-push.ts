@@ -38,28 +38,37 @@ export function validPushKeys(keys: unknown): keys is { p256dh: string; auth: st
   return publicKey.length === 65 && publicKey[0] === 4 && Buffer.from(value.auth, "base64url").length === 16;
 }
 
-export async function sendDeviceNotification(subscription: { endpoint: string; p256dh: string; auth: string }, tag: string, test = false, notification?: {title:string;message:string;type:string}) {
+export async function sendDeviceNotification(subscription: { endpoint: string; p256dh: string; auth: string }, tag: string, test = false, notification?: {id?:string;title:string;message:string;type:string}) {
   if (!validPushEndpoint(subscription.endpoint)) throw new Error("PUSH_ENDPOINT_INVALID");
   const settings = await prisma.devicePushSetting.findUnique({ where: { id: "system" } });
   if (!settings) throw new Error("PUSH_NOT_READY");
   const policy = readPushPolicy(settings.policy);
-  if (!test && (!policy.enabled || (notification && !policy.types.includes(notification.type)))) return;
-  await webpush.sendNotification({ endpoint: subscription.endpoint, keys: { p256dh: subscription.p256dh, auth: subscription.auth } }, JSON.stringify({ ...pushMessage(policy,notification,test), tag, url: "/notifications" }), { TTL: policy.ttl, timeout: 5000, urgency: "normal", vapidDetails: { subject: settings.subject, publicKey: settings.publicKey, privateKey: decryptPushKey(settings.privateKey) } });
+  if (!test && (!policy.enabled || (notification && !policy.types.includes(notification.type)))) return false;
+  await webpush.sendNotification({ endpoint: subscription.endpoint, keys: { p256dh: subscription.p256dh, auth: subscription.auth } }, JSON.stringify({ ...pushMessage(policy,notification,test), tag, url: notification?.id ? "/notifications/"+encodeURIComponent(notification.id) : "/notifications" }), { TTL: policy.ttl, timeout: 5000, urgency: "normal", vapidDetails: { subject: settings.subject, publicKey: settings.publicKey, privateKey: decryptPushKey(settings.privateKey) } });
+  return true;
 }
 
 export async function deliverDeviceNotifications() {
   const now = new Date();
   const settings = await prisma.devicePushSetting.findUnique({where:{id:"system"}});
   if (!settings || !readPushPolicy(settings.policy).enabled) return;
-  const subscriptions = await prisma.devicePushSubscription.findMany({ where: { expiresAt: { gt: now } }, take: 500 });
-  for (const sub of subscriptions) {
-    const user = await prisma.appUser.findUnique({ where: { id: sub.userId }, select: { isActive: true, role: true } });
-    if (!user?.isActive) { await prisma.devicePushSubscription.deleteMany({ where: { id: sub.id } }); continue; }
-    const notifications = await prisma.notification.findMany({ where: { readReceipts:{none:{userId:sub.userId}}, createdAt: { gte: new Date(Math.max(sub.createdAt.getTime(), now.getTime()-86400000)) }, OR: [{ recipientUserId: sub.userId }, ...(user.role === "ADMIN" ? [{ audience: "ADMIN" as const }] : [])] }, orderBy: { createdAt: "desc" }, take: 100, select: { id: true } });
-    if (notifications.length) await prisma.devicePushDelivery.createMany({ data: notifications.map(n => ({ subscriptionId: sub.id, notificationId: n.id })), skipDuplicates: true });
-  }
-  const pending = await prisma.devicePushDelivery.findMany({ where: { sentAt: null, attempts: { lt: 5 }, nextAttemptAt: { lte: now }, subscription: { expiresAt: { gt: now } } }, orderBy: { nextAttemptAt: "asc" }, take: 40, include: { subscription: true } });
-  await Promise.allSettled(pending.map(async delivery => {
+  // Enqueue all eligible devices in one database operation. No first-500-device cap or per-device query loop.
+  await prisma.$executeRaw`
+    INSERT INTO "DevicePushDelivery" (id,"subscriptionId","notificationId")
+    SELECT 'push-' || subscription.id || '-' || notice.id, subscription.id, notice.id
+    FROM "DevicePushSubscription" subscription
+    JOIN "AppUser" recipient ON recipient.id = subscription."userId" AND recipient."isActive" = true
+    JOIN "Notification" notice ON (notice."recipientUserId" = recipient.id OR (notice.audience = 'ADMIN' AND recipient.role = 'ADMIN'))
+    WHERE subscription."expiresAt" > CURRENT_TIMESTAMP
+      AND notice."createdAt" >= subscription."createdAt"
+      AND notice."createdAt" >= CURRENT_TIMESTAMP - INTERVAL '24 hours'
+      AND (notice."recipientUserId" IS DISTINCT FROM recipient.id OR notice."readAt" IS NULL)
+      AND NOT EXISTS (SELECT 1 FROM "NotificationRead" receipt WHERE receipt."notificationId"=notice.id AND receipt."userId"=recipient.id)
+    ON CONFLICT ("subscriptionId","notificationId") DO NOTHING`;
+  const pending = await prisma.devicePushDelivery.findMany({ where: { sentAt: null, attempts: { lt: 5 }, nextAttemptAt: { lte: now }, subscription: { expiresAt: { gt: now } } }, orderBy: { nextAttemptAt: "asc" }, take: 200, include: { subscription: true } });
+  const deadline=Date.now()+45000;
+  for(let offset=0;offset<pending.length&&Date.now()<deadline;offset+=10){
+  await Promise.allSettled(pending.slice(offset,offset+10).map(async delivery => {
     const claimed = await prisma.devicePushDelivery.updateMany({ where: { id: delivery.id, sentAt: null, attempts: delivery.attempts, nextAttemptAt: { lte: now } }, data: { attempts: { increment: 1 }, nextAttemptAt: new Date(now.getTime() + 60_000 * 2 ** delivery.attempts) } });
     if (!claimed.count) return;
     // Re-check recipients and subscriptions immediately before delivery.
@@ -69,18 +78,20 @@ export async function deliverDeviceNotifications() {
       prisma.appUser.findUnique({ where: { id: delivery.subscription.userId } }),
       prisma.notificationRead.findUnique({where:{notificationId_userId:{notificationId:delivery.notificationId,userId:delivery.subscription.userId}}}),
     ]);
-    if (!sub || sub.expiresAt <= new Date() || !notification || readReceipt || !user?.isActive || !(notification.recipientUserId === user.id || (notification.audience === "ADMIN" && user.role === "ADMIN"))) {
-      await prisma.devicePushDelivery.updateMany({ where: { id: delivery.id }, data: { sentAt: new Date() } }); return;
+    if (!sub || sub.expiresAt <= new Date() || !notification || readReceipt || (notification.recipientUserId === user?.id && notification.readAt) || !user?.isActive || !(notification.recipientUserId === user.id || (notification.audience === "ADMIN" && user.role === "ADMIN"))) {
+      await prisma.devicePushDelivery.updateMany({ where: { id: delivery.id }, data: { sentAt: new Date(),outcome:"SKIPPED",lastErrorCode:"NOT_ELIGIBLE" } }); return;
     }
     try {
-      await sendDeviceNotification(sub, "notification-" + notification.id, false, notification);
-      await prisma.devicePushDelivery.updateMany({ where: { id: delivery.id }, data: { sentAt: new Date() } });
+      const sent=await sendDeviceNotification(sub, "notification-" + notification.id, false, notification);
+      await prisma.devicePushDelivery.updateMany({ where: { id: delivery.id }, data: { sentAt: new Date(),outcome:sent?"SENT":"SKIPPED",lastErrorCode:sent?null:"POLICY_EXCLUDED" } });
     } catch (error) {
       const status = error && typeof error === "object" && "statusCode" in error ? error.statusCode : 0;
       if (status === 404 || status === 410) await prisma.devicePushSubscription.deleteMany({ where: { id: sub.id } });
+      else await prisma.devicePushDelivery.updateMany({where:{id:delivery.id},data:{outcome:"RETRY",lastErrorCode:typeof status==="number"&&status>0?"PUSH_HTTP_"+status:"PUSH_SEND_FAILED"}});
       // Transient failures remain queued. Never log endpoints or encryption keys.
     }
   }));
+  }
   await prisma.devicePushSubscription.deleteMany({ where: { expiresAt: { lte: now } } });
   await prisma.devicePushDelivery.deleteMany({ where: { sentAt: { lt: new Date(now.getTime() - 7 * 86400000) } } });
 }

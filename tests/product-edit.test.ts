@@ -31,4 +31,13 @@ describe("product editing during stocktake", () => {
     expect(response.status).toBe(400);
     expect(db.$transaction).not.toHaveBeenCalled();
   });
+  it("rejects assigning both a manufacturer JAN and a system JAN",async()=>{
+    const response=await request({name:"商品",reason:"修正",janCode:"4901234567894",systemBarcode:"2001234567893"});
+    expect(response.status).toBe(400);expect(db.item.update).not.toHaveBeenCalled();
+  });
+  it("does not retain a system JAN while assigning a JAN through a partial edit",async()=>{
+    db.item.findUnique.mockResolvedValue({...original,systemBarcode:"2001234567893"});
+    const response=await request({name:"商品",reason:"JAN追加",janCode:"4901234567894"});
+    expect(response.status).toBe(400);expect(db.item.update).not.toHaveBeenCalled();
+  });
 });

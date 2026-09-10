@@ -221,7 +221,7 @@ export default function AddPage() {
     }
 
     if (generateSystemBarcode && !isAdmin) {
-      setError("システムバーコードの発行は管理者のみ実行できます。");
+      setError("システムJANの発行は管理者のみ実行できます。");
       return;
     }
 
@@ -251,7 +251,7 @@ export default function AddPage() {
 
       const fallbackMessage = isAdmin
         ? generateSystemBarcode
-          ? "商品を正式登録し、システムバーコードを発行しました。"
+          ? "商品を正式登録し、システムJANを発行しました。"
           : "商品と在庫を正式登録しました。"
         : "商品登録を申請しました。管理者の確認後に正式登録されます。";
 
@@ -392,7 +392,7 @@ export default function AddPage() {
 
                       <span>
                         <span className="block font-bold text-blue-700">
-                          システムバーコードを発行する
+                          システムJANを発行する
                         </span>
 
                         <span className="mt-1 block text-sm text-slate-600">
@@ -403,20 +403,20 @@ export default function AddPage() {
 
                     {hasJanCode && (
                       <p className="mt-2 text-xs font-bold text-slate-500">
-                        JANコードがある商品にはシステムバーコードを発行しません。
+                        JANコードがある商品にはシステムJANを発行しません。
                       </p>
                     )}
                   </>
                 ) : (
                   <p className="mt-2 text-sm text-slate-600">
-                    JANが確認できない場合も、そのまま申請できます。管理者が確認時にシステムバーコードを発行できます。
+                    JANが確認できない場合も、そのまま申請できます。管理者が確認時にシステムJANを発行できます。
                   </p>
                 )}
               </div>
 
               <label>
                 <span className="font-bold text-slate-800">
-                  管理番号
+                  任意管理コード
                 </span>
 
                 <input
@@ -590,7 +590,7 @@ export default function AddPage() {
               ? "送信中..."
               : isAdmin
                 ? generateSystemBarcode
-                  ? "正式登録してシステムバーコードを発行"
+                  ? "正式登録してシステムJANを発行"
                   : "商品と初期在庫を正式登録"
                 : "商品登録を申請する"}
           </button>

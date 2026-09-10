@@ -111,7 +111,7 @@ const initialManualChecks: ManualCheck[] = [
   },
   {
     code: "MANUAL_BARCODE_CAMERA",
-    title: "JAN・システムバーコードのカメラ読取",
+    title: "JAN・システムJANのカメラ読取",
     status: "NOT_RUN",
     detail: "",
   },
@@ -736,7 +736,7 @@ export default function SystemCheckPage() {
                 復旧対象：識別コードがない商品
               </h2>
               <p className="mt-1 text-sm leading-6 text-slate-600">
-                JANが存在しない商品だけに、システムバーコードを発行できます。
+                JANが存在しない商品だけに、システムJANを発行できます。
                 既存JANがある場合は商品詳細からJANを登録してください。
               </p>
             </div>
@@ -755,7 +755,7 @@ export default function SystemCheckPage() {
             </p>
           ) : inventoriesWithoutIdentifier.length === 0 ? (
             <p className="mt-5 rounded-2xl bg-emerald-50 p-4 text-sm font-bold text-emerald-800">
-              JANまたはシステムバーコードがない在庫はありません。
+              JANまたはシステムJANがない在庫はありません。
             </p>
           ) : (
             <div className="mt-5 space-y-4">

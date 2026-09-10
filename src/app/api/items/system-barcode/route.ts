@@ -55,7 +55,7 @@ export async function POST(request: NextRequest) {
       {
         success: false,
         code: "ADMIN_REQUIRED",
-        message: "システムバーコードの発行には管理者権限が必要です。",
+        message: "システムJANの発行には管理者権限が必要です。",
       },
       { status: 403 }
     );
@@ -99,7 +99,7 @@ export async function POST(request: NextRequest) {
           success: false,
           code: "SYSTEM_BARCODE_REAL_JAN_EXISTS",
           message:
-            "この商品には既存JANコードが登録されています。システムバーコードは発行できません。",
+            "この商品には既存JANコードが登録されています。システムJANは発行できません。",
           item,
         },
         { status: 409 }
@@ -111,7 +111,7 @@ export async function POST(request: NextRequest) {
         success: true,
         created: false,
         message:
-          "この商品にはシステムバーコードがすでに発行されています。",
+          "この商品にはシステムJANがすでに発行されています。",
         item,
       });
     }
@@ -123,6 +123,7 @@ export async function POST(request: NextRequest) {
         const updatedItem = await prisma.item.update({
           where: {
             id: item.id,
+            AND: [{ OR: [{ janCode: null }, { janCode: "" }] }, { OR: [{ systemBarcode: null }, { systemBarcode: "" }] }],
           },
           data: {
             systemBarcode,
@@ -143,7 +144,7 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({
           success: true,
           created: true,
-          message: "システムバーコードを発行しました。",
+          message: "システムJANを発行しました。",
           item: updatedItem,
         });
       } catch (error) {
@@ -154,6 +155,7 @@ export async function POST(request: NextRequest) {
           continue;
         }
 
+        if(error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2025")return NextResponse.json({code:"ITEM_CODE_CHANGED",message:"別の端末で商品コードが更新されました。最新情報を読み直してください。"},{status:409});
         throw error;
       }
     }
@@ -163,7 +165,7 @@ export async function POST(request: NextRequest) {
         success: false,
         code: "SYSTEM_BARCODE_GENERATION_FAILED",
         message:
-          "システムバーコードを発行できませんでした。時間をおいてもう一度お試しください。",
+          "システムJANを発行できませんでした。時間をおいてもう一度お試しください。",
       },
       { status: 500 }
     );
@@ -175,7 +177,7 @@ export async function POST(request: NextRequest) {
         success: false,
         code: "SYSTEM_BARCODE_500",
         message:
-          "システムバーコードの発行中にエラーが発生しました。",
+          "システムJANの発行中にエラーが発生しました。",
       },
       { status: 500 }
     );

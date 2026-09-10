@@ -1,3 +1,4 @@
+import {activeInventoryWhere,inspectionItemWhere,inspectionInventoryWhere} from "@/lib/product-scope";
 import { NextRequest, NextResponse } from "next/server";
 import { requireLogin } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
@@ -18,7 +19,7 @@ export async function GET(request: NextRequest) {
   try {
     const today = dateKeyInJapan();
     const [inventories, missingMajor, missingMinor, missingLocation] = await Promise.all([prisma.inventoryInstance.findMany({
-      where: { status: { not: "廃止" } },
+      where: activeInventoryWhere,
       select: {
         id: true, expirationDate: true, expirationAlertDays: true,
         expirationManagementStatus: true, expirationNote: true, expirationReviewedAt: true,
@@ -27,9 +28,9 @@ export async function GET(request: NextRequest) {
         storageLocation: { select: { id: true, name: true } },
       },
       take: 2000,
-    }), prisma.item.count({ where: { isArchived: false, OR: [{ majorCategory: null }, { majorCategory: "" }] } }),
-      prisma.item.count({ where: { isArchived: false, OR: [{ minorCategory: null }, { minorCategory: "" }] } }),
-      prisma.inventoryInstance.count({ where: { storageLocationId: null, status: { not: "廃止" } } })]);
+    }), prisma.item.count({ where: { ...inspectionItemWhere, OR: [{ majorCategory: null }, { majorCategory: "" }] } }),
+      prisma.item.count({ where: { ...inspectionItemWhere, OR: [{ minorCategory: null }, { minorCategory: "" }] } }),
+      prisma.inventoryInstance.count({ where: { ...inspectionInventoryWhere, storageLocationId: null } })]);
 
     const entries = inventories.map((inventory) => ({
       ...inventory,

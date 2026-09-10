@@ -98,7 +98,7 @@ export default function StocktakeSearchCard({
 
             {item.item.systemBarcode && (
               <p className="mt-1 break-all text-xs font-medium text-slate-500">
-                システムバーコード：{item.item.systemBarcode}
+                システムJAN：{item.item.systemBarcode}
               </p>
             )}
 
@@ -169,7 +169,7 @@ export default function StocktakeSearchCard({
           <dl className="grid grid-cols-1 gap-x-5 gap-y-4 sm:grid-cols-2">
             <Detail label="JANコード" value={item.item.janCode} />
             <Detail
-              label="システムバーコード"
+              label="システムJAN"
               value={item.item.systemBarcode}
             />
             <Detail label="管理コード" value={item.item.managementCode} />

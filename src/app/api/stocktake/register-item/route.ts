@@ -119,6 +119,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    if(janCode&&systemBarcode)return NextResponse.json({code:"ITEM_CODE_CONFLICT",message:"JANとシステムJANはどちらか一方だけ指定してください。"},{status:400});
     const janError = janCodeValidationMessage(janCode);
     if (janError) {
       return NextResponse.json({ code: "REGISTER_ITEM_JAN_400", message: janError }, { status: 400 });

@@ -1,5 +1,6 @@
 "use client";
 import {resolveScan} from "@/lib/resolve-scan";
+import ProductIdentity from "@/components/inventory/ProductIdentity";
 import ActiveFilters from "@/components/common/ActiveFilters";
 import UnifiedScanner from "@/components/stocktake/UnifiedScanner";
 import { useAdminMode } from "@/components/auth/PageAdminMode";
@@ -13,7 +14,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import FeedbackToast from "@/components/common/FeedbackToast";
 import { recoverAfterFailure } from "@/lib/client-error-recovery";
 
-type Inventory = { id: string; lotNo?: string | null; unit?: string | null; quantity: number; storageAvailable: number; acquisitionCost: number | null; item: { id?: string; name: string; majorCategory: string | null; janCode?: string | null; systemBarcode?: string | null; managementCode?: string | null }; storageLocation: { name: string } | null };
+type Inventory = { id: string; lotNo?: string | null; unit?: string | null; quantity: number; storageAvailable: number; acquisitionCost: number | null; item: { id: string; name: string; majorCategory: string | null; janCode?: string | null; systemBarcode?: string | null; managementCode?: string | null }; storageLocation: { name: string } | null };
 type Listing = { id: string; inventoryInstanceId: string; channel: string; title: string; description: string | null; category: string | null; itemCondition: string | null; listingUrl: string | null; price: number; listedQuantity: number; soldQuantity: number; fee: number | null; shippingCost: number | null; packagingCost: number | null; acquisitionCostSnapshot: number | null; shippingMethod: string | null; shippingStatus: string; trackingNumber: string | null; status: string; notes: string | null; updatedAt: string; inventoryInstance: Inventory };
 type Payload = { listings: Listing[]; inventories: Inventory[]; summary?: { preparing: number; listed: number; shipping: number; settledProfit: number } };
 type ErrorState = { message: string; code: string; reportId: string | null; status: "RECOVERING" | "ADMIN_REQUIRED" };
@@ -38,7 +39,7 @@ class MarketplaceRequestError extends Error {
 
 export default function PersonalMarketplacePage() {
   const admin = useAdminMode();
-  const [linkedTarget,setLinkedTarget]=useState<{itemId?:string;inventoryId?:string}>({});
+  const [linkedTarget,setLinkedTarget]=useState<{itemId?:string;inventoryId?:string;listingId?:string}>({});
   const [scannerOpen,setScannerOpen] = useState(false);
   const [inventoryQuery,setInventoryQuery] = useState("");
   const [debouncedQuery,setDebouncedQuery] = useState("");
@@ -54,7 +55,7 @@ export default function PersonalMarketplacePage() {
   const [page, setPage] = useState(1);
   const [listSearch, setListSearch] = useState("");
   const [listStatus, setListStatus] = useState("ACTIVE");
-  useEffect(()=>{const params=new URLSearchParams(location.search);if(params.get("itemId")||params.get("inventoryId")){setLinkedTarget({itemId:params.get("itemId")??undefined,inventoryId:params.get("inventoryId")??undefined});setListStatus("ALL");}},[]);
+  useEffect(()=>{const params=new URLSearchParams(location.search);if(params.get("itemId")||params.get("inventoryId")||params.get("listingId")){setLinkedTarget({listingId:params.get("listingId")??undefined,itemId:params.get("itemId")??undefined,inventoryId:params.get("inventoryId")??undefined});setListStatus("ALL");}},[]);
   const refreshSequence = useRef(0);
   const [data, setData] = useState<Payload>({ listings: [], inventories: [] });
   const [loading, setLoading] = useState(true);
@@ -119,7 +120,7 @@ useEffect(() => {
     setTitle((current) => current || selectedInventory.item.name);
   }, [selectedInventory]);
 
-  const visibleListings = useMemo(() => data.listings.filter(row => (!linkedTarget.itemId||row.inventoryInstance.item.id===linkedTarget.itemId)&&(!linkedTarget.inventoryId||row.inventoryInstanceId===linkedTarget.inventoryId)&&(listStatus === "ALL" || (listStatus === "ACTIVE" ? row.status !== "CANCELLED" && row.shippingStatus !== "SETTLED" : row.status === listStatus)) && ([row.title,row.inventoryInstance.item.name,row.inventoryInstance.item.janCode,row.inventoryInstance.item.managementCode].join(" ")).normalize("NFKC").toLowerCase().includes(listSearch.normalize("NFKC").trim().toLowerCase())), [data.listings, listStatus, listSearch,linkedTarget]);
+  const visibleListings = useMemo(() => data.listings.filter(row => (!linkedTarget.listingId||row.id===linkedTarget.listingId)&&(!linkedTarget.itemId||row.inventoryInstance.item.id===linkedTarget.itemId)&&(!linkedTarget.inventoryId||row.inventoryInstanceId===linkedTarget.inventoryId)&&(listStatus === "ALL" || (listStatus === "ACTIVE" ? row.status !== "CANCELLED" && row.shippingStatus !== "SETTLED" : row.status === listStatus)) && ([row.title,row.inventoryInstance.item.name,row.inventoryInstance.item.janCode,row.inventoryInstance.item.managementCode].join(" ")).normalize("NFKC").toLowerCase().includes(listSearch.normalize("NFKC").trim().toLowerCase())), [data.listings, listStatus, listSearch,linkedTarget]);
   const pages = Math.max(1, Math.ceil(visibleListings.length / 30));
   const currentPage = Math.min(page, pages);
   const pageRows = visibleListings.slice((currentPage-1)*30, currentPage*30);
@@ -167,7 +168,7 @@ useEffect(() => {
 
   return (
     <main className="min-h-screen bg-violet-50 p-4 text-slate-950 sm:p-8">
-      {(linkedTarget.itemId||linkedTarget.inventoryId)&&<p className="mx-auto mb-3 max-w-7xl rounded-xl bg-violet-50 p-3 font-bold">在庫検索から指定した商品の出品・販売履歴を表示中<button className="ml-3 underline" onClick={()=>setLinkedTarget({})}>絞り込みを解除</button></p>}
+      {(linkedTarget.itemId||linkedTarget.inventoryId||linkedTarget.listingId)&&<p className="mx-auto mb-3 max-w-7xl rounded-xl bg-violet-50 p-3 font-bold">{linkedTarget.listingId?"通知で指定された出品・販売履歴を表示中":"在庫検索から指定した商品の出品・販売履歴を表示中"}<button className="ml-3 underline" onClick={()=>setLinkedTarget({})}>絞り込みを解除</button></p>}
       <FeedbackToast tone="error" title="フリマエラー" message={error?.message ?? ""} errorCode={error?.code} reportId={error?.reportId} recoveryStatus={error?.status} onRetry={() => void load()} retrying={error?.status === "RECOVERING"} onClose={() => setError(null)} />
       <FeedbackToast tone="success" title="完了" message={notice} onClose={() => setNotice("")} />
       <div className="mx-auto max-w-7xl space-y-7">
@@ -178,7 +179,7 @@ useEffect(() => {
         {liveFailed && <p role="status" className="rounded-xl bg-amber-50 p-3 text-amber-900">更新確認が遅れています。通信が戻ると再取得します。</p>}<div className="flex flex-wrap gap-3"><input aria-label="出品を検索" value={listSearch} onChange={e=>{setListSearch(e.target.value);setPage(1);}} placeholder="商品名・出品名で検索" className="min-w-0 flex-1 rounded-xl border p-3"/><select aria-label="出品の状態" value={listStatus} onChange={e=>{setListStatus(e.target.value);setPage(1);}} className="rounded-xl border p-3"><option value="ACTIVE">対応中</option><option value="ALL">すべて</option>{Object.entries(statusLabels).map(([value,label])=><option key={value} value={value}>{label}</option>)}</select></div><section className="grid gap-6 lg:grid-cols-[420px_1fr]">
           <div className="h-fit rounded-3xl bg-white p-5 shadow-sm lg:sticky lg:top-20"><h2 className="text-xl font-black">1. 出品する在庫を選ぶ</h2><button onClick={()=>setScannerOpen(true)} className="mt-3 w-full rounded-xl bg-slate-800 p-3 font-bold text-white">JAN・QRを読み取る</button><input aria-label="出品する在庫を検索" value={inventoryQuery} onChange={e=>{setInventoryQuery(e.target.value);setInventoryId("");}} onKeyDown={e=>{if(e.key==="Enter"&&!e.nativeEvent.isComposing){e.preventDefault();void searchCode();}}} placeholder="商品名・JANで検索／QRを入力してEnter" className="mt-3 w-full rounded-xl border p-3"/><ActiveFilters filters={[{label:"大分類",value:categoryFilter,remove:()=>{setCategoryFilter("");setInventoryId("");}},{label:"保管場所",value:locationFilter,remove:()=>{setLocationFilter("");setInventoryId("");}},{label:"検索",value:inventoryQuery,remove:()=>{setInventoryQuery("");setInventoryId("");}}]} onClear={()=>{setCategoryFilter("");setLocationFilter("");setInventoryQuery("");setInventoryId("");}}/><p className="my-2 text-sm">大分類QRはその分類、保管場所QRは棚・部屋などの場所から出品可能な在庫を探すために使います。両方読むと条件を組み合わせます。読み取るだけでは在庫を移動しません。</p><div className="mt-4 space-y-3">
             <p role="status" className="text-sm">候補 {inventoryChoices.length}件{inventoryChoices.length===0?"：条件を解除するか、出品に使える在庫があるか確認してください。":"（同じJANでも保管場所・Lotを確認）"}</p><select aria-label="出品する在庫" value={inventoryId} onChange={(event) => { setInventoryId(event.target.value); setTitle(""); }} className="w-full rounded-xl border p-3 font-bold"><option value="">在庫を選択（同じJANでもロットを確認）</option>{inventoryChoices.map((entry) => <option key={entry.id} value={entry.id}>{entry.item.name}（{entry.storageLocation?.name || "場所未設定"}・Lot {entry.lotNo || "なし"}・利用可 {entry.storageAvailable}）</option>)}</select>
-            {selectedInventory&&<div className="rounded-xl bg-blue-50 p-3 text-sm"><p className="font-black">選択中：{selectedInventory.item.name}</p><p>JAN：{selectedInventory.item.janCode||"未設定"}</p><p>管理No.：{selectedInventory.item.managementCode||selectedInventory.item.systemBarcode||"未設定"}</p><p>場所：{selectedInventory.storageLocation?.name||"未設定"} ／ Lot：{selectedInventory.lotNo||"なし"}</p><p>現在庫 {selectedInventory.quantity} ／ 出品に使える数 {selectedInventory.storageAvailable}</p><Link className="font-bold text-blue-700 underline" href={"/items/"+selectedInventory.item.id}>商品・在庫の詳細</Link></div>}<h3 className="font-black">2. 出品内容を入力する</h3><div className="grid grid-cols-3 gap-2">{Object.entries(channelLabels).slice(0, 3).map(([value, label]) => <button key={value} type="button" onClick={() => setChannel(value)} className={`rounded-xl px-2 py-3 text-sm font-black ${channel === value ? "bg-violet-700 text-white" : "bg-slate-100"}`}>{label}</button>)}</div>
+            {selectedInventory&&<div className="rounded-xl bg-blue-50 p-3 text-sm"><p className="font-black">選択中：{selectedInventory.item.name}</p><ProductIdentity item={selectedInventory.item} inventoryId={selectedInventory.id}/><p>場所：{selectedInventory.storageLocation?.name||"未設定"} ／ Lot：{selectedInventory.lotNo||"なし"}</p><p>現在庫 {selectedInventory.quantity} ／ 出品に使える数 {selectedInventory.storageAvailable}</p><Link className="font-bold text-blue-700 underline" href={"/items/"+selectedInventory.item.id}>商品・在庫の詳細</Link></div>}<h3 className="font-black">2. 出品内容を入力する</h3><div className="grid grid-cols-3 gap-2">{Object.entries(channelLabels).slice(0, 3).map(([value, label]) => <button key={value} type="button" onClick={() => setChannel(value)} className={`rounded-xl px-2 py-3 text-sm font-black ${channel === value ? "bg-violet-700 text-white" : "bg-slate-100"}`}>{label}</button>)}</div>
             <input value={title} onChange={(event) => setTitle(event.target.value)} placeholder="出品タイトル" className="w-full rounded-xl border p-3" />
             <textarea value={description} onChange={(event) => setDescription(event.target.value)} placeholder="状態、付属品、傷、保管状況などの商品説明" rows={6} className="w-full rounded-xl border p-3" />
             <input value={condition} onChange={(event) => setCondition(event.target.value)} placeholder="商品の状態" className="w-full rounded-xl border p-3" />

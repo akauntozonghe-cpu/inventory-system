@@ -1,10 +1,11 @@
+import {activeInventoryWhere} from "@/lib/product-scope";
 import { prisma } from "@/lib/prisma";
 
 export class InventoryRepository {
   static async search(keyword: string) {
     return prisma.inventoryInstance.findMany({
-      where: {
-        OR: [
+      where: { ...activeInventoryWhere,
+        OR: [{id:keyword},{itemId:keyword},{item:{systemBarcode:{contains:keyword,mode:"insensitive"}}},
           {
             item: {
               name: {

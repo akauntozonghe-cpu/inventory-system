@@ -112,13 +112,7 @@ function notificationIcon(type: string) {
   return "🔔";
 }
 
-function detailLink(notification: Notification) {
-  if (notification.stocktakeSessionId) {
-    return `/stocktake/${notification.stocktakeSessionId}`;
-  }
-
-  return null;
-}
+function detailLink(notification: Notification) { return `/notifications/${encodeURIComponent(notification.id)}`; }
 
 export default function NotificationsPage() {
   const router = useRouter();
@@ -422,7 +416,7 @@ export default function NotificationsPage() {
                       <div className="flex flex-wrap items-start justify-between gap-2">
                         <div>
                           <h2 className="font-black text-slate-950">
-                            {notification.title}
+                            <Link href={link} className="underline decoration-slate-300 underline-offset-4">{notification.title}</Link>
                           </h2>
 
                           <p className="mt-1 text-xs text-slate-500">
@@ -452,7 +446,7 @@ export default function NotificationsPage() {
                             }}
                             className="rounded-xl bg-blue-600 px-4 py-2 font-bold text-white hover:bg-blue-700"
                           >
-                            関連する棚卸を開く
+                            内容・対応先を開く
                           </Link>
                         )}
 

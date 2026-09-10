@@ -1,4 +1,5 @@
 "use client";
+import ProductIdentity from "@/components/inventory/ProductIdentity";
 import StockStateSummary from "@/components/inventory/StockStateSummary";
 import { displayUnit } from "@/lib/unit";
 
@@ -19,7 +20,8 @@ type Props = {
   onEdit: (item: Item) => void;
 };
 
-type BulkOperation = "ARCHIVE" | "RESTORE";
+const bulkLabels={ARCHIVE:"廃止",RESTORE:"復元",EXCLUDE_INSPECTION:"点検対象外に設定",INCLUDE_INSPECTION:"点検対象へ戻す"};
+type BulkOperation = keyof typeof bulkLabels;
 
 function getMessage(data: unknown, fallback: string) {
   if (
@@ -132,7 +134,7 @@ export default function ItemTable({ items, reload, isAdmin, onEdit, filterKey }:
     }
 
     if (reason.trim().length < 2) {
-      setError("廃止・復元の理由を2文字以上で入力してください。");
+      setError("変更理由を2文字以上で入力してください。");
       return;
     }
 
@@ -166,7 +168,7 @@ export default function ItemTable({ items, reload, isAdmin, onEdit, filterKey }:
       }
 
       const actionLabel =
-        bulkOperation === "ARCHIVE" ? "廃止として保管" : "復元";
+        bulkLabels[bulkOperation];
 
       setMessage(`${selectedItems.length}件を${actionLabel}しました。`);
       setSelectedIds([]);
@@ -264,7 +266,7 @@ export default function ItemTable({ items, reload, isAdmin, onEdit, filterKey }:
 
               {isAdmin && (
                 <>
-                  <button
+                  <button disabled={!selectedItems.length} onClick={()=>openBulkDialog("EXCLUDE_INSPECTION")} className="rounded-xl border p-3 font-bold">点検対象外にする</button><button disabled={!selectedItems.length} onClick={()=>openBulkDialog("INCLUDE_INSPECTION")} className="rounded-xl border p-3 font-bold">点検対象に戻す</button><button
                     type="button"
                     disabled={selectedItems.length === 0}
                     onClick={() => openBulkDialog("ARCHIVE")}
@@ -297,7 +299,7 @@ export default function ItemTable({ items, reload, isAdmin, onEdit, filterKey }:
         <Pagination {...pagination} />
         <div className="grid gap-4 md:grid-cols-2">
           {pagination.visible.map((item) => {
-            const barcode = item.janCode || item.systemBarcode;
+
             const category =
               [item.majorCategory, item.minorCategory]
                 .filter(Boolean)
@@ -347,16 +349,13 @@ export default function ItemTable({ items, reload, isAdmin, onEdit, filterKey }:
                           {item.janCode
                             ? "JAN"
                             : item.systemBarcode
-                              ? "システムバーコード"
+                              ? "システムJAN"
                               : "識別コード未設定"}
                         </span>
                       </div>
                     </div>
 
-                    <p className="mt-3 break-all font-mono text-sm font-bold text-slate-700">
-                      {barcode ?? "-"}
-                    </p>
-
+                    <ProductIdentity item={item}/>{item.inspectionExcluded&&<p className="rounded-xl bg-amber-50 p-2 text-sm">点検対象外：{item.inspectionExclusionReason}</p>}
                     <StockStateSummary stocks={item.inventoryInstances} defaultUnit={item.defaultUnit} itemId={item.id}/>
                     <dl className="mt-4 grid grid-cols-2 gap-3 text-sm">
                       <div>
@@ -378,7 +377,7 @@ export default function ItemTable({ items, reload, isAdmin, onEdit, filterKey }:
                       </div>
 
                       <div>
-                        <dt className="font-bold text-slate-500">管理番号</dt>
+                        <dt className="font-bold text-slate-500">任意管理コード（管理No.とは別）</dt>
                         <dd className="mt-1 text-slate-800">
                           {item.managementCode ?? "-"}
                         </dd>
@@ -437,27 +436,24 @@ export default function ItemTable({ items, reload, isAdmin, onEdit, filterKey }:
             </p>
 
             <h2 id="bulk-operation-title" className="mt-2 text-2xl font-black text-slate-900">
-              {bulkOperation === "ARCHIVE"
-                ? "選択商品を廃止しますか？"
-                : "選択商品を復元しますか？"}
+              {`選択商品を${bulkLabels[bulkOperation]}しますか？`}
             </h2>
 
             <p className="mt-3 text-slate-600">
               対象：{selectedItems.length}件
-              {bulkOperation === "ARCHIVE"
-                ? "。在庫・棚卸履歴は残したまま、通常の一覧から非表示にします。"
-                : "。通常の商品一覧と棚卸対象に戻します。"}
+              {bulkOperation.includes("INSPECTION")?"。点検の対象だけ変更します。商品・在庫・棚卸の履歴は消しません。廃止商品は設定に関わらず点検対象外です。":bulkOperation==="ARCHIVE"?"。商品と在庫を通常の作業対象から外します。履歴と数量は保存します。":"。商品を通常の作業対象に戻します。在庫明細そのものが廃止の場合は引き続き対象外です。"}
             </p>
 
             <label className="mt-5 block">
               <span className="font-bold text-slate-800">
-                {bulkOperation === "ARCHIVE" ? "廃止理由" : "復元理由"}
+                変更理由
               </span>
 
               <textarea
                 value={reason}
                 onChange={(event) => setReason(event.target.value)}
-                placeholder="例：終売のため、再取扱い開始のため"
+                placeholder="例：試験商品として管理確認済み、終売のため"
+                maxLength={500}
                 rows={3}
                 className="mt-2 w-full rounded-xl border border-slate-300 px-4 py-3 outline-none focus:border-blue-600"
               />
@@ -503,9 +499,7 @@ export default function ItemTable({ items, reload, isAdmin, onEdit, filterKey }:
               >
                 {submitting
                   ? "処理中…"
-                  : bulkOperation === "ARCHIVE"
-                    ? "廃止を確定"
-                    : "復元を確定"}
+                  : bulkLabels[bulkOperation]+"を確定"}
               </button>
             </div>
           </section>

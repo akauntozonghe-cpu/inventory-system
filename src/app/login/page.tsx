@@ -1,5 +1,6 @@
 "use client";
 
+import {notificationReturnPath} from "@/lib/page-flow";
 import { type FormEvent, useState } from "react";
 import { resetSessionActivity } from "@/lib/session-activity";
 
@@ -96,7 +97,7 @@ export default function LoginPage() {
       }
 
       resetSessionActivity();
-      window.location.replace(user.mustChangePassword ? "/account/password" : "/");
+      window.location.replace(user.mustChangePassword ? "/account/password" : notificationReturnPath(new URLSearchParams(window.location.search).get("returnTo")));
     } catch {
       setErrorCode("AUTH_LOGIN_NETWORK_ERROR");
       setError(

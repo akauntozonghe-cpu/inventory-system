@@ -33,6 +33,8 @@ model AppUser {
 }
 
 model Item {
+  inspectionExcluded Boolean @default(false)
+  inspectionExclusionReason String?
   id                  String   @id @default(cuid())
   managementCode      String?  @unique
   managementGroupCode String?
@@ -681,6 +683,8 @@ model DevicePushSubscription {
 }
 
 model DevicePushDelivery {
+  outcome String @default("PENDING")
+  lastErrorCode String?
   id String @id @default(cuid())
   subscriptionId String
   subscription DevicePushSubscription @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)

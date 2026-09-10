@@ -195,7 +195,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(
         {
           code: "ITEM_REGISTER_SYSTEM_BARCODE_FORBIDDEN",
-          message: "システムバーコードの発行は管理者のみ実行できます。",
+          message: "システムJANの発行は管理者のみ実行できます。",
         },
         {
           status: 403,
@@ -203,14 +203,14 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // 管理者の直接登録では、JANまたはシステムバーコードが必須。
+    // 管理者の直接登録では、JANまたはシステムJANが必須。
     // 一般ユーザーはJAN未確認でも申請でき、承認時に管理者が判断する。
     if (canRegisterImmediately && !janCode && !generateSystemBarcode) {
       return NextResponse.json(
         {
           code: "ITEM_REGISTER_BARCODE_REQUIRED",
           message:
-            "JANコードを入力するか、システムバーコードを発行してください。",
+            "JANコードを入力するか、システムJANを発行してください。",
         },
         {
           status: 400,
@@ -465,7 +465,7 @@ export async function POST(request: NextRequest) {
         success: true,
         mode: "DIRECT",
         message: systemBarcode
-          ? "商品を正式登録し、システムバーコードを発行しました。"
+          ? "商品を正式登録し、システムJANを発行しました。"
           : "商品と初期在庫を正式登録しました。",
         item: result.item,
         inventory: result.inventory,
@@ -499,7 +499,7 @@ export async function POST(request: NextRequest) {
         code,
         message:
           code === "ITEM_REGISTER_SYSTEM_BARCODE_GENERATE_FAILED"
-            ? "システムバーコードを発行できませんでした。もう一度お試しください。"
+            ? "システムJANを発行できませんでした。もう一度お試しください。"
             : "商品登録に失敗しました。",
       },
       {

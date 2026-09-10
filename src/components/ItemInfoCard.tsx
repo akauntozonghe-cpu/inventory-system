@@ -1,4 +1,5 @@
 "use client";
+import ProductIdentity from "./inventory/ProductIdentity";
 import { displayUnit } from "@/lib/unit";
 
 type Item = {
@@ -6,6 +7,7 @@ type Item = {
   managementCode: string | null;
   managementGroupCode: string | null;
   janCode: string | null;
+  systemBarcode?: string | null;
   name: string;
   manufacturer: string | null;
   majorCategory: string | null;
@@ -31,16 +33,16 @@ export default function ItemInfoCard({
           商品情報
         </h2>
 
-        <button
+        {onEdit&&<button
           onClick={onEdit}
           className="rounded-lg bg-amber-500 text-white px-4 py-2 hover:bg-amber-600"
         >
           編集
-        </button>
+        </button>}
 
       </div>
 
-      <div className="grid gap-4">
+      <ProductIdentity item={item}/><div className="grid gap-4">
 
         <InfoRow
           label="商品名"
@@ -48,12 +50,7 @@ export default function ItemInfoCard({
         />
 
         <InfoRow
-          label="JANコード"
-          value={item.janCode}
-        />
-
-        <InfoRow
-          label="管理コード"
+          label="任意管理コード"
           value={item.managementCode}
         />
 

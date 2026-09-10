@@ -1,3 +1,4 @@
+import {inspectionItemWhere,inspectionInventoryWhere} from "@/lib/product-scope";
 import { scheduleDeviceNotifications, pushSettingsUsable } from "@/lib/device-push";
 import { recoveryCheckCodes, recoverySessionId } from "@/lib/recovery-context";
 import { publicErrorMessage as getErrorMessage } from "@/lib/public-error";
@@ -201,7 +202,7 @@ export async function POST(request: NextRequest) {
         }) : 0,
         needs("CHECK_PRODUCT_IDENTIFIERS") ? prisma.inventoryInstance.count({
           where: {
-            item: {
+            ...inspectionInventoryWhere, item: { ...inspectionItemWhere,
               janCode: null,
               systemBarcode: null,
             },
@@ -211,11 +212,11 @@ export async function POST(request: NextRequest) {
         needs("CHECK_MASTER_DATA") ? prisma.item.count() : 0,
         needs("CHECK_MASTER_DATA") ? prisma.storageLocation.count() : 0,
         needs("CHECK_DUPLICATE_PRODUCTS") ? prisma.item.findMany({
-          where: { isArchived: false },
-          select: { id: true, name: true, janCode: true, managementCode: true },
+          where: inspectionItemWhere,
+          select: { id: true, name: true, janCode: true, managementCode: true, systemBarcode:true },
         }) : [],
         needs("CHECK_STOCKTAKE_TARGET_LINK") ? prisma.stocktakeRecord.findMany({
-          where: sessionId ? {sessionId} : {},
+          where: { ...(sessionId ? {sessionId} : {}),inventoryInstance:inspectionInventoryWhere },
           select: { sessionId: true, inventoryInstanceId: true },
         }) : [],
         needs("CHECK_STOCKTAKE_TARGET_LINK") ? prisma.stocktakeTarget.findMany({
@@ -227,9 +228,8 @@ export async function POST(request: NextRequest) {
       const duplicateKeys = new Map<string, number>();
       for (const item of duplicateItems) {
         for (const value of [
-          item.janCode ? `jan:${item.janCode.replace(/[\s-]/g, "")}` : "",
-          item.managementCode ? `management:${item.managementCode.replace(/[\s-]/g, "").toLowerCase()}` : "",
-          `name:${item.name.normalize("NFKC").trim().toLowerCase()}`,
+          item.systemBarcode ? `system:${item.systemBarcode}` : "",
+
         ]) {
           if (value) duplicateKeys.set(value, (duplicateKeys.get(value) ?? 0) + 1);
         }
@@ -244,7 +244,7 @@ export async function POST(request: NextRequest) {
 
       const [linkProblems, units] = await Promise.all([
         needs("CHECK_PRODUCT_LINKS") ? countProductLinkProblems() : 0,
-        needs("CHECK_INVALID_UNITS") ? prisma.inventoryInstance.findMany({ select: { unit: true, item: { select: { defaultUnit: true } } } }) : [],
+        needs("CHECK_INVALID_UNITS") ? prisma.inventoryInstance.findMany({ where:inspectionInventoryWhere, select: { unit: true, item: { select: { defaultUnit: true } } } }) : [],
       ]);
       const invalidUnits = units.filter((row) => unitValidationMessage(row.unit) || unitValidationMessage(row.item.defaultUnit)).length;
       const responseTimeMs = Date.now() - startedAt;
@@ -321,18 +321,18 @@ export async function POST(request: NextRequest) {
             inventoryWithoutBarcodeCount === 0 ? "PASS" : "WARNING",
           detail:
             inventoryWithoutBarcodeCount === 0
-              ? "全在庫にJANまたはシステムバーコードがあります。"
-              : `JAN・システムバーコードの両方がない在庫が ${inventoryWithoutBarcodeCount}件あります。`,
+              ? "点検対象の在庫にJANまたはシステムJANがあります（廃止・点検対象外を除く）。"
+              : `JAN・システムJANの両方がない在庫が ${inventoryWithoutBarcodeCount}件あります。`,
           expected: "0件",
           actual: `${inventoryWithoutBarcodeCount}件`,
         },
         {
           code: "CHECK_DUPLICATE_PRODUCTS",
-          title: "商品重複候補",
+          title: "システムJANの一意性",
           status: duplicateGroupCount === 0 ? "PASS" : "WARNING",
           detail:
             duplicateGroupCount === 0
-              ? "JAN・管理コード・正規化商品名の重複候補はありません。"
+              ? "システムJANの重複はありません。同じJANでLotが違う在庫は正常です。"
               : `重複の可能性がある識別情報が ${duplicateGroupCount}組あります。商品一覧で確認してください。`,
           expected: "0組",
           actual: `${duplicateGroupCount}組`,

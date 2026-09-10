@@ -64,6 +64,7 @@ export class ItemRepository {
   }
 
   static async create(data: ItemInput) {
+    if(data.janCode&&data.systemBarcode)throw new Error("JANとシステムJANはどちらか一方だけ指定してください。");
     return prisma.$transaction(async (tx) => {
       const item = await tx.item.create({ data });
       await ensureClassification(tx, item.majorCategory, item.minorCategory);
@@ -74,10 +75,11 @@ export class ItemRepository {
   static async update(id: string, data: ItemUpdateInput) {
     return prisma.$transaction(async (tx) => {
       const before = await tx.item.findUniqueOrThrow({ where: { id } });
+      if((data.janCode===undefined?before.janCode:data.janCode)&&(data.systemBarcode===undefined?before.systemBarcode:data.systemBarcode))throw new Error("JANとシステムJANはどちらか一方だけ指定してください。");
       const item = await tx.item.update({ where: { id }, data });
       await syncItemLinks(tx, id, before, item);
       return item;
-    });
+    }, { isolationLevel: "Serializable" });
   }
 
   static async delete(id: string) {
@@ -140,7 +142,7 @@ export class ItemRepository {
           ...(query
             ? [
                 {
-                  OR: [
+                  OR: [{id:{contains:query,mode:"insensitive" as const}},
                     {
                       janCode: {
                         contains: query,

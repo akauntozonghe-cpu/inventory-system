@@ -1,4 +1,5 @@
 "use client";
+import ProductIdentity from "@/components/inventory/ProductIdentity";
 import StockStateSummary from "@/components/inventory/StockStateSummary";
 import type {StockListing} from "@/lib/stock-state";
 import { useAdminMode } from "@/components/auth/PageAdminMode";
@@ -682,7 +683,7 @@ export default function ItemDetailPage() {
 
                   <label className="block">
                     <span className="font-bold text-slate-700">
-                      システムバーコード
+                      システムJAN
                     </span>
                     <input
                       value={itemForm.systemBarcode}
@@ -697,7 +698,7 @@ export default function ItemDetailPage() {
                   </label>
 
                   <label className="block">
-                    <span className="font-bold text-slate-700">管理番号</span>
+                    <span className="font-bold text-slate-700">任意管理コード</span>
                     <input
                       value={itemForm.managementCode}
                       onChange={(event) =>
@@ -797,7 +798,7 @@ export default function ItemDetailPage() {
             </section>
           ) : (
             <section className="rounded-3xl bg-white p-5 shadow-sm sm:p-7">
-              <h2 className="text-xl font-black text-slate-950">商品情報</h2>
+              <h2 className="text-xl font-black text-slate-950">商品情報</h2><ProductIdentity item={item}/>
 
               <dl className="mt-5 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
                 <div>
@@ -811,7 +812,7 @@ export default function ItemDetailPage() {
 
                 <div>
                   <dt className="text-sm font-bold text-slate-500">
-                    システムバーコード
+                    システムJAN
                   </dt>
                   <dd className="mt-1 break-all text-lg font-black text-slate-900">
                     {text(item.systemBarcode)}

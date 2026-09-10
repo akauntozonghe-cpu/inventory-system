@@ -31,7 +31,7 @@ const exportItems: ExportItem[] = [
     type: "items",
     icon: "🏷️",
     title: "商品マスターバックアップ",
-    description: "JAN・システムバーコード・分類などの商品情報を保存します。",
+    description: "JAN・システムJAN・分類などの商品情報を保存します。",
     filename: "item-master-backup.csv",
   },
   {

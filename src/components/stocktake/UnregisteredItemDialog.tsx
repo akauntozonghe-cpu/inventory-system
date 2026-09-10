@@ -360,7 +360,7 @@ export default function UnregisteredItemDialog({
           </label>
 
           <label>
-            <span className="text-sm font-bold">システムバーコード</span>
+            <span className="text-sm font-bold">システムJAN</span>
 
             <input
               value={form.systemBarcode}
@@ -377,7 +377,7 @@ export default function UnregisteredItemDialog({
           </label>
 
           <label>
-            <span className="text-sm font-bold">管理コード</span>
+            <span className="text-sm font-bold">任意管理コード</span>
 
             <input
               value={form.managementCode}

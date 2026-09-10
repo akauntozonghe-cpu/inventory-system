@@ -1,4 +1,5 @@
 "use client";
+import ProductIdentity from "@/components/inventory/ProductIdentity";
 import { parseStocktakeQuantity, stepStocktakeQuantity } from "@/lib/stocktake-quantity";
 import { displayUnit } from "@/lib/unit";
 
@@ -12,6 +13,7 @@ export type StocktakeSelectedItem = {
   expirationDate: string | null;
   unit: string | null;
   item: {
+    id: string;
     name: string;
     janCode: string | null;
     systemBarcode: string | null;
@@ -165,13 +167,8 @@ export default function StocktakeInputPanel({
 
       {detailsOpen && (
         <dl className="mt-4 grid grid-cols-1 gap-x-5 gap-y-4 rounded-2xl border border-slate-200 bg-slate-50 p-4 sm:grid-cols-2">
-          <Detail label="管理No.（システム識別用）" value={selected.id} />
-          <Detail label="JANコード" value={selected.item.janCode} />
-          <Detail
-            label="システムバーコード"
-            value={selected.item.systemBarcode}
-          />
-          <Detail label="管理コード" value={selected.item.managementCode} />
+          <div className="sm:col-span-2"><ProductIdentity item={selected.item} inventoryId={selected.id}/></div>
+          <Detail label="任意管理コード" value={selected.item.managementCode} />
           <Detail
             label="管理グループコード"
             value={selected.item.managementGroupCode}

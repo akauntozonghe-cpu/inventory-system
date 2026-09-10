@@ -1,4 +1,5 @@
 "use client";
+import ProductIdentity from "@/components/inventory/ProductIdentity";
 import { displayUnit } from "@/lib/unit";
 
 import ProductEditDialog from "@/components/ProductEditDialog";
@@ -436,7 +437,7 @@ export default function StocktakeResultPage() {
 
                       <div className="mt-2 space-y-1 text-sm text-slate-600">
                         <p>Lot：{record.lotNo || "未設定"}</p>
-                        <p className="break-all text-xs">管理No.：{record.inventoryInstanceId}</p>
+                        <ProductIdentity item={record.item} inventoryId={record.inventoryInstanceId}/>
                         <p>JAN：{record.item.janCode || "-"}</p>
                         <p>
                           保管場所：

@@ -1,3 +1,4 @@
+import {activeInventoryWhere} from "@/lib/product-scope";
 import { unitValidationMessage } from "@/lib/unit";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
@@ -36,6 +37,7 @@ function errorMessage(error: unknown, fallback: string) {
 export async function GET() {
   try {
     const inventories = await prisma.inventoryInstance.findMany({
+      where:activeInventoryWhere,
       include: {
         item: true,
         storageLocation: true,

@@ -72,7 +72,7 @@ export default function StocktakeAdminMenu({
                 バーコードを発行・確認
               </span>
               <span className="mt-1 block text-sm text-violet-800">
-                JANがない商品にシステムバーコードを発行します。
+                JANがない商品にシステムJANを発行します。
               </span>
             </button>
 

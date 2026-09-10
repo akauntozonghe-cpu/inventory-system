@@ -3,13 +3,15 @@ import { NextRequest, NextResponse } from "next/server";
 import webpush from "web-push";
 import { AUTH_COOKIE, requireLogin } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { encryptPushKey, sessionHash, validPushEndpoint, validPushKeys, sendDeviceNotification } from "@/lib/device-push";
+import { pushSettingsUsable, scheduleDeviceNotifications, encryptPushKey, sessionHash, validPushEndpoint, validPushKeys, sendDeviceNotification } from "@/lib/device-push";
 
 export async function GET(request: NextRequest) {
   const auth = requireLogin(request); if (auth.response || !auth.user) return auth.response;
   try {
-    const settings = await prisma.devicePushSetting.findUnique({ where: { id: "system" }, select: { publicKey: true, policy:true } });
-    return NextResponse.json({ ready: Boolean(settings), publicKey: settings?.publicKey, isAdmin: auth.user.role === "ADMIN", policy:readPushPolicy(settings?.policy), cronConfigured:auth.user.role === "ADMIN" ? Boolean(process.env.CRON_SECRET && process.env.CRON_SECRET.length>=32):undefined }, { headers: { "Cache-Control": "no-store" } });
+    const settings = await prisma.devicePushSetting.findUnique({ where: { id: "system" },  });
+    const subscriptionWhere={userId:auth.user.id,sessionHash:sessionHash(request.cookies.get(AUTH_COOKIE)?.value??""),expiresAt:{gt:new Date()}};
+    const [registered,sent,retry,failed,last]=await Promise.all([prisma.devicePushSubscription.count({where:subscriptionWhere}),prisma.devicePushDelivery.count({where:{subscription:subscriptionWhere,outcome:"SENT"}}),prisma.devicePushDelivery.count({where:{subscription:subscriptionWhere,sentAt:null,attempts:{lt:5}}}),prisma.devicePushDelivery.count({where:{subscription:subscriptionWhere,sentAt:null,attempts:{gte:5}}}),prisma.devicePushDelivery.findFirst({where:{subscription:subscriptionWhere,lastErrorCode:{not:null}},orderBy:{nextAttemptAt:"desc"},select:{lastErrorCode:true}})]);
+    return NextResponse.json({ registered:registered>0,delivery:{sent,retry,failed,lastErrorCode:last?.lastErrorCode??null},ready: pushSettingsUsable(settings), publicKey: settings?.publicKey, isAdmin: auth.user.role === "ADMIN", policy:readPushPolicy(settings?.policy), cronConfigured:auth.user.role === "ADMIN" ? Boolean(process.env.CRON_SECRET && process.env.CRON_SECRET.length>=32):undefined }, { headers: { "Cache-Control": "no-store" } });
   } catch { return NextResponse.json({ code: "PUSH_SETUP_REQUIRED", message: "端末通知の準備が完了していません。管理者が更新結果を確認してください。" }, { status: 503 }); }
 }
 export async function POST(request: NextRequest) {
@@ -17,6 +19,11 @@ export async function POST(request: NextRequest) {
   const input = await request.json().catch(() => null);
   if (!input) return NextResponse.json({ code: "PUSH_INPUT_INVALID", message: "端末情報を確認できませんでした。" }, { status: 400 });
   try {
+    if (input.action === "RETRY") {
+      await prisma.devicePushDelivery.updateMany({where:{subscription:{userId:auth.user.id,sessionHash:sessionHash(request.cookies.get(AUTH_COOKIE)?.value??"")},sentAt:null},data:{attempts:0,nextAttemptAt:new Date(),outcome:"PENDING",lastErrorCode:null}});
+      scheduleDeviceNotifications(true);
+      return NextResponse.json({message:"この端末の通常通知を再送待ちに戻しました。少し待って状態を再確認してください。"});
+    }
     if (input.action === "POLICY") {
       if (auth.user.role !== "ADMIN") return NextResponse.json({code:"PUSH_ADMIN_REQUIRED",message:"管理者の設定が必要です。"},{status:403});
       if (!validPushPolicy(input.policy)) return NextResponse.json({code:"PUSH_POLICY_INVALID",message:"通知設定を確認してください。"},{status:400});
@@ -46,6 +53,7 @@ export async function POST(request: NextRequest) {
       if (existing && existing.userId !== auth.user!.id) await tx.devicePushSubscription.delete({ where: { id: existing.id } });
       await tx.devicePushSubscription.upsert({ where: { endpoint: subscription.endpoint }, create: { endpoint: subscription.endpoint, ...data }, update: data });
     });
+    scheduleDeviceNotifications(true);
     return NextResponse.json({ message: "この端末の通知を有効にしました。ログアウトすると停止します。" });
   } catch { return NextResponse.json({ code: "PUSH_DELIVERY_FAILED", message: "端末通知の設定・送信ができませんでした。通信と通知の許可を確認してください。" }, { status: 503 }); }
 }

@@ -1,3 +1,4 @@
+import {inspectionInventoryWhere} from "@/lib/product-scope";
 import { prisma } from "@/lib/prisma";
 
 export async function maybeRunScheduledSystemCheck(intervalMinutes: number) {
@@ -12,8 +13,8 @@ export async function maybeRunScheduledSystemCheck(intervalMinutes: number) {
     prisma.inventoryInstance.count(),
     prisma.appUser.count({ where: { role: "ADMIN", isActive: true } }),
     prisma.errorReport.count({ where: { recoveryStatus: "ADMIN_REQUIRED", status: { in: ["OPEN", "INVESTIGATING"] } } }),
-    prisma.stocktakeRecord.findMany({ select: { sessionId: true, inventoryInstanceId: true } }),
-    prisma.stocktakeTarget.findMany({ select: { sessionId: true, inventoryInstanceId: true } }),
+    prisma.stocktakeRecord.findMany({ where:{inventoryInstance:inspectionInventoryWhere}, select: { sessionId: true, inventoryInstanceId: true } }),
+    prisma.stocktakeTarget.findMany({ where:{inventoryInstance:inspectionInventoryWhere}, select: { sessionId: true, inventoryInstanceId: true } }),
   ]);
   const targetKeys = new Set(targets.map((entry) => `${entry.sessionId}:${entry.inventoryInstanceId}`));
   const orphanRecords = records.filter((entry) => !targetKeys.has(`${entry.sessionId}:${entry.inventoryInstanceId}`)).length;

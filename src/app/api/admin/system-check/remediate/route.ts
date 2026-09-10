@@ -1,3 +1,4 @@
+import {inspectionItemWhere,inspectionInventoryWhere} from "@/lib/product-scope";
 import { randomUUID } from "node:crypto";
 import { scheduleDeviceNotifications } from "@/lib/device-push";
 import { recoveryCheckCodes, recoveryActionAllowed, recoverySessionId } from "@/lib/recovery-context";
@@ -34,7 +35,7 @@ async function issueUniqueSystemBarcode() {
   }
 
   throw new Error(
-    "SYSTEM_BARCODE_GENERATE_FAILED: システムバーコードを発行できませんでした。"
+    "SYSTEM_BARCODE_GENERATE_FAILED: システムJANを発行できませんでした。"
   );
 }
 
@@ -104,7 +105,7 @@ export async function GET(request: NextRequest) {
 
         prisma.inventoryInstance.findMany({
           where: {
-            item: {
+            ...inspectionInventoryWhere, item: { ...inspectionItemWhere,
               janCode: null,
               systemBarcode: null,
             },
@@ -447,7 +448,7 @@ export async function PATCH(request: NextRequest) {
         return NextResponse.json(
           {
             code: "SYSTEM_REMEDIATION_JAN_EXISTS",
-            message: "この商品にはJANが登録されています。システムバーコードは不要です。",
+            message: "この商品にはJANが登録されています。システムJANは不要です。",
           },
           { status: 409 }
         );
@@ -457,7 +458,7 @@ export async function PATCH(request: NextRequest) {
         return NextResponse.json({
           success: true,
           code: "SYSTEM_REMEDIATION_SYSTEM_BARCODE_EXISTS",
-          message: "この商品にはシステムバーコードが発行済みです。",
+          message: "この商品にはシステムJANが発行済みです。",
           systemBarcode: item.systemBarcode,
         });
       }
@@ -493,7 +494,7 @@ export async function PATCH(request: NextRequest) {
       return NextResponse.json({
         success: true,
         code: "SYSTEM_REMEDIATION_SYSTEM_BARCODE_ISSUED",
-        message: `「${item.name}」にシステムバーコードを発行しました。`,
+        message: `「${item.name}」にシステムJANを発行しました。`,
         systemBarcode,
       });
     }

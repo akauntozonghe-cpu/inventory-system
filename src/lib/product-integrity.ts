@@ -5,9 +5,9 @@ export async function countProductLinkProblems() {
   const rows = await prisma.$queryRaw<Array<{ count: bigint }>>`
     SELECT COUNT(*) AS count FROM "InventoryInstance" AS inventory
     JOIN "Item" AS item ON item.id = inventory."itemId"
-    WHERE inventory."majorCategory" IS DISTINCT FROM item."majorCategory"
+    WHERE item."isArchived" = false AND item."inspectionExcluded" = false AND inventory.status <> '廃止' AND (inventory."majorCategory" IS DISTINCT FROM item."majorCategory"
        OR inventory."minorCategory" IS DISTINCT FROM item."minorCategory"
-       OR inventory.manufacturer IS DISTINCT FROM item.manufacturer`;
+       OR inventory.manufacturer IS DISTINCT FROM item.manufacturer)`;
   return Number(rows[0]?.count ?? 0);
 }
 
@@ -17,11 +17,11 @@ export async function repairProductLinks(actorId: string, reason?: string) {
       UPDATE "InventoryInstance" AS inventory SET
         "majorCategory" = item."majorCategory", "minorCategory" = item."minorCategory",
         manufacturer = item.manufacturer, "updatedAt" = CURRENT_TIMESTAMP
-      FROM "Item" AS item WHERE item.id = inventory."itemId" AND (
+      FROM "Item" AS item WHERE item.id = inventory."itemId" AND item."isArchived" = false AND item."inspectionExcluded" = false AND inventory.status <> '廃止' AND (
         inventory."majorCategory" IS DISTINCT FROM item."majorCategory" OR
         inventory."minorCategory" IS DISTINCT FROM item."minorCategory" OR
         inventory.manufacturer IS DISTINCT FROM item.manufacturer)`;
-    const items = await tx.item.findMany({ select: { majorCategory: true, minorCategory: true } });
+    const items = await tx.item.findMany({ where:{isArchived:false,inspectionExcluded:false}, select: { majorCategory: true, minorCategory: true } });
     const masters = new Map<string, { kind: string; name: string; parentName: string }>();
     for (const item of items) {
       if (item.majorCategory) masters.set(JSON.stringify(["MAJOR", item.majorCategory]), { kind: "MAJOR", name: item.majorCategory, parentName: "" });

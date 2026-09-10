@@ -1,0 +1,11 @@
+import {beforeEach,expect,it,vi} from "vitest";
+import {NextRequest} from "next/server";
+const schedule=vi.hoisted(()=>vi.fn());
+const db=vi.hoisted(()=>({devicePushSetting:{findUnique:vi.fn()},devicePushSubscription:{count:vi.fn()},devicePushDelivery:{count:vi.fn(),findFirst:vi.fn(),updateMany:vi.fn()}}));
+vi.mock("@/lib/prisma",()=>({prisma:db}));
+vi.mock("@/lib/auth",()=>({AUTH_COOKIE:"auth",requireLogin:()=>({user:{id:"worker",role:"WORKER"}})}));
+vi.mock("@/lib/device-push",()=>({sessionHash:()=>"this-session",pushSettingsUsable:()=>true,scheduleDeviceNotifications:schedule}));
+import {GET,POST} from "../src/app/api/notifications/device/route";
+beforeEach(()=>{vi.resetAllMocks();db.devicePushSetting.findUnique.mockResolvedValue({publicKey:"public"});db.devicePushSubscription.count.mockResolvedValue(1);db.devicePushDelivery.count.mockResolvedValueOnce(2).mockResolvedValueOnce(3).mockResolvedValueOnce(1);db.devicePushDelivery.findFirst.mockResolvedValue({lastErrorCode:"PUSH_HTTP_503"});});
+it("shows ordinary delivery status only for the requesting session",async()=>{const response=await GET(new NextRequest("http://localhost/api/notifications/device"));expect(await response?.json()).toMatchObject({registered:true,isAdmin:false,delivery:{sent:2,retry:3,failed:1,lastErrorCode:"PUSH_HTTP_503"}});for(const [args] of db.devicePushDelivery.count.mock.calls)expect(args.where.subscription).toMatchObject({userId:"worker",sessionHash:"this-session"});});
+it("retries only this user's session and leaves completed deliveries alone",async()=>{const response=await POST(new NextRequest("http://localhost/api/notifications/device",{method:"POST",body:JSON.stringify({action:"RETRY"})}));expect(response?.status).toBe(200);expect(db.devicePushDelivery.updateMany.mock.calls[0][0]).toMatchObject({where:{subscription:{userId:"worker",sessionHash:"this-session"},sentAt:null},data:{attempts:0,outcome:"PENDING"}});expect(schedule).toHaveBeenCalledWith(true);});

@@ -102,7 +102,7 @@ const inventoryMenus: MenuItem[] = [
     icon: "🏷️",
     title: "商品・在庫一覧",
     description:
-      "商品情報、JAN、システムバーコード、分類、保管場所、在庫情報を確認・編集します。",
+      "商品情報、JAN、システムJAN、分類、保管場所、在庫情報を確認・編集します。",
     color: "bg-emerald-600",
   },
   {
@@ -110,7 +110,7 @@ const inventoryMenus: MenuItem[] = [
     icon: "＋",
     title: "商品・在庫を登録",
     description:
-      "新しい商品や在庫を登録します。JANがない商品にはシステムバーコードを発行できます。",
+      "新しい商品や在庫を登録します。JANがない商品にはシステムJANを発行できます。",
     color: "bg-orange-500",
   },
   {

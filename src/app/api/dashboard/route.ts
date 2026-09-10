@@ -1,3 +1,4 @@
+import {activeItemWhere,activeInventoryWhere} from "@/lib/product-scope";
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { assessExpiry } from "@/lib/expiry-management";
@@ -13,7 +14,7 @@ export async function GET() {
       inventoryInstances,
       recentHistories,
     ] = await Promise.all([
-      prisma.item.count(),
+      prisma.item.count({where:activeItemWhere}),
 
       prisma.inventoryInstance.aggregate({
         _sum: {
@@ -31,7 +32,7 @@ export async function GET() {
         },
       }),
 
-      prisma.inventoryInstance.findMany(),
+      prisma.inventoryInstance.findMany({where:activeInventoryWhere}),
 
       prisma.inventoryHistory.findMany({
         orderBy: {

@@ -1,4 +1,4 @@
-const CACHE_NAME = "inventory-os-shell-v7";
+const CACHE_NAME = "inventory-os-shell-v8";
 const SHELL = ["/offline", "/pwa/icon-192?v=4", "/pwa/icon-512?v=4"];
 
 self.addEventListener("install", (event) => { event.waitUntil(caches.open(CACHE_NAME).then((cache) => cache.addAll(SHELL))); });
@@ -19,12 +19,12 @@ self.addEventListener("fetch", (event) => {
 
 self.addEventListener("push", event => {
   let payload = {}; try { payload = event.data?.json() ?? {}; } catch {}
-  event.waitUntil(Promise.all([Promise.resolve().then(()=>self.navigator.setAppBadge?.()).catch(()=>{}),self.registration.showNotification(payload.showDetails === true && typeof payload.title === "string" ? payload.title.slice(0,100) : "Inventory OS", { body: payload.showDetails === true && typeof payload.body === "string" ? payload.body.slice(0,300) : payload.body === "端末通知のテストです。" ? payload.body : "新しい通知があります。アプリで内容を確認してください。", icon: "/pwa/icon-192?v=4", badge: "/pwa/icon-192?v=4", tag: typeof payload.tag === "string" ? payload.tag.slice(0,120) : "inventory-notification", data: { url: "/notifications" } })]));
+  event.waitUntil(Promise.all([Promise.resolve().then(()=>self.navigator.setAppBadge?.()).catch(()=>{}),self.registration.showNotification(payload.showDetails === true && typeof payload.title === "string" ? payload.title.slice(0,100) : "Inventory OS", { body: payload.showDetails === true && typeof payload.body === "string" ? payload.body.slice(0,300) : payload.body === "端末通知のテストです。" ? payload.body : "新しい通知があります。アプリで内容を確認してください。", icon: "/pwa/icon-192?v=4", badge: "/pwa/icon-192?v=4", tag: typeof payload.tag === "string" ? payload.tag.slice(0,120) : "inventory-notification", data: { url: typeof payload.url === "string" && /^\/notifications\/[A-Za-z0-9_-]{1,100}$/.test(payload.url) ? payload.url : "/notifications" } })]));
 });
 self.addEventListener("notificationclick", event => {
   event.notification.close();
   event.waitUntil(self.clients.matchAll({type:"window",includeUncontrolled:true}).then(async clients => {
-    const url = new URL("/notifications",self.location.origin).href;
+    const url = new URL(typeof event.notification.data?.url === "string" && /^\/notifications\/[A-Za-z0-9_-]{1,100}$/.test(event.notification.data.url) ? event.notification.data.url : "/notifications",self.location.origin).href;
     // Never navigate a working stocktake tab away from unsaved input.
     const existing = clients.find(client => client.url === url);
     if(existing) return existing.focus();

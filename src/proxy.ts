@@ -1,3 +1,4 @@
+import {notificationReturnPath} from "@/lib/page-flow";
 import { NextResponse, type NextRequest } from "next/server";
 import {
   AUTH_COOKIE,
@@ -125,6 +126,7 @@ export async function proxy(request: NextRequest) {
     const loginUrl = request.nextUrl.clone();
     loginUrl.pathname = "/login";
     loginUrl.search = "";
+    if(notificationReturnPath(pathname)!=="/")loginUrl.searchParams.set("returnTo",pathname);
 
     return NextResponse.redirect(loginUrl);
   }
@@ -144,6 +146,7 @@ export async function proxy(request: NextRequest) {
     const loginUrl = request.nextUrl.clone();
     loginUrl.pathname = "/login";
     loginUrl.search = "";
+    if(notificationReturnPath(pathname)!=="/")loginUrl.searchParams.set("returnTo",pathname);
     const response = NextResponse.redirect(loginUrl);
     response.cookies.delete(AUTH_COOKIE);
     return response;

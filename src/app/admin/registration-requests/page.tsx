@@ -261,7 +261,7 @@ export default function RegistrationRequestsPage() {
       !generateSystemBarcode
     ) {
       setError(
-        "JANコードを入力するか、システムバーコードを発行してください。"
+        "JANコードを入力するか、システムJANを発行してください。"
       );
       return;
     }
@@ -588,7 +588,7 @@ export default function RegistrationRequestsPage() {
             {action === "APPROVE" ? (
               <div className="mt-5 space-y-4">
                 <div className="rounded-xl bg-slate-100 p-4 text-sm leading-6 text-slate-700">
-                  JANコードを確認して入力してください。JANが存在しない商品だけ、システムバーコードを発行できます。
+                  JANコードを確認して入力してください。JANが存在しない商品だけ、システムJANを発行できます。
                 </div>
 
                 <label className="block">
@@ -624,7 +624,7 @@ export default function RegistrationRequestsPage() {
 
                   <span>
                     <span className="block font-black text-blue-800">
-                      システムバーコードを発行する
+                      システムJANを発行する
                     </span>
 
                     <span className="mt-1 block text-sm leading-6 text-blue-900">

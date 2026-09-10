@@ -288,7 +288,7 @@ export async function PATCH(request: NextRequest) {
       });
     }
 
-    // 優先順位：管理者が入力したJAN → 申請時のJAN → システムバーコード
+    // 優先順位：管理者が入力したJAN → 申請時のJAN → システムJAN
     const finalJanCode = janCodeOverride ?? registrationRequest.scannedCode;
 
     if (!finalJanCode && !generateSystemBarcode) {
@@ -296,7 +296,7 @@ export async function PATCH(request: NextRequest) {
         {
           code: "REGISTRATION_REQUEST_BARCODE_REQUIRED",
           message:
-            "JANコードを入力するか、システムバーコードを発行してください。",
+            "JANコードを入力するか、システムJANを発行してください。",
         },
         { status: 400 }
       );
@@ -307,7 +307,7 @@ export async function PATCH(request: NextRequest) {
         {
           code: "REGISTRATION_REQUEST_BARCODE_CONFLICT",
           message:
-            "JANコードとシステムバーコードは同時に設定できません。",
+            "JANコードとシステムJANは同時に設定できません。",
         },
         { status: 400 }
       );
@@ -492,7 +492,7 @@ export async function PATCH(request: NextRequest) {
     return NextResponse.json({
       success: true,
       message: result.item.systemBarcode
-        ? "商品を正式登録し、システムバーコードを発行しました。"
+        ? "商品を正式登録し、システムJANを発行しました。"
         : "商品を正式登録しました。",
       item: result.item,
       inventory: result.inventory,
@@ -508,7 +508,7 @@ export async function PATCH(request: NextRequest) {
         {
           code: "REGISTRATION_REQUEST_SYSTEM_BARCODE_FAILED",
           message:
-            "システムバーコードを発行できませんでした。もう一度お試しください。",
+            "システムJANを発行できませんでした。もう一度お試しください。",
         },
         { status: 500 }
       );

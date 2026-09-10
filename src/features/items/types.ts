@@ -10,6 +10,8 @@ export type Item = {
   majorCategory: string | null;
   minorCategory: string | null;
   defaultUnit: string | null;
+  inspectionExcluded?: boolean;
+  inspectionExclusionReason?: string|null;
   isArchived: boolean;
   archivedAt: string | null;
   archiveReason: string | null;

@@ -1,4 +1,5 @@
 "use client";
+import ProductIdentity from "@/components/inventory/ProductIdentity";
 import type { StocktakeSelectedItem } from "./StocktakeInputPanel";
 import Modal from "@/components/common/Modal";
 
@@ -14,7 +15,7 @@ export default function StocktakeLotPicker<T extends StocktakeSelectedItem>({ ca
         <p className="mt-2 text-lg font-black text-blue-800">Lot：{item.lotNo || "未設定"}</p>
         <p className="mt-1 font-bold">保管場所：{item.storageLocation?.name || "未設定"}</p>
         <p>期限：{item.expirationDate || "未設定"} ／ {item.countedQuantity === null ? "未棚卸" : `入力済：${item.countedQuantity}`}</p>
-        <p className="mt-2 break-all text-xs text-slate-500">管理No.：{item.id}</p>
+        <ProductIdentity item={item.item} inventoryId={item.id}/>
       </button>)}</div>
     </section>
   </Modal>;

@@ -223,6 +223,7 @@ export async function PUT(
       );
     }
 
+    if(data.janCode&&data.systemBarcode)return NextResponse.json({code:"ITEM_CODE_CONFLICT",message:"JANは元から商品にあるコードです。システムJANはJANのない商品だけに使います。どちらか一方を指定してください。"},{status:400});
     const janError = janCodeValidationMessage(data.janCode);
     if (janError) {
       return NextResponse.json({ code: "ITEM_UPDATE_JAN_INVALID", message: janError }, { status: 400 });
@@ -265,6 +266,7 @@ export async function PUT(
     }
 
     data = toItemData({ ...before, ...body });
+    if(data.janCode&&data.systemBarcode)return NextResponse.json({code:"ITEM_CODE_CONFLICT",message:"JANとシステムJANはどちらか一方だけ指定してください。変更する場合は元のコードを空欄にしてください。"},{status:400});
     if (data.minorCategory && !data.majorCategory) return NextResponse.json({ message: "小分類を設定する場合は大分類を選択してください。" }, { status: 400 });
     if (body.expectedUpdatedAt !== undefined && (typeof body.expectedUpdatedAt !== "string" || !Number.isFinite(Date.parse(body.expectedUpdatedAt)))) return NextResponse.json({ message: "更新日時が不正です。画面を開き直してください。" }, { status: 400 });
 
@@ -307,7 +309,7 @@ export async function PUT(
         return NextResponse.json(
           {
             code: "ITEM_UPDATE_SYSTEM_BARCODE_DUPLICATE",
-            message: `システムバーコード「${data.systemBarcode}」は「${duplicateSystemBarcode.name}」ですでに使用されています。`,
+            message: `システムJAN「${data.systemBarcode}」は「${duplicateSystemBarcode.name}」ですでに使用されています。`,
           },
           { status: 409 }
         );
