@@ -12,6 +12,7 @@ import { useLiveRefresh } from "@/hooks/useLiveRefresh";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import LabelPrintPanel,{classificationPrintLabel,locationPrintLabel} from "@/components/LabelPrintPanel";
 import LabelPrintDialog,{type PrintLabel} from "@/components/LabelPrintDialog";
+import QrPreviewDialog from "@/components/QrPreviewDialog";
 import FeedbackToast from "@/components/common/FeedbackToast";
 import UnifiedScanner from "@/components/stocktake/UnifiedScanner";
 
@@ -63,6 +64,7 @@ export default function ClassificationsPage() {
   const addSelection=(items:ItemRow[])=>{const before=selectionRef.current;const next=addProductSelection(before,items.map(item=>item.id));updateSelection(next);setScanNotice(next.length===before.length?"選択済みです（重複追加はしません）。":items.map(item=>item.name).join("、")+"を追加しました。");};
   const scrollItems=()=>requestAnimationFrame(()=>document.getElementById("classification-items")?.scrollIntoView({behavior:"smooth",block:"start"}));
   const [singlePrint,setSinglePrint]=useState<PrintLabel[]|null>(null);
+  const [qrPreview,setQrPreview]=useState<PrintLabel|null>(null);
 
   const load = useCallback(async () => { const sequence = ++loadSequence.current; const response = await fetchFresh("/api/admin/classifications"); const payload: unknown = await response.json().catch(() => null); if (!response.ok) { const message = payload && typeof payload === "object" && "message" in payload && typeof payload.message === "string" ? payload.message : "分類を取得できませんでした。"; throw new Error(message); } if (sequence === loadSequence.current) setData(normalizePayload(payload)); }, []);
   useEffect(() => { void load().catch((e) => setError(e instanceof Error ? e.message : "分類を取得できませんでした。")); }, [load]);
@@ -104,8 +106,8 @@ export default function ClassificationsPage() {
   };
   const scanManually=async()=>{try{const {resolveScan}=await import("@/lib/resolve-scan");const raw=itemSearch;if(parseScan(raw).type==="ITEM"&&!index.has(normalizeScanCode(parseScan(raw).code??raw))&&!/^[{[]/.test(raw.trim())&&!/^\d{8,13}$/.test(normalizeScanCode(raw))){setPage(1);return;}const scan=await resolveScan(raw);handleScan(scan.type==="CLASSIFICATION"?JSON.stringify({type:"INVENTORY_CLASSIFICATION_LABEL",kind:scan.kind,majorCategory:scan.kind?scan.parentName:scan.name,minorCategory:scan.kind?scan.name:undefined,parentName:scan.parentName}):scan.type==="LOCATION"?JSON.stringify({type:"INVENTORY_LOCATION_LABEL",storageLocationId:scan.id}):raw);setItemSearch("");}catch(error){setError(error instanceof Error?error.message:"SCAN_FAILED：読み取れませんでした。");}};
   const chooseCandidate=(item:ItemRow)=>{try{addSelection([item]);setCandidates([]);setSelectedOnly(true);setItemSearch("");setItemMajorFilter("ALL");setItemMinorFilter("");setItemLocationFilter("");if(scannerOpen==="single")setScannerOpen(null);}catch(error){setError((error as Error).message);}};
-  const showClassificationQr=(row:Classification)=>setSinglePrint([classificationPrintLabel(row)]);
-  const showLocationQr=(row:Location)=>setSinglePrint([locationPrintLabel(row)]);
+  const showClassificationQr=(row:Classification)=>setQrPreview(classificationPrintLabel(row));
+  const showLocationQr=(row:Location)=>setQrPreview(locationPrintLabel(row));
 
   return <main className="min-h-screen bg-slate-100 p-4 text-slate-950 sm:p-8">
     <FeedbackToast tone="error" title="分類編集エラー" message={error} onClose={() => setError("")} />
@@ -141,6 +143,7 @@ export default function ClassificationsPage() {
     {scannerOpen&&<UnifiedScanner continuous={scannerOpen==="continuous"} pauseMessage="同じコードの候補を確認してください。選ぶと読取を再開します。" paused={candidates.length>0} title={scannerOpen==="continuous"?"JANを連続で選択":"商品・分類・保管場所QRを読む"} notice="選択を積み上げます。同じ商品を繰り返し読んでも重複しません。選択は読取終了後に確認できます。" onProduct={code=>handleScan(code)} onCategory={name=>{handleScan("CATEGORY:"+encodeURIComponent(name));}} onMinorCategory={(name,parentName)=>{handleScan(JSON.stringify({kind:"MINOR",minorCategory:name,parentName}));}} onLocation={location=>{handleScan(JSON.stringify({type:"INVENTORY_LOCATION_LABEL",storageLocationId:location.id}));}} onClose={()=>{setScannerOpen(null);setCandidates([]);}}>
       <section className="rounded-xl bg-white p-4 text-slate-950"><p className="text-xl font-black">選択 {selectedItemIds.length}商品</p><p role="status" className="mt-2">{scanNotice}</p>{candidates.map(item=><button key={item.id} className="my-2 block w-full rounded-xl border p-3 text-left font-bold" onClick={()=>chooseCandidate(item)}>{item.name} ／ {item.majorCategory??"分類未設定"} ／ {item.minorCategory??""}</button>)}{candidates.length>0&&<button className="rounded-xl border p-3" onClick={()=>setCandidates([])}>この読取をスキップ</button>}<button className="mt-3 rounded-xl bg-teal-700 p-3 font-bold text-white" onClick={()=>{setScannerOpen(null);setCandidates([]);setSelectedOnly(true);setItemMajorFilter("ALL");setItemMinorFilter("");setItemLocationFilter("");setItemSearch("");setPage(1);scrollItems();}}>読取を終えて選択を確認</button></section>
     </UnifiedScanner>}
+    {qrPreview&&<QrPreviewDialog label={qrPreview} onClose={()=>setQrPreview(null)} onPrint={()=>{setSinglePrint([qrPreview]);setQrPreview(null);}}/>}
     {singlePrint&&<LabelPrintDialog labels={singlePrint} onClose={()=>setSinglePrint(null)}/>}
   </main>;
 }
