@@ -8,8 +8,8 @@ import { usePagedItems } from "@/hooks/usePagedItems";
 import Modal from "@/components/common/Modal";
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
-import BarcodePrintOptions from "@/components/BarcodePrintOptions";
-import { barcodePrintDocument, type LabelScale } from "@/lib/barcode-label";
+import LabelPrintDialog from "@/components/LabelPrintDialog";
+
 import type { Item } from "./types";
 
 type Props = {
@@ -65,8 +65,7 @@ export default function ItemTable({ items, reload, isAdmin, onEdit, filterKey }:
   const [reason, setReason] = useState("");
   const [confirmed, setConfirmed] = useState(false);
   const [submitting, setSubmitting] = useState(false);
-  const [includeLabelName, setIncludeLabelName] = useState(false);
-  const [labelScale, setLabelScale] = useState<LabelScale>(0.8);
+  const [printIds,setPrintIds]=useState<string[]|null>(null);
 
   useEffect(() => {
     const availableIds = new Set(items.map(item => item.id));
@@ -81,11 +80,6 @@ export default function ItemTable({ items, reload, isAdmin, onEdit, filterKey }:
     [items, selectedIdSet]
   );
 
-  const printableItems = useMemo(
-    () =>
-      items.filter((item) => Boolean(item.janCode || item.systemBarcode)),
-    [items]
-  );
 
   const allSelected = items.length > 0 && selectedIds.length === items.length;
 
@@ -185,24 +179,7 @@ export default function ItemTable({ items, reload, isAdmin, onEdit, filterKey }:
     }
   };
 
-  const printSelected = () => {
-    setMessage("");
-    setError("");
-
-    const targets =
-      selectedItems.length > 0
-        ? selectedItems
-        : printableItems;
-
-    try {
-      const labels = targets.filter((item) => item.janCode || item.systemBarcode).map((item) => ({ name: item.name, barcode: (item.janCode || item.systemBarcode)! }));
-      const html = barcodePrintDocument(labels, "A4", labelScale, includeLabelName);
-      const printWindow = window.open("", "_blank", "width=900,height=700");
-      if (!printWindow) throw new Error("印刷画面を開けませんでした。ポップアップを許可してください。");
-      printWindow.document.write(html);
-      printWindow.document.close();
-    } catch (error) { setError(error instanceof Error ? error.message : "ラベルを作成できませんでした。"); }
-  };
+  const printSelected = () => setPrintIds((selectedItems.length?selectedItems:items).map(item=>item.id));
 
   if (items.length === 0) {
     return (
@@ -217,11 +194,10 @@ export default function ItemTable({ items, reload, isAdmin, onEdit, filterKey }:
 
   return (
     <>
+      {printIds&&<LabelPrintDialog labels={items.filter(item=>printIds.includes(item.id)).map(item=>({id:item.id,itemId:item.id,name:item.name,barcode:item.janCode||item.systemBarcode}))} canEdit={isAdmin} onRefresh={reload} onClose={()=>setPrintIds(null)} onComplete={()=>setSelectedIds([])}/>}
       <section className="space-y-4">
         <details className="rounded-2xl border bg-white p-3"><summary className="cursor-pointer font-bold">ラベル印刷・複数商品の操作</summary>
-        <div className="block rounded-xl bg-white p-3 text-sm font-bold">印刷サイズ
-          <BarcodePrintOptions scale={labelScale} onScale={setLabelScale} includeName={includeLabelName} onIncludeName={setIncludeLabelName} />
-        </div>
+
         {(message || error) && (
           <div
             className={`rounded-2xl p-4 font-bold ${
@@ -256,12 +232,12 @@ export default function ItemTable({ items, reload, isAdmin, onEdit, filterKey }:
               <button
                 type="button"
                 onClick={printSelected}
-                disabled={printableItems.length === 0}
+                disabled={items.length === 0}
                 className="rounded-xl bg-slate-800 px-4 py-3 font-bold text-white transition hover:bg-slate-950 disabled:cursor-not-allowed disabled:bg-slate-300"
               >
                 {selectedItems.length > 0
                   ? `選択した${selectedItems.length}件を印刷`
-                  : `検索結果の${printableItems.length}件を印刷`}
+                  : `検索結果の${items.length}件を印刷`}
               </button>
 
               {isAdmin && (
@@ -395,7 +371,7 @@ export default function ItemTable({ items, reload, isAdmin, onEdit, filterKey }:
 
                     <div className="mt-5 flex flex-wrap gap-2">
                       {isAdmin && <button type="button" onClick={() => onEdit(item)} className="min-h-11 rounded-xl bg-blue-700 px-4 py-2 font-bold text-white">商品情報を編集</button>}
-                      <Link
+                      <button type="button" onClick={()=>setPrintIds([item.id])} className="rounded-xl border px-4 py-2 font-bold">この商品のJANを印刷</button><Link
                         href={`/items/${item.id}`}
                         className="rounded-xl bg-sky-600 px-4 py-2 font-bold text-white transition hover:bg-sky-700"
                       >

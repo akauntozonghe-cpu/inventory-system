@@ -68,3 +68,11 @@ dialog { scrollbar-gutter: stable; }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { scroll-behavior: auto !important; animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
 }
+
+/* Immediate pointer, touch and keyboard feedback, including older shared controls. */
+button, a, summary { -webkit-tap-highlight-color: rgba(20,184,166,.22); transition: background-color 120ms, box-shadow 120ms, filter 120ms; touch-action: manipulation; }
+@media (hover: hover) { button:not(:disabled):hover, a:hover, summary:hover { filter: brightness(.94); box-shadow: 0 0 0 2px rgba(20,184,166,.3); } }
+button:not(:disabled):active, a:active, summary:active { filter: brightness(.85); box-shadow: inset 0 0 0 2px rgba(15,118,110,.55); }
+button:disabled { cursor: not-allowed; }
+button[aria-busy="true"] { cursor: progress; }
+@media (prefers-reduced-motion: reduce) { button,a,summary { transition:none; } }

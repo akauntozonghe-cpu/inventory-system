@@ -3,11 +3,8 @@ import { scanDisplayText } from "@/lib/scan-payload";
 import { playScanBeep, primeScanAudio, scanSoundEnabled, setScanSoundEnabled } from "@/lib/scan-feedback";
 
 import { useEffect, useRef, useState } from "react";
-import { createProductReader, createScanGate } from "@/lib/scan-reader";
-import { BrowserMultiFormatReader } from "@zxing/browser";
-import {
-  NotFoundException,
-} from "@zxing/library";
+import { createScanGate } from "@/lib/scan-gate";
+import { startCameraDecoder } from "@/lib/camera-decoder";
 
 type BarcodeCameraProps = {
   title?: string;
@@ -36,7 +33,7 @@ export default function BarcodeCamera({
 }: BarcodeCameraProps) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const controlsRef = useRef<{ stop: () => void } | null>(null);
-  const readerRef = useRef<BrowserMultiFormatReader | null>(null);
+
   const scanGateRef = useRef(createScanGate());
   const stoppedRef = useRef(false);
   const onDetectedRef = useRef(onDetected);
@@ -90,52 +87,20 @@ export default function BarcodeCamera({
       }
 
       controlsRef.current = null;
-      readerRef.current = null;
+
     };
 
     const startCamera = async () => {
       try {
         stoppedRef.current = false;
 
-        const reader = createProductReader(includeQr);
-
-        readerRef.current = reader;
-
-        if (!videoRef.current) {
-          return;
-        }
-
-        const videoConstraints: MediaTrackConstraints = {
-          facingMode: { ideal: "environment" },
-          width: { ideal: 1920 },
-          height: { ideal: 1080 },
-          aspectRatio: { ideal: 16 / 9 },
-        };
-
-        const controls = await reader.decodeFromConstraints(
-          {
-            audio: false,
-            video: videoConstraints,
-          },
-          videoRef.current,
-          (result, scanError) => {
+        if(!videoRef.current)return;
+        const controls = await startCameraDecoder(videoRef.current,{includeQr,paused:()=>{if(pausedRef.current)scanGateRef.current("",Date.now(),true);return pausedRef.current;},onError:message=>{if(mounted)setCameraError(message);},onResult: (raw) => {
             if (!mounted || stoppedRef.current) {
               return;
             }
 
-            if (!result) {
-              if (
-                scanError &&
-                !(scanError instanceof NotFoundException) &&
-                scanError.name !== "NotFoundException"
-              ) {
-                console.warn("BARCODE_SCAN_WARNING", scanError);
-              }
-
-              return;
-            }
-
-            const barcode = result.getText().trim();
+            const barcode = raw.trim();
 
             if (!barcode) {
               return;
@@ -158,7 +123,7 @@ export default function BarcodeCamera({
             }
 
             onDetectedRef.current(barcode);
-          }
+          }}
         );
 
         if (!mounted || stoppedRef.current) { controls.stop(); return; }

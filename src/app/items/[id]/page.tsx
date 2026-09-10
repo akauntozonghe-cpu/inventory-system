@@ -1,4 +1,5 @@
 "use client";
+
 import ProductCodeField from "@/components/ProductCodeField";
 import ProductIdentity from "@/components/inventory/ProductIdentity";
 import StockStateSummary from "@/components/inventory/StockStateSummary";
@@ -9,7 +10,7 @@ import { fetchFresh } from "@/lib/fetch-fresh";
 import Link from "next/link";
 import { expiryPolicy, expiryPolicyLabels } from "@/lib/expiry-policy";
 import { FormEvent, useCallback, useEffect, useState } from "react";
-import { useParams, useRouter } from "next/navigation";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 import SystemBarcodeLabel from "@/components/SystemBarcodeLabel";
 import FeedbackToast from "@/components/common/FeedbackToast";
 
@@ -253,8 +254,9 @@ function allocationLabel(value: InventoryInstance["allocationType"]) {
 
 export default function ItemDetailPage() {
   const params = useParams();
+  const searchParams=useSearchParams();
   const [focusedInventory,setFocusedInventory]=useState("");
-  useEffect(()=>{setFocusedInventory(new URLSearchParams(window.location.search).get("inventoryId")??"");},[]);
+  useEffect(()=>{setFocusedInventory(searchParams.get("inventoryId")??"");},[searchParams]);
   const router = useRouter();
 
   const itemId = typeof params.id === "string" ? params.id : "";
@@ -613,6 +615,14 @@ export default function ItemDetailPage() {
           </div>
         </header>
 
+        <section aria-label="対象の在庫" className="mb-5 rounded-2xl border-2 border-teal-300 bg-white p-4">
+          <h2 className="text-xl font-black">{focusedInventory?"開いている在庫":"この商品の在庫"}</h2>
+          <p className="my-2 text-sm">{[item.majorCategory,item.minorCategory].filter(Boolean).join(" ／ ")} · {item.inventoryInstances.length}明細</p>
+          {item.inventoryInstances.length>1&&<label className="block font-bold">Lot・保管場所で在庫を選ぶ<select aria-label="Lot・保管場所で在庫を選ぶ" value={focusedInventory} onChange={event=>setFocusedInventory(event.target.value)} className="mt-2 w-full rounded-xl border p-3"><option value="">すべての在庫</option>{item.inventoryInstances.map(row=><option key={row.id} value={row.id}>{row.storageLocation?.name||"場所未設定"} ／ Lot {row.lotNo||"なし"} ／ {row.quantity} {displayUnit(row.unit,item.defaultUnit)} ／ {row.status}</option>)}</select></label>}
+          {focusedInventory&&!inventoryInstances.length&&<p role="alert" className="my-3 font-bold text-red-700">指定された在庫が見つかりません。上の選択から最新の在庫を確認してください。</p>}
+          <div className="mt-3 max-h-80 space-y-2 overflow-auto">{inventoryInstances.map(row=><article key={row.id} className="rounded-xl bg-teal-50 p-3"><div className="flex flex-wrap items-center justify-between gap-3"><div><p className="text-lg font-black">{row.storageLocation?.name||"保管場所未設定"} ／ Lot {row.lotNo||"なし"}</p><p className="mt-1">状態：{row.status} ／ 棚卸：{row.stocktakeStatus}</p><p className="mt-1 text-2xl font-black">{row.quantity} {displayUnit(row.unit,item.defaultUnit)}</p></div><button className="rounded-xl border bg-white p-3 font-bold" onClick={()=>{setFocusedInventory(row.id);requestAnimationFrame(()=>document.getElementById("inventory-"+row.id)?.scrollIntoView({behavior:"smooth",block:"start"}));}}>この在庫の明細へ</button></div></article>)}</div>
+          <StockStateSummary stocks={inventoryInstances} defaultUnit={item.defaultUnit} itemId={item.id} inventoryId={focusedInventory||undefined}/>
+        </section>
         <FeedbackToast
           message={notice}
           tone="success"
@@ -773,7 +783,7 @@ export default function ItemDetailPage() {
             itemId={item.id}
             itemName={item.name}
             janCode={item.janCode}
-            initialSystemJan={item.systemBarcode}
+            initialSystemJan={item.systemBarcode} onUpdated={()=>loadItem(true)}
           />
 
           <section className="rounded-3xl bg-white p-5 shadow-sm sm:p-7">
@@ -792,7 +802,7 @@ export default function ItemDetailPage() {
               </span>
             </div>
 
-            {focusedInventory&&<p className="my-4 rounded-xl bg-blue-50 p-3 font-bold">点検で指定された在庫だけを表示しています。Lot・保管場所を確認して、この明細を編集してください。<button className="ml-3 underline" onClick={()=>setFocusedInventory("")}>この商品の全在庫を表示</button><Link href="/admin/recovery" className="ml-3 underline">点検へ戻って再確認</Link></p>}
+            {focusedInventory&&<p className="my-4 rounded-xl bg-blue-50 p-3 font-bold">選んだ在庫だけを表示しています。Lot・保管場所を確認して、この明細を編集してください。<button className="ml-3 underline" onClick={()=>setFocusedInventory("")}>この商品の全在庫を表示</button><Link href="/admin/recovery" className="ml-3 underline">点検へ戻って再確認</Link></p>}
             {inventoryInstances.length === 0 ? (
               <div className="mt-5 rounded-2xl bg-slate-100 p-7 text-center text-slate-600">
                 登録されている在庫はありません。

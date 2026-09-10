@@ -1,14 +1,15 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import BarcodePrintOptions from "@/components/BarcodePrintOptions";
-import { barcodeLabel, barcodePrintDocument, type LabelScale } from "@/lib/barcode-label";
+import LabelPrintDialog from "@/components/LabelPrintDialog";
+import { barcodeLabel } from "@/lib/barcode-label";
 
 type SystemBarcodeLabelProps = {
   itemId: string;
   itemName: string;
   janCode: string | null;
   initialSystemJan: string | null;
+  onUpdated?:()=>void|Promise<void>;
 };
 
 type IssueResponse = {
@@ -19,7 +20,7 @@ type IssueResponse = {
   message?: string;
 };
 
-type PrintLayout = "A4" | "LABEL";
+
 
 function readMessage(data: unknown, fallback: string) {
   if (
@@ -39,6 +40,7 @@ export default function SystemBarcodeLabel({
   itemName,
   janCode,
   initialSystemJan,
+  onUpdated,
 }: SystemBarcodeLabelProps) {
   const svgRef = useRef<SVGSVGElement | null>(null);
 
@@ -47,10 +49,8 @@ export default function SystemBarcodeLabel({
   const [checkingRole, setCheckingRole] = useState(true);
   const [issuing, setIssuing] = useState(false);
   const [message, setMessage] = useState("");
-  const [printLayout, setPrintLayout] = useState<PrintLayout>("A4");
-  const [printCopies, setPrintCopies] = useState(1);
-  const [includeLabelName, setIncludeLabelName] = useState(false);
-  const [scale, setScale] = useState<LabelScale>(0.8);
+  const [printOpen,setPrintOpen]=useState(false);
+  const scale=0.8;
   const [barcodeError, setBarcodeError] = useState("");
 
   const barcode = janCode || systemJan;
@@ -107,9 +107,9 @@ export default function SystemBarcodeLabel({
       setBarcodeError("");
     } catch (error) {
       svgRef.current.replaceChildren();
-      setBarcodeError(error instanceof Error ? error.message : "バーコードを表示できませんでした。");
+      setBarcodeError(`商品「${itemName}」：${error instanceof Error ? error.message : "バーコードを表示できませんでした。"}`);
     }
-  }, [barcode, scale]);
+  }, [barcode, scale, itemName]);
 
   const issueSystemJan = async () => {
     if (janCode) {
@@ -169,23 +169,11 @@ export default function SystemBarcodeLabel({
     }
   };
 
-  const printLabel = () => {
-    if (!barcode || !svgRef.current) {
-      return;
-    }
-
-    try {
-      const copies = Number.isFinite(printCopies) ? Math.min(Math.max(Math.trunc(printCopies), 1), 100) : 1;
-      const html = barcodePrintDocument(Array.from({ length: copies }, () => ({ name: itemName, barcode })), printLayout, scale, includeLabelName);
-      const printWindow = window.open("", "_blank", "width=900,height=700");
-      if (!printWindow) throw new Error("印刷画面を開けませんでした。ポップアップを許可してください。");
-      printWindow.document.write(html);
-      printWindow.document.close();
-    } catch (error) { setMessage(error instanceof Error ? error.message : "ラベルを作成できませんでした。"); }
-  };
+  const printLabel = () => setPrintOpen(true);
 
   return (
     <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-7">
+      {printOpen&&<LabelPrintDialog labels={[{id:itemId,itemId,name:itemName,barcode}]} canEdit={isAdmin} onClose={()=>setPrintOpen(false)} onRefresh={onUpdated}/>}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div>
           <p className="text-sm font-bold text-slate-500">
@@ -209,7 +197,7 @@ export default function SystemBarcodeLabel({
           <button
             type="button"
             onClick={printLabel}
-            disabled={Boolean(barcodeError)}
+
             className="rounded-xl bg-slate-800 px-4 py-3 font-bold text-white hover:bg-slate-950"
           >
             ラベルを印刷
@@ -239,34 +227,7 @@ export default function SystemBarcodeLabel({
 
       {barcode && (
         <div className="mt-5 rounded-xl border border-slate-200 bg-slate-50 p-4">
-          <div className="mb-3 text-sm font-bold">ラベルサイズ
-            <BarcodePrintOptions scale={scale} onScale={setScale} includeName={includeLabelName} onIncludeName={setIncludeLabelName} />
-          </div>
-          <p className="mb-3 text-sm">JANは規定の余白・高さで印刷します。旧SYSコードは内容に応じて横幅が広がります。</p>
-          <div className="mb-4 grid gap-3 sm:grid-cols-2">
-            <label className="text-sm font-bold text-slate-700">
-              印刷用紙
-              <select
-                value={printLayout}
-                onChange={(event) => setPrintLayout(event.target.value as PrintLayout)}
-                className="mt-1 w-full rounded-lg border bg-white p-2"
-              >
-                <option value="A4">A4・小型ラベル</option>
-                <option value="LABEL">ラベルプリンター</option>
-              </select>
-            </label>
-            <label className="text-sm font-bold text-slate-700">
-              印刷枚数
-              <input
-                type="number"
-                min="1"
-                max="100"
-                value={printCopies}
-                onChange={(event) => setPrintCopies(Number(event.target.value))}
-                className="mt-1 w-full rounded-lg border bg-white p-2"
-              />
-            </label>
-          </div>
+          <p className="mb-3 text-sm">80%の小型寸法です。印刷画面で枚数・用紙・商品名の有無を選べます。画面上のmm表示は端末により実寸と異なるため、印刷時は100%で確認してください。</p>
           <p className="mb-2 text-center text-sm font-bold text-slate-600">
             {barcodeTitle}
           </p>
