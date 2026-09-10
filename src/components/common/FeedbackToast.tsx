@@ -35,11 +35,12 @@ export default function FeedbackToast({
   onRetry,
   retrying,
 }: Props) {
+  const effectiveAutoCloseMs = tone === "success" ? autoCloseMs ?? 3500 : autoCloseMs;
   useEffect(() => {
-    if (!message || !onClose || !autoCloseMs) return;
-    const timer = window.setTimeout(onClose, autoCloseMs);
+    if (!message || !onClose || !effectiveAutoCloseMs) return;
+    const timer = window.setTimeout(onClose, effectiveAutoCloseMs);
     return () => window.clearTimeout(timer);
-  }, [autoCloseMs, message, onClose]);
+  }, [effectiveAutoCloseMs, message, onClose]);
 
   if (!message) return null;
 

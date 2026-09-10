@@ -144,6 +144,18 @@ export async function POST(request: NextRequest) {
       const used = kind === "MAJOR" ? await prisma.item.count({ where: { majorCategory: source } }) : await prisma.item.count({ where: { minorCategory: source, ...(parentName ? { majorCategory: parentName } : {}) } });
       if (used > 0) return NextResponse.json({ code: "CLASSIFICATION_IN_USE", message: `${used}件の商品が使用中です。削除ではなく統合または移動を実行してください。` }, { status: 409 });
       result = await prisma.classification.deleteMany({ where: { kind, name: source, ...(kind === "MINOR" ? { parentName } : {}) } });
+    } else if (action === "DELETE_LOCATION") {
+      const sourceId = text(body.sourceId);
+      if (!sourceId) return NextResponse.json({ code: "LOCATION_INPUT_INVALID", message: "削除する保管場所を指定してください。" }, { status: 400 });
+      const location = await prisma.storageLocation.findUnique({ where: { id: sourceId }, select: { id: true, name: true } });
+      if (!location) return NextResponse.json({ code: "LOCATION_NOT_FOUND", message: "保管場所が見つかりません。" }, { status: 404 });
+      const [inventoryCount, requestCount, activeSessionCount] = await Promise.all([
+        prisma.inventoryInstance.count({ where: { storageLocationId: sourceId } }),
+        prisma.itemRegistrationRequest.count({ where: { storageLocationId: sourceId } }),
+        prisma.stocktakeSession.count({ where: { scopeType: "LOCATION", scopeValue: location.name, status: { in: ["IN_PROGRESS", "PAUSED", "REVIEW", "CONFLICT"] } } }),
+      ]);
+      if (inventoryCount || requestCount || activeSessionCount) return NextResponse.json({ code: "LOCATION_IN_USE", message: "在庫・商品登録・棚卸で使用中のため削除できません。先に移動または統合してください。" }, { status: 409 });
+      result = await prisma.storageLocation.delete({ where: { id: sourceId } });
     } else if (action === "CREATE_LOCATION") {
       if (!name) return NextResponse.json({ code: "LOCATION_NAME_REQUIRED", message: "保管場所名を入力してください。" }, { status: 400 });
       result = await prisma.storageLocation.upsert({ where: { name }, update: { description: text(body.description, 500) || null }, create: { name, description: text(body.description, 500) || null } });
