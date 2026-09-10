@@ -20,6 +20,7 @@ function positiveInt(value: unknown) {
 }
 
 function nonNegativeInt(value: unknown) {
+  if(value===null||value===undefined||value==="")return null;
   const parsed = Number(value);
   return Number.isInteger(parsed) && parsed >= 0 ? parsed : null;
 }
@@ -71,7 +72,7 @@ async function loadMarketplace(request: NextRequest) {
       }),
     ];
     return new NextResponse(`\uFEFF${rows.map((row) => row.map(csvCell).join(",")).join("\r\n")}`, {
-      headers: { "Content-Type": "text/csv; charset=utf-8", "Content-Disposition": `attachment; filename="personal-marketplace-${new Date().toISOString().slice(0, 10)}.csv"` },
+      headers: { "Content-Type": "text/csv; charset=utf-8", "Content-Disposition": `attachment; filename="shared-marketplace-${new Date().toISOString().slice(0, 10)}.csv"` },
     });
   }
 
@@ -155,7 +156,7 @@ async function createListing(request: NextRequest) {
         listedQuantity,
         fee: nonNegativeInt(body?.fee),
         shippingCost: nonNegativeInt(body?.shippingCost),
-        packagingCost: nonNegativeInt(body?.packagingCost) ?? 0,
+        packagingCost: nonNegativeInt(body?.packagingCost),
         acquisitionCostSnapshot: inventory.acquisitionCost,
         shippingMethod: text(body?.shippingMethod, 100) || null,
         notes: text(body?.notes, 1000) || null,
@@ -208,7 +209,7 @@ async function changeListing(request: NextRequest) {
       return NextResponse.json({ code: "MARKETPLACE_SHIPPING_STATUS_INVALID", message: "発送状態が正しくありません。" }, { status: 400 });
     }
     const nextShipping = ({NOT_READY:"PACKING",PACKING:"READY_TO_SHIP",READY_TO_SHIP:"SHIPPED",SHIPPED:"DELIVERED",DELIVERED:"SETTLED"} as Record<string,string>)[existing.shippingStatus];
-    if (shippingStatus !== nextShipping) return NextResponse.json({message:"発送状態は順に進めてください。取消・差戻しは管理者操作から行えます。"},{status:409});
+    if (shippingStatus !== nextShipping) return NextResponse.json({message:"発送状態は順に進めてください。出品の「取消・差戻し」から戻せます。"},{status:409});
     const now = new Date();
     const listing = await prisma.marketplaceListing.update({
       where: { id, updatedAt: existing.updatedAt },
@@ -229,7 +230,7 @@ async function changeListing(request: NextRequest) {
   if (!LISTING_STATUSES.includes(status as typeof LISTING_STATUSES[number])) {
     return NextResponse.json({ code: "MARKETPLACE_STATUS_INVALID", message: "更新内容が正しくありません。" }, { status: 400 });
   }
-  if (status !== "CANCELLED" && ({DRAFT:"READY",READY:"LISTED",LISTED:"SOLD"} as Record<string,string>)[existing.status] !== status) return NextResponse.json({message:"順番に状態を進めてください。差戻しは管理者モードから行えます。"},{status:409});
+  if (status !== "CANCELLED" && ({DRAFT:"READY",READY:"LISTED",LISTED:"SOLD"} as Record<string,string>)[existing.status] !== status) return NextResponse.json({message:"順番に状態を進めてください。差戻しは出品の「取消・差戻し」から行えます。"},{status:409});
   if (["SOLD", "CANCELLED"].includes(existing.status)) {
     return NextResponse.json({ code: "MARKETPLACE_ALREADY_CLOSED", message: "終了済みの出品は変更できません。" }, { status: 409 });
   }
@@ -245,8 +246,8 @@ async function changeListing(request: NextRequest) {
       const after = before - soldQuantity;
       const changed = await tx.inventoryInstance.updateMany({ where: { id: existing.inventoryInstanceId, quantity: before, updatedAt: existing.inventoryInstance.updatedAt }, data: { quantity: after, actualQuantity: existing.inventoryInstance.actualQuantity === null ? null : Math.max(existing.inventoryInstance.actualQuantity - soldQuantity, 0) } });
       if (changed.count !== 1) throw new Error("MARKETPLACE_CHANGED");
-      await tx.inventoryHistory.create({ data: { inventoryInstanceId: existing.inventoryInstanceId, changeQuantity: -soldQuantity, action: `個人フリマ販売：${existing.channel}` } });
-      await tx.inventoryEvent.create({ data: { inventoryInstanceId: existing.inventoryInstanceId, eventType: "ISSUE", quantityBefore: before, quantityChange: -soldQuantity, quantityAfter: after, reason: "個人フリマ販売", detail: { marketplaceListingId: id, channel: existing.channel, externalListingId: existing.externalListingId }, performedByUserId: auth.user.id } });
+      await tx.inventoryHistory.create({ data: { inventoryInstanceId: existing.inventoryInstanceId, changeQuantity: -soldQuantity, action: `フリマ販売：${existing.channel}` } });
+      await tx.inventoryEvent.create({ data: { inventoryInstanceId: existing.inventoryInstanceId, eventType: "ISSUE", quantityBefore: before, quantityChange: -soldQuantity, quantityAfter: after, reason: "フリマ販売", detail: { marketplaceListingId: id, channel: existing.channel, externalListingId: existing.externalListingId }, performedByUserId: auth.user.id } });
       const siblingResult = await tx.marketplaceListing.updateMany({ where: { inventoryInstanceId: existing.inventoryInstanceId, id: { not: id }, status: { in: [...RESERVED_LISTING_STATUSES] } }, data: { status: "CANCELLED", notes: "他の販売先で売却されたため取り下げ確認が必要です。" } });
       await tx.notification.create({ data: { type: "MARKETPLACE_SOLD", audience: "ADMIN", title: siblingResult.count ? "売却済み：他サイトの出品を取り下げてください" : "フリマ販売を在庫へ反映", message: `${existing.inventoryInstance.item.name}を${soldQuantity}点販売し、残数は${after}点です。${siblingResult.count ? ` 併売${siblingResult.count}件を停止扱いにしました。` : ""}`, detail: { marketplaceListingId: id, cancelledSiblingCount: siblingResult.count } } });
       return tx.marketplaceListing.update({ where: { id }, data: { status: "SOLD", soldQuantity, soldAt: new Date(), shippingStatus: "PACKING", fee: nonNegativeInt(body?.fee) ?? existing.fee, shippingCost: nonNegativeInt(body?.shippingCost) ?? existing.shippingCost } });

@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireLogin } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 
-function numberValue(value: unknown, min = 0, max = 10_000_000) { const parsed = Number(value); return Number.isFinite(parsed) && parsed >= min && parsed <= max ? Math.round(parsed) : null; }
+function numberValue(value: unknown, min = 0, max = 10_000_000) { if(value===null||value===undefined||value==="")return null; const parsed = Number(value); return Number.isFinite(parsed) && parsed >= min && parsed <= max ? Math.round(parsed) : null; }
 function stringValue(value: unknown, max = 200) { return typeof value === "string" ? value.trim().slice(0, max) : ""; }
 
 export async function GET(request: NextRequest) {
@@ -30,12 +30,19 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   const auth = requireLogin(request); if (auth.response || !auth.user) return auth.response;
   const body = await request.json().catch(() => null) as Record<string, unknown> | null; const action = stringValue(body?.action, 50);
-  if(["SAVE_RECOMMENDATION_SETTING","SAVE_SHIPPING_RATE","UPDATE_CHANNEL"].includes(action)){const user=await prisma.appUser.findUnique({where:{id:auth.user.id},select:{role:true,featurePermissions:true}});if(user?.role!=="ADMIN"&&!user?.featurePermissions.includes("MARKETPLACE_SETTINGS" as never))return NextResponse.json({code:"MARKETPLACE_SETTINGS_DISABLED",message:"販売設定の変更は許可されていません。"},{status:403});}
+  if(["SAVE_RECOMMENDATION_SETTING","SAVE_SHIPPING_RATE","UPDATE_CHANNEL","SAVE_CHANNEL_FEE"].includes(action)){const user=await prisma.appUser.findUnique({where:{id:auth.user.id},select:{role:true,featurePermissions:true}});if(user?.role!=="ADMIN"&&!user?.featurePermissions.includes("MARKETPLACE_SETTINGS" as never))return NextResponse.json({code:"MARKETPLACE_SETTINGS_DISABLED",message:"販売設定の変更は許可されていません。"},{status:403});}
   if (action === "SAVE_RECOMMENDATION_SETTING") {
-    const latitude = Number(body?.latitude); const longitude = Number(body?.longitude);
-    if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) return NextResponse.json({ message: "地域の緯度・経度を確認してください。" }, { status: 400 });
-    const setting = await prisma.salesRecommendationSetting.upsert({ where: { id: "system" }, create: { id: "system", regionName: stringValue(body?.regionName,100) || "設定地域", latitude, longitude, packagingCostDefault: numberValue(body?.packagingCostDefault) ?? 100, targetProfitRateBps: numberValue(body?.targetProfitRateBps,0,10000) ?? 2000 }, update: { regionName: stringValue(body?.regionName,100) || "設定地域", latitude, longitude, packagingCostDefault: numberValue(body?.packagingCostDefault) ?? 100, targetProfitRateBps: numberValue(body?.targetProfitRateBps,0,10000) ?? 2000 } });
-    return NextResponse.json({ setting, message: "販売提案設定を更新しました。" });
+    const goal=numberValue(body?.targetProfitRateBps,0,9000);
+    if(goal===null)return NextResponse.json({message:"目標利益率は0〜90%で指定してください。"},{status:400});
+    const setting=await prisma.salesRecommendationSetting.upsert({where:{id:"system"},create:{id:"system",targetProfitRateBps:goal},update:{targetProfitRateBps:goal}});
+    return NextResponse.json({setting,message:"提案の目標を保存しました。"});
+  }
+  if(action==="SAVE_CHANNEL_FEE") {
+    const channel=stringValue(body?.channel,50), fee=numberValue(body?.feeRateBps,0,10000);
+    if(!["mercari","rakuma","yahoo_furima","flea_market"].includes(channel)||fee===null)return NextResponse.json({message:"販売先と手数料率（0〜100%）を確認してください。"},{status:400});
+    const names:Record<string,string>={mercari:"メルカリ",rakuma:"ラクマ",yahoo_furima:"Yahoo!フリマ",flea_market:"その他"};
+    const setting=await prisma.salesChannelSetting.upsert({where:{channel},create:{channel,displayName:names[channel],feeRateBps:fee},update:{feeRateBps:fee}});
+    return NextResponse.json({setting,message:"販売先の手数料を保存しました。"});
   }
   if (action === "SAVE_INVENTORY_SPECS") {
     const id = stringValue(body?.inventoryInstanceId,100); if (!id) return NextResponse.json({ message: "在庫を指定してください。" }, { status: 400 });

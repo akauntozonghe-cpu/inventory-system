@@ -31,7 +31,7 @@ export default function StocktakeAdminMenu({
         <section className="w-full rounded-3xl bg-white p-5 shadow-2xl sm:p-6">
           <div className="flex items-start justify-between gap-4">
             <div>
-              <p className="text-sm font-bold text-violet-600">管理者モード</p>
+              <p className="text-sm font-bold text-violet-600">一時的な操作許可</p>
               <h2 className="mt-1 text-2xl font-black text-slate-950">
                 棚卸管理メニュー
               </h2>
@@ -108,7 +108,7 @@ export default function StocktakeAdminMenu({
             onClick={onExitAdminMode}
             className="mt-5 min-h-12 w-full rounded-2xl bg-slate-800 px-4 py-3 font-bold text-white"
           >
-            管理者モードを終了
+            一時的な操作許可を終了
           </button>
         </section>
       </div>

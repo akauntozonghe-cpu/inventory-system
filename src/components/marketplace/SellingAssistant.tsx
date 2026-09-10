@@ -1,0 +1,34 @@
+"use client";
+import { useEffect, useState } from "react";
+import { Sparkles, Package, ArrowDownToLine, RefreshCw } from "lucide-react";
+import type { DeliveryOption, Parcel } from "@/lib/marketplace-assistance";
+type Method=DeliveryOption & {fit:"MATCH"|"UNKNOWN";packagingCost:number|null;numbers:{price:number|null;minimum:number|null;profit:number|null;source:string;sampleCount:number}};
+type Proposal={engine:string;inventoryInstanceId:string;parcel:Parcel;feeBps:number|null;feeNote:string;methods:Method[];guide:string|null;historyCount:number;missing:string[];draft:{title:string;description:string}};
+export type SuggestedDraft={title:string;description:string;price:number|null;shippingMethod:string;shippingCost:number;packagingCost:number|null};
+export default function SellingAssistant({inventoryId,channel,quantity,condition,onApply}:{inventoryId:string;channel:string;quantity:number;condition:string;onApply:(value:SuggestedDraft)=>void}) {
+  const [proposal,setProposal]=useState<Proposal|null>(null),[busy,setBusy]=useState(false),[error,setError]=useState("");
+  const [parcel,setParcel]=useState({length:"",width:"",height:"",weight:"",packagingCost:""});
+  const [showAll,setShowAll]=useState(false);
+  const [revision,setRevision]=useState(0),[ready,setReady]=useState(false);
+  useEffect(()=>{const controller=new AbortController();setBusy(true);setReady(false);setError("");
+    fetch("/api/admin/marketplace/proposal",{method:"POST",headers:{"Content-Type":"application/json"},signal:controller.signal,body:JSON.stringify({inventoryInstanceId:inventoryId,channel,quantity,condition,...parcel})}).then(async r=>{const value=await r.json();if(!r.ok)throw new Error(`${value.code??"MARKETPLACE_PROPOSAL_FAILED"}：${value.message}`);if(!controller.signal.aborted){setProposal(value);setReady(true);}}).catch(e=>{if(!controller.signal.aborted)setError(e instanceof Error?e.message:"提案を確認できませんでした。");}).finally(()=>{if(!controller.signal.aborted)setBusy(false);});return()=>controller.abort();
+    // Parcel changes are submitted together using the comparison button.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[inventoryId,channel,quantity,condition,revision]);
+  return <section aria-label="出品サポート" className="rounded-2xl border border-indigo-100 bg-gradient-to-br from-indigo-50 to-white p-4">
+    <div className="flex items-center gap-2"><Sparkles size={20} className="text-indigo-600"/><h3 className="font-black">価格・送料を一緒に決める</h3></div>
+    <p className="mt-2 text-sm text-slate-600">価格が分からなくても大丈夫。共通の販売履歴と送料から候補を出します。</p>
+    <details className="mt-3 rounded-xl border bg-white p-3"><summary className="cursor-pointer font-bold">梱包する大きさ・費用を選ぶ</summary><p className="mt-2 text-xs text-slate-600">発送する{quantity}点をまとめた梱包後の値です。分からない欄は空欄で候補を見られます。梱包費は袋・箱・緩衝材の合計です。</p><div className="mt-3 grid grid-cols-2 gap-2">{([['length','長い辺（cm）'],['width','短い辺（cm）'],['height','厚さ（cm）'],['weight','重さ（g）'],['packagingCost','今回の梱包費（円）']] as const).map(([key,label])=><label key={key} className="text-xs font-bold">{label}<input type="number" min={key==='packagingCost'?0:0.1} step="any" value={parcel[key]} onChange={e=>{setReady(false);setParcel({...parcel,[key]:e.target.value});}} className="mt-1 w-full min-w-0 rounded-lg border p-2"/></label>)}</div></details>
+    <button type="button" disabled={busy} onClick={()=>setRevision(n=>n+1)} className="mt-3 flex min-h-11 w-full items-center justify-center gap-2 rounded-xl bg-indigo-700 px-3 py-2 font-bold text-white disabled:opacity-50"><RefreshCw size={16} className={busy?"animate-spin":""}/>{busy?"候補を確認しています…":"この条件で比較する"}</button>
+    {error&&<p role="alert" className="mt-3 text-sm text-red-700">{error}</p>}
+    {proposal&&<><p className="mt-3 text-xs text-slate-600">{proposal.feeBps===null?"手数料未確認":`手数料 ${proposal.feeBps/100}%の概算`} · {proposal.feeNote}</p>{proposal.missing.length>0&&<details className="mt-2 text-sm"><summary className="cursor-pointer font-bold">確認すると精度が上がること（{proposal.missing.length}）</summary><ul className="mt-2 list-disc space-y-1 pl-5">{proposal.missing.map(text=><li key={text}>{text}</li>)}</ul></details>}
+      <div className="mt-3 space-y-2">{proposal.methods.slice(0,showAll?proposal.methods.length:1).map((method,index)=><article key={method.id} className="rounded-xl border bg-white p-3"><div className="flex items-center justify-between gap-2"><p className="flex items-center gap-2 font-bold"><Package size={16}/>{method.name}</p>{index===0&&method.fit==='MATCH'&&<span className="shrink-0 rounded-full bg-indigo-50 px-2 py-1 text-xs text-indigo-700">候補</span>}</div><p className="mt-2 text-sm">送料 <strong>{method.fee.toLocaleString()}円</strong> ＋ 梱包 {method.packagingCost===null?'未確認':`${method.packagingCost}円`}</p><p className="mt-1 text-xs text-slate-500">{method.fit==='UNKNOWN'?'サイズ・重さの確認前です。発送可否は未確定。':'入力したサイズ・重さでの候補です。'} {method.note}</p>
+      <p className="mt-3 text-lg font-black">{method.numbers.price===null?'価格の根拠がまだありません':`1点 ${method.numbers.price.toLocaleString()}円`}</p><p className="text-xs text-slate-500">{method.numbers.source==='HISTORY'?`同じ商品・状態・販売先の過去1年 ${method.numbers.sampleCount}件の中央値。外部相場ではありません。`:method.numbers.source==='COST'?'原価と今回の費用から計算した目標価格です。売れる価格を保証するものではありません。':'商品の状態や原価・梱包費を確認すると比較できます。'}</p>{method.numbers.profit!==null&&<p className={`mt-1 text-sm font-bold ${method.numbers.profit<0?'text-red-700':'text-emerald-700'}`}>この数量の概算利益 {method.numbers.profit.toLocaleString()}円</p>}
+      {method.source&&<a href={method.source} target="_blank" rel="noreferrer" className="mt-2 inline-block text-xs text-indigo-700 underline">公式料金・条件（{method.checkedAt}確認）</a>}
+      <button type="button" disabled={!ready||busy||method.fit!=='MATCH'} onClick={()=>onApply({...proposal.draft,price:method.numbers.price,shippingMethod:method.name,shippingCost:method.fee,packagingCost:method.packagingCost})} className="mt-3 flex min-h-11 w-full items-center justify-center gap-2 rounded-lg border border-indigo-200 px-2 py-2 text-sm font-bold text-indigo-800 disabled:opacity-40"><ArrowDownToLine size={16}/>{method.fit==='UNKNOWN'?'梱包サイズを確認すると使えます':'この候補を入力欄へ反映'}</button></article>)}</div>
+      {proposal.methods.length>1&&<button type="button" className="mt-3 min-h-11 w-full rounded-xl border bg-white p-2 text-sm font-bold" onClick={()=>setShowAll(value=>!value)}>{showAll?"候補を折りたたむ":`ほかの発送方法も比較（${proposal.methods.length-1}件）`}</button>}
+      {proposal.guide&&<a href={proposal.guide} target="_blank" rel="noreferrer" className="mt-3 inline-block text-sm font-bold text-indigo-700 underline">販売先の送料・発送方法を見る</a>}
+      <p className="mt-3 text-xs text-slate-500">提案を反映しても保存・出品はされません。説明文の「要確認」を実物に合わせて直してください。</p>
+    </>}
+  </section>;
+}
