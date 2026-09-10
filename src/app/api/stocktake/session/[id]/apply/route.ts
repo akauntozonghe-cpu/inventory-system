@@ -102,7 +102,8 @@ export async function POST(
 
     const recordsToApply = recordsForConfirmation(records, session.completedAt);
     const inventoryIds = recordsToApply.map((record) => record.inventoryInstanceId);
-    const ownTargets=await prisma.stocktakeTarget.findMany({where:{sessionId,inventoryInstanceId:{in:inventoryIds}},select:{inventoryInstanceId:true}});
+    const ownTargets=await prisma.stocktakeTarget.findMany({where:{sessionId,inventoryInstanceId:{in:inventoryIds}},select:{inventoryInstanceId:true,expectedQuantity:true}});
+    const baselineMap = new Map(ownTargets.map(target => [target.inventoryInstanceId, target.expectedQuantity]));
     const ownIds=new Set(ownTargets.map(target=>target.inventoryInstanceId));
     const unlinkedIds=inventoryIds.filter(id=>!ownIds.has(id));
     if(unlinkedIds.length)return NextResponse.json({code:"STOCKTAKE_TARGET_LINK_MISSING",message:`「${session.title}」で対象登録のない入力が${unlinkedIds.length}件あります。結果画面に商品・Lot・保存済み数量を表示しています。管理者がこの棚卸の対象登録を確認してから確定してください。`,sessionId,inventoryIds:unlinkedIds},{status:409});
@@ -132,10 +133,18 @@ export async function POST(
           return null;
         }
 
+        const baseline = baselineMap.get(record.inventoryInstanceId);
+        if (baseline === undefined) throw new Error("STOCKTAKE_APPLY_BASELINE_MISSING");
+        const correction = record.countedQuantity - baseline;
+        // A changed balance can be a sale or another worker's correction.
+        // Do not apply a nonzero discrepancy twice or infer movement history.
+        if (correction !== 0 && inventory.quantity !== baseline) throw new Error("STOCKTAKE_APPLY_MOVEMENT_RECHECK");
+        const nextQuantity = inventory.quantity + correction;
+        if (!Number.isSafeInteger(nextQuantity) || nextQuantity < 0 || nextQuantity > 2147483647) throw new Error("STOCKTAKE_APPLY_MOVEMENT_RECHECK");
         return {
           inventoryInstanceId: record.inventoryInstanceId,
-          countedQuantity: record.countedQuantity,
-          changeQuantity: record.countedQuantity - inventory.quantity,
+          countedQuantity: nextQuantity,
+          changeQuantity: correction,
           inventoryUpdatedAt: inventory.updatedAt,
         };
       })
@@ -220,7 +229,11 @@ export async function POST(
   } catch (error) {
     console.error("POST /api/stocktake/session/[id]/apply", error);
 
-    if (error instanceof Error && ["STOCKTAKE_APPLY_CHANGED", "STOCKTAKE_APPLY_INVENTORY_CHANGED"].includes(error.message)) {
+    if (error instanceof Error && error.message === "STOCKTAKE_APPLY_MOVEMENT_RECHECK") {
+      return NextResponse.json({ code: error.message, message: "差異のある商品で、棚卸入力後に在庫が変わりました。在庫は上書きしていません。対象の入出庫と棚卸結果を確認してください。" }, { status: 409 });
+    }
+
+    if (error instanceof Error && ["STOCKTAKE_APPLY_CHANGED", "STOCKTAKE_APPLY_INVENTORY_CHANGED", "STOCKTAKE_APPLY_BASELINE_MISSING", "STOCKTAKE_APPLY_MOVEMENT_RECHECK"].includes(error.message)) {
       return NextResponse.json({ code: error.message, message: "別端末が棚卸または在庫を更新しました。今回の反映は取り消しました。最新の結果を再確認してください。" }, { status: 409 });
     }
 

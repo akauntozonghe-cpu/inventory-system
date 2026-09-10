@@ -109,17 +109,17 @@ export default function UnregisteredItemDialog({
     expirationDate: "",
   });
 
+  const openedRef = useRef(false);
   useEffect(() => {
-    if (!open) {
-      return;
-    }
-
-    const barcode = initialJanCode.trim();
+    if (!open) { openedRef.current = false; return; }
+    if (openedRef.current) return;
+    openedRef.current = true;
+    const barcode = initialJanCode.normalize("NFKC").trim();
 
     setMessage("");
     setForm((previous) => ({
       ...previous,
-      janCode: isSystemBarcode(barcode) ? "" : barcode,
+      janCode: /^(?:\d{8}|\d{13})$/.test(barcode) ? barcode : "",
       systemBarcode: isSystemBarcode(barcode) ? barcode : "",
     }));
   }, [initialJanCode, open]);

@@ -8,6 +8,7 @@ import { useEffect, useState, type RefObject } from "react";
 export type StocktakeSelectedItem = {
   id: string;
   expectedQuantity: number;
+  currentQuantity?: number;
   countedQuantity: number | null;
   lotNo: string | null;
   expirationDate: string | null;
@@ -143,6 +144,7 @@ export default function StocktakeInputPanel({
             基準数量：{selected.expectedQuantity}
             {unit}
           </p>
+          {selected.currentQuantity !== undefined && <p className="mt-1 text-sm text-slate-600">現在庫：{selected.currentQuantity}{unit}</p>}
           {alreadyRecorded && <p className="mt-2 text-sm font-bold text-emerald-700">前回入力：{selected.countedQuantity}{unit}（再保存すると上書きされます）</p>}
         </div>
 
@@ -199,8 +201,8 @@ export default function StocktakeInputPanel({
           disabled={disabled || saving}
           value={quantity}
           onChange={(event) => onQuantityChange(event.target.value)}
-          onFocus={(event) => event.target.select()}
-          onBlur={() => onQuantityChange(quantity.normalize("NFKC"))}
+          placeholder="実際に数えた数量"
+          onBlur={(event) => onQuantityChange(event.currentTarget.value.normalize("NFKC"))}
           onCompositionEnd={(event) => onQuantityChange(event.currentTarget.value.normalize("NFKC"))}
           className="mt-2 min-h-16 w-full rounded-2xl border-2 border-blue-500 px-4 py-3 text-3xl font-black text-slate-950 outline-none transition focus:ring-4 focus:ring-blue-100 disabled:bg-slate-100"
         />

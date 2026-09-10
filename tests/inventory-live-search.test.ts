@@ -14,6 +14,22 @@ import { GET } from "../src/app/api/inventory/search/route";
 const item = { id: "new-item", janCode: "4901234567890", systemBarcode: null, managementCode: null, managementGroupCode: null, name: "他端末の新商品", majorCategory: "食品", minorCategory: null, manufacturer: null, defaultUnit: "個" };
 const inventory = { id: "new-inventory", quantity: 8, item, managementCode: null, managementGroupCode: null, majorCategory: null, minorCategory: null, storageLocation: { id: "shelf", name: "棚A" } };
 describe("live stocktake search", () => {
+  it("uses live zero stock before counting instead of the starting quantity", async () => {
+    db.stocktakeTarget.findMany.mockResolvedValue([{ inventoryInstanceId: inventory.id, expectedQuantity: 8, inventoryInstance: { ...inventory, quantity: 0 } }]);
+    db.stocktakeRecord.findMany.mockResolvedValue([]);
+    const body = await (await GET(new NextRequest("http://localhost/api/inventory/search?sessionId=session&filter=ALL"))).json();
+    expect(body[0]).toMatchObject({ expectedQuantity: 0, currentQuantity: 0, countedQuantity: null, difference: null });
+  });
+  it("keeps a saved count and its comparison while showing later stock movements separately", async () => {
+    db.stocktakeTarget.findMany.mockResolvedValue([{ inventoryInstanceId: inventory.id, expectedQuantity: 8, inventoryInstance: { ...inventory, quantity: 0 } }]);
+    db.stocktakeRecord.findMany.mockResolvedValue([{ inventoryInstanceId: inventory.id, countedQuantity: 8, updatedAt: new Date() }]);
+    const body = await (await GET(new NextRequest("http://localhost/api/inventory/search?sessionId=session&filter=ALL"))).json();
+    expect(body[0]).toMatchObject({ expectedQuantity: 8, currentQuantity: 0, countedQuantity: 8, difference: 0 });
+  });
+  it("filters the minor QR by both parent and child", async () => {
+    await GET(new NextRequest("http://localhost/api/inventory/search?sessionId=session&majorCategory=食品&minorCategory=水"));
+    expect(db.stocktakeTarget.findMany.mock.calls[0][0].where.inventoryInstance.is.AND).toEqual(expect.arrayContaining([{item:{is:{majorCategory:"食品"}}},{item:{is:{minorCategory:"水"}}}]));
+  });
   it("applies a location QR filter inside the existing session target query", async () => {
     await GET(new NextRequest("http://localhost/api/inventory/search?sessionId=session&storageLocationId=shelf&filter=ALL"));
     expect(db.stocktakeTarget.findMany.mock.calls[0][0].where.inventoryInstance.is.AND).toContainEqual({ storageLocationId: "shelf" });

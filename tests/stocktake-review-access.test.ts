@@ -6,9 +6,9 @@ const state = vi.hoisted(() => ({
   db: {
     stocktakeSession: { findUnique: vi.fn(), updateMany: vi.fn() },
     appUser: { findUnique: vi.fn() },
-    stocktakeTarget: { findMany: vi.fn(), findUnique: vi.fn() },
-    stocktakeRecord: { findMany: vi.fn(), upsert: vi.fn() },
-    inventoryInstance: {findMany:vi.fn()},
+    stocktakeTarget: { findMany: vi.fn(), findUnique: vi.fn(), update: vi.fn() },
+    stocktakeRecord: { findMany: vi.fn(), upsert: vi.fn(), findUnique: vi.fn() },
+    inventoryInstance: {findMany:vi.fn(), findUnique:vi.fn()},
     $transaction: vi.fn(),
   },
 }));
@@ -25,6 +25,18 @@ const getResult = () => result(new NextRequest("http://localhost/api/stocktake/s
 const saveRecord = () => save(new NextRequest("http://localhost/api/stocktake/record", { method: "POST", body: JSON.stringify({ sessionId: "s", inventoryInstanceId: "i", countedQuantity: 7 }) }));
 
 describe("continued input after review is reopened", () => {
+  it("captures live zero stock on first save and returns no false discrepancy", async () => {
+    state.db.inventoryInstance.findUnique.mockResolvedValue({ quantity: 0, status: "在庫", item: { isArchived: false } });
+    const response = await save(new NextRequest("http://localhost/api/stocktake/record", { method: "POST", body: JSON.stringify({ sessionId: "s", inventoryInstanceId: "i", countedQuantity: 0 }) }));
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({ expectedQuantity: 0, difference: 0 });
+    expect(state.db.stocktakeTarget.update).toHaveBeenCalledWith(expect.objectContaining({ data: { expectedQuantity: 0 } }));
+  });
+  it("does not rewrite a recorded baseline on a retry or another stock movement", async () => {
+    state.db.stocktakeRecord.findUnique.mockResolvedValue({ id: "r" });
+    expect((await saveRecord()).status).toBe(200);
+    expect(state.db.stocktakeTarget.update).not.toHaveBeenCalled();
+  });
   it.each([null, "", true, -1, 2147483648])("rejects invalid quantity instead of converting it to zero: %s", async value => {
     const response = await save(new NextRequest("http://localhost/api/stocktake/record", { method: "POST", body: JSON.stringify({ sessionId: "s", inventoryInstanceId: "i", countedQuantity: value }) }));
     expect(response.status).toBe(400);
@@ -38,6 +50,8 @@ describe("continued input after review is reopened", () => {
     state.db.stocktakeTarget.findMany.mockResolvedValue([{ inventoryInstanceId: "i", expectedQuantity: 5, inventoryInstance: { unit: "個", item: { name: "商品", defaultUnit: "個" }, storageLocation: null } }]);
     state.db.stocktakeTarget.findUnique.mockResolvedValue({ expectedQuantity: 5 });
     state.db.stocktakeRecord.findMany.mockResolvedValue([{ id: "r", inventoryInstanceId: "i", countedQuantity: 7, updatedAt: date }]);
+    state.db.stocktakeRecord.findUnique.mockResolvedValue(null);
+    state.db.inventoryInstance.findUnique.mockResolvedValue({ quantity: 5, status: "在庫", item: { isArchived: false } });
     state.db.stocktakeRecord.upsert.mockResolvedValue({ id: "r", countedQuantity: 7 });
     state.db.$transaction.mockImplementation(operation => operation(state.db));
   });

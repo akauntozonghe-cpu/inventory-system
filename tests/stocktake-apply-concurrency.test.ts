@@ -21,11 +21,25 @@ describe("stocktake confirmation guards", () => {
     vi.clearAllMocks();
     db.stocktakeSession.findUnique.mockResolvedValue({ id: "s", title: "棚卸", status: "REVIEW", operatorUserId: "worker", updatedAt: date });
     db.stocktakeRecord.findMany.mockResolvedValue([{ inventoryInstanceId: "inventory", countedQuantity: 5 }]);
-    db.stocktakeTarget.findMany.mockResolvedValue([{inventoryInstanceId:"inventory"}]);
+    db.stocktakeTarget.findMany.mockResolvedValue([{inventoryInstanceId:"inventory",expectedQuantity:8}]);
     db.inventoryInstance.findMany.mockResolvedValue([{ id: "inventory", quantity: 8, updatedAt: date }]);
     db.stocktakeSession.updateMany.mockResolvedValue({ count: 1 });
     db.inventoryInstance.updateMany.mockResolvedValue({ count: 1 });
     db.$transaction.mockImplementation((callback: (tx: typeof db) => unknown) => callback(db));
+  });
+  it("does not resurrect sold stock when the saved count had no discrepancy", async () => {
+    db.stocktakeRecord.findMany.mockResolvedValue([{ inventoryInstanceId: "inventory", countedQuantity: 8 }]);
+    db.inventoryInstance.findMany.mockResolvedValue([{ id: "inventory", quantity: 0, updatedAt: date }]);
+    expect((await request()).status).toBe(200);
+    expect(db.inventoryInstance.updateMany).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ quantity: 0 }) }));
+    expect(db.inventoryHistory.create).toHaveBeenCalledWith(expect.objectContaining({data:expect.objectContaining({changeQuantity:0})}));
+  });
+  it("does not double apply another worker's discrepancy or overwrite subsequent movements", async () => {
+    db.inventoryInstance.findMany.mockResolvedValue([{ id: "inventory", quantity: 5, updatedAt: date }]);
+    const response = await request();
+    expect(response.status).toBe(409);
+    expect((await response.json()).code).toBe("STOCKTAKE_APPLY_MOVEMENT_RECHECK");
+    expect(db.$transaction).not.toHaveBeenCalled();
   });
   it("reconfirms an unchanged reopened session without rolling back later stock movements", async () => {
     db.stocktakeSession.findUnique.mockResolvedValue({ id: "s", title: "棚卸", status: "REVIEW", operatorUserId: "worker", updatedAt: date, completedAt: date });

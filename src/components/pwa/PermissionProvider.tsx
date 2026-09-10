@@ -19,7 +19,7 @@ export default function PermissionProvider({children}:{children:ReactNode}){
       if(!response.ok)throw new Error("PERMISSION_STATUS_FAILED：使用許可の設定を確認できません。通信が戻ったら再確認してください。");
       const value=await response.json();if(version!==generation.current)return;
       setSettings({...value,loaded:true});
-      try{setDeferred(sessionStorage.getItem("inventory:permissions-deferred")===value.sessionKey);}catch{setDeferred(false);}
+      try{setDeferred(localStorage.getItem("inventory:permissions-deferred-device")==="1");}catch{setDeferred(false);}
       setError("");
     }catch(error){if(version===generation.current)setError(error instanceof Error?error.message:"PERMISSION_STATUS_FAILED：設定を確認できません。");}
   },[pathname]);
@@ -30,12 +30,12 @@ export default function PermissionProvider({children}:{children:ReactNode}){
     const inspect=async()=>{
       setNotification("Notification" in window?Notification.permission:"unsupported");
       if(!navigator.mediaDevices?.getUserMedia){setCamera("unsupported");return;}
-      try{const status=await navigator.permissions.query({name:"camera" as PermissionName});if(active)setCamera(status.state);}
-      catch{if(active)setCamera(cameraConfirmed.current?"granted":"unknown");}
+      try{const status=await navigator.permissions.query({name:"camera" as PermissionName});if(active){setCamera(status.state);if(status.state==="denied"){try{localStorage.removeItem("inventory:camera-confirmed");}catch{}}}}
+      catch{let remembered=cameraConfirmed.current;try{remembered ||= localStorage.getItem("inventory:camera-confirmed")==="1";}catch{}if(active)setCamera(remembered?"granted":"unknown");}
     };
     void inspect();
     for(const name of ["camera","notifications"])void navigator.permissions?.query({name:name as PermissionName}).then(status=>{if(!active)return;status.addEventListener("change",inspect);statuses.push(status);}).catch(()=>{});
-    const cameraAccepted=()=>{cameraConfirmed.current=true;setCamera("granted");};
+    const cameraAccepted=()=>{cameraConfirmed.current=true;try{localStorage.setItem("inventory:camera-confirmed","1");}catch{}setCamera("granted");};
     window.addEventListener("inventory:camera-granted",cameraAccepted);window.addEventListener("inventory:permission",inspect);window.addEventListener("focus",inspect);
     return()=>{active=false;statuses.forEach(status=>status.removeEventListener("change",inspect));window.removeEventListener("inventory:camera-granted",cameraAccepted);window.removeEventListener("inventory:permission",inspect);window.removeEventListener("focus",inspect);};
   },[pathname]);
@@ -44,6 +44,6 @@ export default function PermissionProvider({children}:{children:ReactNode}){
     try{const stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:"environment"}},audio:false});stream.getTracks().forEach(track=>track.stop());window.dispatchEvent(new Event("inventory:camera-granted"));window.dispatchEvent(new Event("inventory:permission"));}
     catch(error){if(error instanceof Error&&error.name==="NotAllowedError"){setCamera("denied");throw new Error("CAMERA_PERMISSION：カメラを許可してください。ブロック済みの場合はブラウザのサイト設定でカメラを許可してから再確認してください。");}throw error;}
   };
-  const defer=()=>{setDeferred(true);try{sessionStorage.setItem("inventory:permissions-deferred",settings.sessionKey);}catch{}};
+  const defer=()=>{setDeferred(true);try{localStorage.setItem("inventory:permissions-deferred-device","1");}catch{}};
   return <Context.Provider value={{...settings,camera,notification,deferred,error,refresh,requestCamera,defer}}>{children}</Context.Provider>;
 }

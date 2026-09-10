@@ -38,6 +38,7 @@ export async function GET(request: NextRequest) {
     const keyword = searchParams.get("q")?.normalize("NFKC").trim() ?? "";
     const exact = searchParams.get("exact") === "true";
     const majorCategory = searchParams.get("majorCategory")?.trim() ?? "";
+    const minorCategory = searchParams.get("minorCategory")?.trim() ?? "";
     const rawFilter = searchParams.get("filter");
 
     const filter: FilterType = isFilterType(rawFilter)
@@ -139,6 +140,8 @@ export async function GET(request: NextRequest) {
         },
       });
     }
+
+    if (minorCategory) inventoryFilters.push({ item: { is: { minorCategory } } });
 
     if (keyword && !exact) {
       const textCondition = exact
@@ -251,6 +254,7 @@ export async function GET(request: NextRequest) {
         inventoryInstance: {
           select: {
             id: true,
+            quantity: true,
             managementCode: true,
             managementGroupCode: true,
             manufacturer: true,
@@ -313,14 +317,16 @@ export async function GET(request: NextRequest) {
         const record = recordMap.get(inventory.id);
 
         const countedQuantity = record?.countedQuantity ?? null;
+        const expectedQuantity = !record && session.status === "IN_PROGRESS" ? inventory.quantity : target.expectedQuantity;
         const difference =
           countedQuantity === null
             ? null
-            : countedQuantity - target.expectedQuantity;
+            : countedQuantity - expectedQuantity;
 
         return {
           id: inventory.id,
-          expectedQuantity: target.expectedQuantity,
+          expectedQuantity,
+          currentQuantity: inventory.quantity,
           isRecorded: countedQuantity !== null,
           countedQuantity,
           difference,

@@ -27,6 +27,7 @@ type SessionAction = "PAUSE" | "RESUME" | "COMPLETE";
 type InventoryItem = {
   id: string;
   expectedQuantity: number;
+  currentQuantity?: number;
   isRecorded: boolean;
   countedQuantity: number | null;
   memo?: string | null;
@@ -198,7 +199,7 @@ export default function StocktakePage() {
   useEffect(() => {
     draftRef.current = selected ? {
       id: selected.id,
-      dirty: countedQuantity !== String(selected.countedQuantity ?? selected.expectedQuantity) || memo !== (selected.memo ?? ""),
+      dirty: countedQuantity !== (selected.countedQuantity === null ? "" : String(selected.countedQuantity)) || memo !== (selected.memo ?? ""),
     } : null;
     window.dispatchEvent(new CustomEvent("inventory:draft", { detail: { dirty: Boolean(draftRef.current?.dirty) } }));
   }, [selected, countedQuantity, memo]);
@@ -233,7 +234,7 @@ export default function StocktakePage() {
           readErrorCode(data, `STOCKTAKE_RECORD_HTTP_${response.status}`)
         );
       }
-      return data;
+      return data as { expectedQuantity: number; difference: number };
     },
     [sessionId]
   );
@@ -384,7 +385,7 @@ export default function StocktakePage() {
 
         await Promise.all([
           loadProgress(),
-          loadItems("", "UNRECORDED", null),
+
         ]);
 
         if (mounted) {
@@ -410,13 +411,9 @@ export default function StocktakePage() {
     return () => {
       mounted = false;
     };
-  }, [loadItems, loadProgress]);
+  }, [loadProgress]);
 
   useEffect(() => {
-    if (!initializedRef.current) {
-      return;
-    }
-
     const timer = window.setTimeout(() => {
       void loadItems(keyword, filter, majorCategory).catch((searchError) => {
         setError(
@@ -455,7 +452,7 @@ export default function StocktakePage() {
     }
     setSelected(item);
     setCountedQuantity(
-      String(item.countedQuantity ?? item.expectedQuantity)
+      item.countedQuantity === null ? "" : String(item.countedQuantity)
     );
     setMemo(item.memo ?? "");
     setMessage("");
@@ -563,9 +560,11 @@ export default function StocktakePage() {
       const target = selected;
       const recordMemo = memo.trim();
       let formallySaved = false;
+      let savedDifference: number | null = null;
 
       try {
-        await submitStocktakeRecord(target.id, quantity, recordMemo);
+        const saved = await submitStocktakeRecord(target.id, quantity, recordMemo);
+        savedDifference = saved.difference;
         formallySaved = true;
       } catch (saveError) {
         const code =
@@ -588,6 +587,7 @@ export default function StocktakePage() {
         });
 
         if (recovery.success) {
+          savedDifference = recovery.value?.difference ?? null;
           formallySaved = true;
           setMessage("自動復旧して棚卸を正式に保存しました。");
         } else {
@@ -620,11 +620,11 @@ export default function StocktakePage() {
 
       try {
 
-        const difference = quantity - target.expectedQuantity;
+        const difference = savedDifference;
 
         if (formallySaved) {
           setMessage(
-            difference === 0
+            difference === null ? `${target.item.name}：保存しました。` : difference === 0
               ? `${target.item.name}：${quantity}${displayUnit(target.unit, target.item.defaultUnit)}、一致で保存しました。`
               : `${target.item.name}：${quantity}${displayUnit(target.unit, target.item.defaultUnit)}、差異 ${difference > 0 ? "+" : ""}${difference} で保存しました。`
           );
@@ -1109,7 +1109,7 @@ export default function StocktakePage() {
 
                       <div className="mt-4 flex flex-wrap gap-3 text-sm">
                         <span className="font-bold text-indigo-600">
-                          現在庫：{item.expectedQuantity}
+                          現在庫：{item.currentQuantity ?? item.expectedQuantity}
                           {displayUnit(item.unit, item.item.defaultUnit)}
                         </span>
                         {item.isRecorded && (
@@ -1153,7 +1153,7 @@ export default function StocktakePage() {
       {normalCameraOpen && <UnifiedScanner onClose={() => setNormalCameraOpen(false)} onProduct={findBarcode} onCategory={handleCategoryDetected} onMinorCategory={handleMinorCategoryDetected} onLocation={handleLocationDetected} notice="JANは商品を選択、小分類・大分類QRは棚卸範囲を絞り込み、保管場所QRは場所を絞り込みます。未登録JANは商品登録へ進めます。" />}
 
       {continuousCameraOpen && (
-        <UnifiedScanner continuous paused={Boolean(selected) || saving || lotCandidates.length > 0 || !canOperate}
+        <UnifiedScanner continuous paused={Boolean(selected) || saving || registerItemOpen || lotCandidates.length > 0 || !canOperate}
           onClose={() => setContinuousCameraOpen(false)} onProduct={findBarcode} onCategory={handleCategoryDetected} onLocation={handleLocationDetected}>
           <StocktakeInputPanel
             selected={selected}

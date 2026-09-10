@@ -114,6 +114,16 @@ export async function POST(request: NextRequest) {
           throw new Error("STOCKTAKE_TARGET_NOT_FOUND");
         }
 
+        // Capture current stock once, when this worker first counts the item.
+        // Later sales must not rewrite the evidence of an already saved count.
+        const previous = await transaction.stocktakeRecord.findUnique({ where: { sessionId_inventoryInstanceId: { sessionId, inventoryInstanceId } } });
+        let expectedQuantity = target.expectedQuantity;
+        if (!previous) {
+          const inventory = await transaction.inventoryInstance.findUnique({ where: { id: inventoryInstanceId }, select: { quantity: true, status: true, item: { select: { isArchived: true } } } });
+          if (!inventory || inventory.status === "廃止" || inventory.item.isArchived) throw new Error("STOCKTAKE_TARGET_NOT_FOUND");
+          expectedQuantity = inventory.quantity;
+          await transaction.stocktakeTarget.update({ where: { sessionId_inventoryInstanceId: { sessionId, inventoryInstanceId } }, data: { expectedQuantity } });
+        }
         const record = await transaction.stocktakeRecord.upsert({
           where: {
             sessionId_inventoryInstanceId: {
@@ -144,11 +154,12 @@ export async function POST(request: NextRequest) {
 
         return {
           record,
-          expectedQuantity: target.expectedQuantity,
-          difference: countedQuantity - target.expectedQuantity,
+          expectedQuantity,
+          difference: countedQuantity - expectedQuantity,
         };
       },
       {
+        isolationLevel: "Serializable",
         maxWait: 10_000,
         timeout: 20_000,
       }

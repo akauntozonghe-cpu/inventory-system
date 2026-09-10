@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { extractErrorCode, getErrorGuidance } from "@/lib/error-guidance";
 
 type Props = {
@@ -35,12 +35,14 @@ export default function FeedbackToast({
   onRetry,
   retrying,
 }: Props) {
+  const closeRef = useRef(onClose);
+  useEffect(() => { closeRef.current = onClose; }, [onClose]);
   const effectiveAutoCloseMs = tone === "success" ? autoCloseMs ?? 3500 : autoCloseMs;
   useEffect(() => {
-    if (!message || !onClose || !effectiveAutoCloseMs) return;
-    const timer = window.setTimeout(onClose, effectiveAutoCloseMs);
+    if (!message || !closeRef.current || !effectiveAutoCloseMs) return;
+    const timer = window.setTimeout(() => closeRef.current?.(), effectiveAutoCloseMs);
     return () => window.clearTimeout(timer);
-  }, [effectiveAutoCloseMs, message, onClose]);
+  }, [effectiveAutoCloseMs, message]);
 
   if (!message) return null;
 
