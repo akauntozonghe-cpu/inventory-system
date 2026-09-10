@@ -150,6 +150,7 @@ export default function StocktakePage() {
   const [filter, setFilter] = useState<FilterType>("UNRECORDED");
   const [scanLocation, setScanLocation] = useState<{ id: string; name: string } | null>(null);
   const [majorCategory, setMajorCategory] = useState<string | null>(null);
+  const [minorCategory, setMinorCategory] = useState<string | null>(null);
 
   const [editingProduct, setEditingProduct] = useState<string | null>(null);
   const [countedQuantity, setCountedQuantity] = useState("");
@@ -280,6 +281,9 @@ export default function StocktakePage() {
         if (nextMajorCategory) {
           query.set("majorCategory", nextMajorCategory);
         }
+        if (minorCategory) {
+          query.set("minorCategory", minorCategory);
+        }
 
         const response = await fetchFresh(
           `/api/inventory/search?${query.toString()}`,
@@ -309,7 +313,7 @@ export default function StocktakePage() {
         }
       }
     },
-    [sessionId, scanLocation]
+    [minorCategory, sessionId, scanLocation]
   );
 
   useEffect(() => {
@@ -327,14 +331,14 @@ export default function StocktakePage() {
         loadItems("", filter, majorCategory),
       ]);
     }
-  }, [filter, loadItems, loadProgress, majorCategory, pendingCount]);
+  }, [filter, loadItems, loadProgress, majorCategory, minorCategory, pendingCount]);
 
   const refresh = useCallback(async () => {
     await Promise.all([
       loadProgress(),
       loadItems(keyword, filter, majorCategory),
     ]);
-  }, [filter, keyword, loadItems, loadProgress, majorCategory]);
+  }, [filter, keyword, loadItems, loadProgress, majorCategory, minorCategory]);
 
   const syncSelectedItem = useCallback(async () => {
     if (!selected) return;
@@ -366,7 +370,7 @@ export default function StocktakePage() {
     ]);
     if (results.some((result) => result.status === "rejected")) throw new Error("同期失敗");
     setLastSyncedAt(new Date());
-  }, [filter, keyword, loadItems, loadProgress, majorCategory, syncSelectedItem]);
+  }, [filter, keyword, loadItems, loadProgress, majorCategory, minorCategory, syncSelectedItem]);
 
   const syncFailed = useLiveRefresh(syncInBackground);
 
@@ -426,7 +430,7 @@ export default function StocktakePage() {
     return () => {
       window.clearTimeout(timer);
     };
-  }, [filter, keyword, loadItems, majorCategory]);
+  }, [filter, keyword, loadItems, majorCategory, minorCategory]);
 
   const categorySummary = useMemo(() => {
     const targetCount = items.length;
@@ -495,9 +499,13 @@ export default function StocktakePage() {
         if (foundItems.length === 0) {
           setKeyword(trimmed);
           setFilter("ALL");
-          setError(
-            "最新の商品DBを再確認しましたが、この棚卸範囲には該当商品がありません。JAN・棚卸範囲を確認し、登録済みなら管理者へお問い合わせください。"
-          );
+          if (canRegisterItem && /^\d{8}$|^\d{13}$/.test(trimmed)) {
+            setError("");
+            setMessage(`JAN ${trimmed} はこの棚卸の対象にありません。未登録なら商品登録へ進めます。`);
+            setRegisterItemOpen(true);
+          } else {
+            setError("このJANの商品は棚卸範囲にありません。登録済みなら棚卸範囲を確認してください。");
+          }
           return;
         }
 
@@ -532,7 +540,7 @@ export default function StocktakePage() {
         barcodeBusyRef.current = false;
       }
     },
-    [requestBarcode, selectItem, sessionId]
+    [canRegisterItem, requestBarcode, selectItem, sessionId]
   );
 
   const saveRecord = async () => {
@@ -702,6 +710,7 @@ export default function StocktakePage() {
 
   const handleCategoryDetected = useCallback((category: string) => {
     setScanLocation(null);
+    setMinorCategory(null);
     setMajorCategory(category);
     setKeyword("");
     setFilter("UNRECORDED");
@@ -709,8 +718,18 @@ export default function StocktakePage() {
     setError("");
   }, []);
 
+  const handleMinorCategoryDetected = useCallback((category: string, parentName: string) => {
+    setScanLocation(null);
+    setMajorCategory(parentName || null);
+    setMinorCategory(category);
+    setKeyword("");
+    setFilter("UNRECORDED");
+    setMessage(`小分類QRで絞り込みました：${parentName ? `${parentName} ／ ` : ""}${category}`);
+    setError("");
+  }, []);
+
   const handleLocationDetected = (location: { id: string; name: string }) => {
-    setMajorCategory(null); setScanLocation(location); setKeyword(""); setFilter("UNRECORDED"); setMessage("保管場所で絞り込みました。");
+    setMajorCategory(null); setMinorCategory(null); setScanLocation(location); setKeyword(""); setFilter("UNRECORDED"); setMessage("保管場所で絞り込みました。");
   };
 
   if (loading) {
@@ -992,10 +1011,10 @@ export default function StocktakePage() {
               </div>
 
               {scanLocation && <div className="mt-4 flex items-center gap-3 rounded-xl bg-violet-50 p-3 text-violet-900"><span>保管場所：{scanLocation.name}</span><button type="button" className="ml-auto rounded-lg bg-white px-3 py-2" onClick={() => setScanLocation(null)}>解除</button></div>}
-              {majorCategory && (
+              {(majorCategory || minorCategory) && (
                 <div className="mt-4 flex flex-wrap items-center gap-3 rounded-2xl bg-violet-50 px-4 py-3 text-violet-900">
                   <span className="font-bold">
-                    大分類QRで絞り込み中：{majorCategory}
+                    {minorCategory ? `小分類QRで絞り込み中：${majorCategory ? `${majorCategory} ／ ` : ""}${minorCategory}` : `大分類QRで絞り込み中：${majorCategory}`}
                   </span>
                   <span className="text-sm">
                     {categorySummary.recordedCount} /{" "}
@@ -1005,6 +1024,7 @@ export default function StocktakePage() {
                     type="button"
                     onClick={() => {
                       setMajorCategory(null);
+                      setMinorCategory(null);
                       setMessage("大分類の絞り込みを解除しました。");
                     }}
                     className="ml-auto rounded-lg bg-white px-3 py-1.5 text-sm font-bold text-violet-700 shadow-sm"
@@ -1130,7 +1150,7 @@ export default function StocktakePage() {
         </div>
       </div>
 
-      {normalCameraOpen && <UnifiedScanner onClose={() => setNormalCameraOpen(false)} onProduct={findBarcode} onCategory={handleCategoryDetected} onLocation={handleLocationDetected} />}
+      {normalCameraOpen && <UnifiedScanner onClose={() => setNormalCameraOpen(false)} onProduct={findBarcode} onCategory={handleCategoryDetected} onMinorCategory={handleMinorCategoryDetected} onLocation={handleLocationDetected} notice="JANは商品を選択、小分類・大分類QRは棚卸範囲を絞り込み、保管場所QRは場所を絞り込みます。未登録JANは商品登録へ進めます。" />}
 
       {continuousCameraOpen && (
         <UnifiedScanner continuous paused={Boolean(selected) || saving || lotCandidates.length > 0 || !canOperate}
