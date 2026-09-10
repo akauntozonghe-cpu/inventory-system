@@ -384,7 +384,7 @@ export default function ItemPage() {
               type="search"
               value={search}
               onChange={(event) => setSearch(event.target.value.normalize("NFKC"))}
-              placeholder="商品名・JAN・システムJAN・管理番号・メーカー・分類で検索"
+              placeholder="商品名・JAN・システムJAN・メーカー・分類で検索"
               className="w-full rounded-xl border border-slate-300 px-4 py-3 outline-none focus:border-blue-600"
             />
 

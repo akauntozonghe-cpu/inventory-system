@@ -193,7 +193,7 @@ export default function SystemBarcodeLabel({
           </p>
 
           <h2 className="mt-1 text-xl font-black text-slate-900">
-            {barcode ? barcodeTitle : "JANコード未登録"}
+            {barcode ? barcodeTitle : "印刷するJANの準備"}
           </h2>
 
           <p className="mt-2 text-sm leading-6 text-slate-600">

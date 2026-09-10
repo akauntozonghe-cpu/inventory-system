@@ -1,9 +1,8 @@
 "use client";
-import InspectionTargets,{hasInspectionTargets} from "@/components/InspectionTargets";
 
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { getErrorGuidance } from "@/lib/error-guidance";
+import InspectionRecovery from "@/components/InspectionRecovery";
 
 type CheckStatus = "PASS" | "WARNING" | "FAIL" | "NOT_RUN";
 type RunStatus = "PASSED" | "WARNING" | "FAILED";
@@ -521,7 +520,7 @@ export default function SystemCheckPage() {
 
                   <div className="mt-4 space-y-3 border-t border-slate-200 pt-4">
                     {run.items.map((item) => {
-                      const guidance = item.errorCode ? getErrorGuidance(item.errorCode) : null;
+
                       return (
                       <article
                         key={item.id}
@@ -557,17 +556,7 @@ export default function SystemCheckPage() {
                             {item.actual ?? "-"}
                           </p>
                         )}
-                        {item.status !== "PASS" && hasInspectionTargets(item.code)&&<InspectionTargets checkCode={item.code} runId={run.id} onChanged={runAutoCheck}/>}
-                        {item.status !== "PASS" && !hasInspectionTargets(item.code) && guidance && (
-                          <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 p-3 text-amber-950">
-                            <p><span className="font-black">次に行うこと：</span>{guidance.action}</p>
-                            <details className="mt-2">
-                              <summary className="cursor-pointer font-black">認証後の復旧手順を表示</summary>
-                              <ol className="mt-2 list-decimal space-y-1 pl-5">{guidance.adminSteps.map((step) => <li key={step}>{step}</li>)}</ol>
-                            </details>
-                            <Link href={guidance.recoveryRoute} className="mt-3 inline-flex rounded-lg bg-slate-900 px-3 py-2 font-black text-white">対応画面を開く</Link>
-                          </div>
-                        )}
+                        {item.status !== "PASS" && <InspectionRecovery checkCode={item.code} runId={run.id} onChanged={runAutoCheck}/>}
                       </article>
                     );})}
                   </div>

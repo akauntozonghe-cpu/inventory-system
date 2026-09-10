@@ -1,4 +1,5 @@
 "use client";
+import ProductIdentity from "./inventory/ProductIdentity";
 import { displayUnit } from "@/lib/unit";
 
 export type SearchItem = {
@@ -19,6 +20,7 @@ export type SearchItem = {
     id: string;
     name: string;
     janCode: string | null;
+    systemBarcode?: string | null;
     managementCode: string | null;
     manufacturer: string | null;
     majorCategory: string | null;
@@ -66,19 +68,9 @@ export default function SearchResult({
                   {inventory.item.name}
                 </div>
 
-                <div className="text-sm text-gray-500 mt-2">
+                <ProductIdentity item={inventory.item}/>
 
-                  JAN：
-                  {inventory.item.janCode ?? "-"}
 
-                </div>
-
-                <div className="text-sm text-gray-500">
-
-                  管理コード：
-                  {inventory.item.managementCode ?? "-"}
-
-                </div>
 
               </div>
 

@@ -3,7 +3,7 @@ import {NextRequest} from "next/server";
 const schedule=vi.hoisted(()=>vi.fn());
 const db=vi.hoisted(()=>({devicePushSetting:{findUnique:vi.fn()},devicePushSubscription:{count:vi.fn()},devicePushDelivery:{count:vi.fn(),findFirst:vi.fn(),updateMany:vi.fn()}}));
 vi.mock("@/lib/prisma",()=>({prisma:db}));
-vi.mock("@/lib/auth",()=>({AUTH_COOKIE:"auth",requireLogin:()=>({user:{id:"worker",role:"WORKER"}})}));
+vi.mock("@/lib/auth",()=>({AUTH_COOKIE:"auth",hasAdminAccess:()=>false,requireLogin:()=>({user:{id:"worker",role:"WORKER"}})}));
 vi.mock("@/lib/device-push",()=>({sessionHash:()=>"this-session",pushSettingsUsable:()=>true,scheduleDeviceNotifications:schedule}));
 import {GET,POST} from "../src/app/api/notifications/device/route";
 beforeEach(()=>{vi.resetAllMocks();db.devicePushSetting.findUnique.mockResolvedValue({publicKey:"public"});db.devicePushSubscription.count.mockResolvedValue(1);db.devicePushDelivery.count.mockResolvedValueOnce(2).mockResolvedValueOnce(3).mockResolvedValueOnce(1);db.devicePushDelivery.findFirst.mockResolvedValue({lastErrorCode:"PUSH_HTTP_503"});});

@@ -1,5 +1,8 @@
 export function recoveryCheckCodes(route?: string, errorCode?: string): string[] | null {
   if (!route) return null; // The dedicated system inspection remains comprehensive.
+  // A system inspection failure is not a connection-only error. Its data checks
+  // must remain visible, otherwise a healthy connection hides the actual defect.
+  if (/^SYSTEM_(CHECK|REMEDIATION)/.test(errorCode ?? "") || route === "/admin/system-check") return null;
   const base = ["CHECK_DATABASE_CONNECTION"];
   if (/PUSH|NOTIFICATION/.test(errorCode??"") || route==="/notifications") return [...base,"CHECK_PUSH_CONFIGURATION","CHECK_DEVICE_NOTIFICATION"];
   if (/PWA|SERVICE_WORKER/.test(errorCode??"")) return [...base,"CHECK_APP_UPDATE"];
@@ -8,7 +11,7 @@ export function recoveryCheckCodes(route?: string, errorCode?: string): string[]
   if (/BARCODE|JAN|IDENTIFIER/.test(errorCode ?? "")) return [...base, "CHECK_PRODUCT_IDENTIFIERS"];
   if (/stocktake/.test(route)) return [...base, "CHECK_REVIEW_RECORDS", "CHECK_STOCKTAKE_LEGACY_STATE", "CHECK_STOCKTAKE_TARGET_LINK"];
   if (/items|inventory|classifications|register|marketplace/.test(route)) return [...base, "CHECK_PRODUCT_LINKS", "CHECK_INVALID_UNITS", "CHECK_MASTER_DATA"];
-  return base;
+  return route === "/admin/recovery" ? null : base;
 }
 export function recoverySessionId(route?: string, reportSessionId?: string | null) {
   return route?.match(/^\/stocktake\/([^/]+)(?:\/result)?$/)?.[1]?.replace(/^(start|history)$/, "") || reportSessionId || null;

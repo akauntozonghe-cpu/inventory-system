@@ -168,11 +168,8 @@ export default function StocktakeInputPanel({
       {detailsOpen && (
         <dl className="mt-4 grid grid-cols-1 gap-x-5 gap-y-4 rounded-2xl border border-slate-200 bg-slate-50 p-4 sm:grid-cols-2">
           <div className="sm:col-span-2"><ProductIdentity item={selected.item} inventoryId={selected.id}/></div>
-          <Detail label="任意管理コード" value={selected.item.managementCode} />
-          <Detail
-            label="管理グループコード"
-            value={selected.item.managementGroupCode}
-          />
+
+
           <Detail label="メーカー" value={selected.item.manufacturer} />
           <Detail label="分類" value={category} />
           <Detail label="保管場所" value={selected.storageLocation?.name} />

@@ -49,15 +49,9 @@ export default function ItemInfoCard({
           value={item.name}
         />
 
-        <InfoRow
-          label="任意管理コード"
-          value={item.managementCode}
-        />
 
-        <InfoRow
-          label="管理グループ"
-          value={item.managementGroupCode}
-        />
+
+
 
         <InfoRow
           label="メーカー"

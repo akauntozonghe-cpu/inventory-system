@@ -432,14 +432,7 @@ export default function RegistrationRequestsPage() {
                           </dd>
                         </div>
 
-                        <div>
-                          <dt className="text-sm font-bold text-slate-500">
-                            管理番号
-                          </dt>
-                          <dd className="mt-1 font-bold text-slate-900">
-                            {request.managementCode ?? "-"}
-                          </dd>
-                        </div>
+
 
                         <div>
                           <dt className="text-sm font-bold text-slate-500">

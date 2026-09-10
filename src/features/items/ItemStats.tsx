@@ -12,10 +12,10 @@ export default function ItemStats({
   loading,
 }: Props) {
   const janCount = items.filter(
-    (item) => item.janCode
+    (item) => item.janCode || item.systemBarcode
   ).length;
 
-  const noJanCount = items.length - janCount;
+
 
   const rate =
     items.length === 0
@@ -46,7 +46,7 @@ export default function ItemStats({
 
       <div className="rounded-xl bg-white p-6 shadow">
         <p className="text-sm text-gray-500">
-          JAN登録率
+          JAN・システムJAN登録率
         </p>
 
         <h2 className="mt-2 text-4xl font-bold">
@@ -54,8 +54,7 @@ export default function ItemStats({
         </h2>
 
         <p className="mt-2 text-sm text-gray-500">
-          登録済 {janCount}件 /
-          未登録 {noJanCount}件
+          登録済 {janCount}件
         </p>
       </div>
 
@@ -66,8 +65,8 @@ export default function ItemStats({
 
         <h2 className="mt-2 text-2xl font-bold">
           {loading
-            ? "Loading..."
-            : "Ready"}
+            ? "読み込み中…"
+            : "表示済み"}
         </h2>
       </div>
     </div>

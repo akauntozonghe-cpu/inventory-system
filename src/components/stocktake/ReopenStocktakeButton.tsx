@@ -13,7 +13,7 @@ export default function ReopenStocktakeButton({ sessionId, sessionTitle, owner, 
   return <>
     <button type="button" disabled={disabled || busy} onClick={() => { setError(""); setOpen(true); }} className="rounded-xl bg-blue-700 px-4 py-3 font-bold text-white disabled:opacity-50">管理者として途中から再開</button>
     <dialog ref={dialog} aria-labelledby={`reopen-${sessionId}`} onCancel={event => { event.preventDefault(); if (!busy) setOpen(false); }} className="m-auto w-[min(94vw,32rem)] rounded-2xl p-6 text-slate-950 shadow-xl backdrop:bg-slate-950/60">
-      <h2 id={`reopen-${sessionId}`} className="text-2xl font-black">{sessionTitle?`「${sessionTitle}」を再開`:"この担当者の棚卸を再開"}</h2><p className="my-2 break-all text-sm">{owner&&`担当者：${owner} ／ `}棚卸No.：{sessionId}</p>
+      <h2 id={`reopen-${sessionId}`} className="text-2xl font-black">{sessionTitle?`「${sessionTitle}」を再開`:"この担当者の棚卸を再開"}</h2>{owner&&<p className="my-2 text-sm">担当者：{owner}</p>}
       <p className="my-4">入力済みの数量・対象商品・担当者を残して作業中へ戻します。再開理由は管理者の操作履歴に記録されます。在庫は再開時には変更されません。</p>
       {status === "COMPLETED" && <p className="my-3 rounded-xl bg-blue-50 p-3 text-sm">前回の確定内容は操作履歴に保存します。元の担当者が続きを入力でき、次の正式確定では今回追加・修正した数量だけを在庫へ反映します。</p>}
       <form onSubmit={async event => {

@@ -1,13 +1,20 @@
 import {beforeEach,expect,it,vi} from "vitest";
 import {NextRequest} from "next/server";
 import {defaultPushPolicy} from "../src/lib/device-notification-policy";
-const state=vi.hoisted(()=>({role:"WORKER"}));const update=vi.hoisted(()=>vi.fn());
-vi.mock("@/lib/auth",()=>({AUTH_COOKIE:"auth",requireLogin:()=>({user:{id:"u",role:state.role},response:null})}));
-vi.mock("@/lib/prisma",()=>({prisma:{devicePushSetting:{update}}}));
-vi.mock("@/lib/device-push",()=>({encryptPushKey:vi.fn(),sessionHash:vi.fn(),validPushEndpoint:vi.fn(),validPushKeys:vi.fn(),sendDeviceNotification:vi.fn()}));
+const state=vi.hoisted(()=>({role:"WORKER",elevated:false,usable:true}));const update=vi.hoisted(()=>vi.fn());const upsert=vi.hoisted(()=>vi.fn());
+vi.mock("@/lib/auth",()=>({AUTH_COOKIE:"auth",hasAdminAccess:()=>state.role==="ADMIN"||state.elevated,requireLogin:()=>({user:{id:"u",role:state.role},response:null})}));
+vi.mock("@/lib/prisma",()=>({prisma:{devicePushSetting:{update,upsert}}}));
+vi.mock("@/lib/device-push",()=>({pushSettingsUsable:()=>state.usable,encryptPushKey:vi.fn(),sessionHash:vi.fn(),validPushEndpoint:vi.fn(),validPushKeys:vi.fn(),sendDeviceNotification:vi.fn()}));
 import {POST} from "../src/app/api/notifications/device/route";
 const req=(policy:unknown)=>new NextRequest("http://localhost/api/notifications/device",{method:"POST",body:JSON.stringify({action:"POLICY",policy})});
-beforeEach(()=>{vi.resetAllMocks();state.role="WORKER";});
+beforeEach(()=>{vi.resetAllMocks();state.role="WORKER";state.elevated=false;state.usable=true;});
 it("rejects a normal user's global notification setting change",async()=>{expect((await POST(req(defaultPushPolicy)))?.status).toBe(403);expect(update).not.toHaveBeenCalled();});
 it("lets an administrator persist validated policy",async()=>{state.role="ADMIN";expect((await POST(req(defaultPushPolicy)))?.status).toBe(200);expect(update).toHaveBeenCalledWith({where:{id:"system"},data:{policy:defaultPushPolicy}});});
 it("rejects unknown notification types even from an administrator",async()=>{state.role="ADMIN";expect((await POST(req({...defaultPushPolicy,types:["INVALID"]})))?.status).toBe(400);expect(update).not.toHaveBeenCalled();});
+it("allows the shared authenticated administrator recovery on a worker's page",async()=>{state.elevated=true;expect((await POST(req(defaultPushPolicy)))?.status).toBe(200);});
+it("does not claim that unusable existing notification keys have been repaired",async()=>{
+ state.role="ADMIN";state.usable=false;upsert.mockResolvedValue({id:"system"});
+ const response=await POST(new NextRequest("http://localhost/api/notifications/device",{method:"POST",body:JSON.stringify({action:"SETUP"})}));
+ expect(response?.status).toBe(503);expect(await response?.json()).toMatchObject({code:"PUSH_KEYS_UNAVAILABLE"});
+ expect(upsert.mock.calls[0][0].update).toEqual({});
+});

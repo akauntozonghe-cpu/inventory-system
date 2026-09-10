@@ -1,4 +1,5 @@
 "use client";
+import ProductIdentity from "../inventory/ProductIdentity";
 import { displayUnit } from "@/lib/unit";
 
 export type StocktakeSearchItem = {
@@ -92,15 +93,7 @@ export default function StocktakeSearchCard({
               {item.item.name}
             </h2>
 
-            <p className="mt-2 break-all text-sm text-slate-600">
-              JAN：{item.item.janCode ?? "未登録"}
-            </p>
-
-            {item.item.systemBarcode && (
-              <p className="mt-1 break-all text-xs font-medium text-slate-500">
-                システムJAN：{item.item.systemBarcode}
-              </p>
-            )}
+            <ProductIdentity item={item.item}/>
 
             <p className="mt-2 text-sm text-slate-600">
               保管場所：{item.storageLocation?.name ?? "未設定"}
@@ -167,16 +160,9 @@ export default function StocktakeSearchCard({
       {expanded && (
         <div className="border-t border-slate-200 bg-slate-50 p-4 sm:p-5">
           <dl className="grid grid-cols-1 gap-x-5 gap-y-4 sm:grid-cols-2">
-            <Detail label="JANコード" value={item.item.janCode} />
-            <Detail
-              label="システムJAN"
-              value={item.item.systemBarcode}
-            />
-            <Detail label="管理コード" value={item.item.managementCode} />
-            <Detail
-              label="管理グループコード"
-              value={item.item.managementGroupCode}
-            />
+
+
+
             <Detail label="メーカー" value={item.item.manufacturer} />
             <Detail label="分類" value={category} />
             <Detail label="保管場所" value={item.storageLocation?.name} />

@@ -345,13 +345,7 @@ export default function ItemTable({ items, reload, isAdmin, onEdit, filterKey }:
                           </span>
                         )}
 
-                        <span className="rounded-full bg-blue-100 px-3 py-1 text-xs font-bold text-blue-700">
-                          {item.janCode
-                            ? "JAN"
-                            : item.systemBarcode
-                              ? "システムJAN"
-                              : "識別コード未設定"}
-                        </span>
+
                       </div>
                     </div>
 
@@ -376,12 +370,7 @@ export default function ItemTable({ items, reload, isAdmin, onEdit, filterKey }:
                         </dd>
                       </div>
 
-                      <div>
-                        <dt className="font-bold text-slate-500">任意管理コード（管理No.とは別）</dt>
-                        <dd className="mt-1 text-slate-800">
-                          {item.managementCode ?? "-"}
-                        </dd>
-                      </div>
+
 
                       <div>
                         <dt className="font-bold text-slate-500">基本単位</dt>

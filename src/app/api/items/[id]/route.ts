@@ -316,7 +316,7 @@ export async function PUT(
       }
     }
 
-    if (data.managementCode) {
+    if (data.managementCode && data.managementCode !== before.managementCode) {
       const duplicateManagementCode = await prisma.item.findFirst({
         where: {
           managementCode: { equals: data.managementCode, mode: "insensitive" },

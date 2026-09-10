@@ -4,10 +4,10 @@ import Modal from "@/components/common/Modal";
 import SelectOrCreate from "@/components/SelectOrCreate";
 import { useRegistrationOptions } from "@/hooks/useRegistrationOptions";
 import { fetchFresh } from "@/lib/fetch-fresh";
-import { normalizeJanInput } from "@/lib/input-normalization";
+import ProductCodeField from "./ProductCodeField";
 import { unitValidationMessage } from "@/lib/unit";
 
-type Product = { name: string; janCode: string; manufacturer: string; majorCategory: string; minorCategory: string; defaultUnit: string; updatedAt: string };
+type Product = { name: string; janCode: string; systemBarcode: string; manufacturer: string; majorCategory: string; minorCategory: string; defaultUnit: string; updatedAt: string };
 export default function ProductEditDialog({ itemId, onClose, onSaved }: { itemId: string; onClose: () => void; onSaved: () => void }) {
   const options = useRegistrationOptions();
   const original = useRef<string | null>(null);
@@ -22,7 +22,7 @@ export default function ProductEditDialog({ itemId, onClose, onSaved }: { itemId
         const response = await fetchFresh(`/api/items/${encodeURIComponent(itemId)}`);
         const data = await response.json();
         if (!response.ok) throw new Error(data.message ?? "商品情報を取得できませんでした。");
-        if (active) { const loaded = Object.fromEntries(["name", "janCode", "manufacturer", "majorCategory", "minorCategory", "defaultUnit", "updatedAt"].map((key) => [key, data.item[key] ?? ""])) as Product; original.current = JSON.stringify(loaded); setProduct(loaded); }
+        if (active) { const loaded = Object.fromEntries(["name", "janCode", "systemBarcode", "manufacturer", "majorCategory", "minorCategory", "defaultUnit", "updatedAt"].map((key) => [key, data.item[key] ?? ""])) as Product; original.current = JSON.stringify(loaded); setProduct(loaded); }
       } catch (caught) { if (active) setError(caught instanceof Error ? caught.message : "読み込みに失敗しました。"); }
     })();
     return () => { active = false; };
@@ -55,7 +55,7 @@ export default function ProductEditDialog({ itemId, onClose, onSaved }: { itemId
     }}>
       <fieldset disabled={saving} className="space-y-4">
         <label className="block font-bold">商品名<input required maxLength={200} value={product.name} onChange={(event) => change("name", event.target.value)} className="mt-1 w-full rounded-lg border p-3"/></label>
-        <label className="block font-bold">JANコード<input inputMode="numeric" value={product.janCode} onChange={(event) => change("janCode", event.target.value)} onBlur={() => change("janCode", normalizeJanInput(product.janCode))} className="mt-1 w-full rounded-lg border p-3"/></label>
+        <ProductCodeField janCode={product.janCode} systemBarcode={product.systemBarcode} onChange={codes=>setProduct({...product,...codes})}/>
         <label className="block font-bold">メーカー<input maxLength={200} value={product.manufacturer} onChange={(event) => change("manufacturer", event.target.value)} className="mt-1 w-full rounded-lg border p-3"/></label>
         <SelectOrCreate label="大分類" value={product.majorCategory} options={options.majorCategories} onChange={(value) => change("majorCategory", value)}/>
         <SelectOrCreate key={product.majorCategory} label="小分類" value={product.minorCategory} options={options.minorsFor(product.majorCategory)} onChange={(value) => change("minorCategory", value)}/>

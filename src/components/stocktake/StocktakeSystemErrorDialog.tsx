@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect } from "react";
+import { useState } from "react";
 
 type Props = {
   code: string;
@@ -17,11 +17,9 @@ export default function StocktakeSystemErrorDialog({
   message,
   provisional,
   onClose,
+  onRetry,
 }: Props) {
-  useEffect(() => {
-    const timer = window.setTimeout(onClose, 8000);
-    return () => window.clearTimeout(timer);
-  }, [code, onClose]);
+  const [busy,setBusy]=useState(false),[retryError,setRetryError]=useState("");
 
   return (
     <div className="fixed inset-0 z-[220] flex items-center justify-center bg-slate-950/75 p-4">
@@ -43,12 +41,16 @@ export default function StocktakeSystemErrorDialog({
         </div>
         {provisional && (
           <p className="mt-4 rounded-2xl border border-amber-300 bg-amber-50 p-4 text-sm font-bold leading-6 text-amber-950">
-            今回の棚卸は端末内へ簡易保存しました。作業は続けられます。管理者が復旧完了にすると、この端末から正式登録されます。
+            端末内に簡易保存があります。まだ正式な在庫反映は確認できていません。作業へ戻り、簡易保存・未送信の件数と保存結果を確認してください。
           </p>
         )}
         <div className="mt-6">
+          {!provisional && <p className="mb-3 text-sm">この表示だけでは保存済みか判断できません。元の画面で結果を確認し、同じ数量を重ねて登録しないでください。</p>}
+          {retryError&&<p role="alert" className="mb-3 text-sm text-red-700">{retryError}</p>}
+          <button type="button" disabled={busy} className="mb-3 mr-3 rounded-xl bg-blue-700 px-5 py-3 font-bold text-white disabled:opacity-50" onClick={async()=>{setBusy(true);setRetryError("");try{await onRetry();}catch{setRetryError("STOCKTAKE_RETRY_FAILED：再確認を完了できませんでした。作業へ戻って保存状態を確認してください。");}finally{setBusy(false);}}}>{busy?"再確認中…":"接続・保存状態を再確認"}</button>
           <button
             type="button"
+            disabled={busy}
             onClick={onClose}
             className="rounded-xl border border-slate-300 bg-white px-5 py-3 font-black text-slate-900 hover:bg-slate-50"
           >

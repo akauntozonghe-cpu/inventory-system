@@ -376,18 +376,7 @@ export default function UnregisteredItemDialog({
             </span>
           </label>
 
-          <label>
-            <span className="text-sm font-bold">任意管理コード</span>
 
-            <input
-              value={form.managementCode}
-              onChange={(event) =>
-                update("managementCode", event.target.value)
-              }
-              placeholder="任意"
-              className="mt-2 w-full rounded-xl border border-slate-300 px-4 py-3 outline-none focus:border-blue-600"
-            />
-          </label>
 
           <label>
             <span className="text-sm font-bold">メーカー</span>

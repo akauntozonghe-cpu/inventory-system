@@ -4,3 +4,5 @@ it("does not recommend cancelling stocktakes for a notification or communication
 it("limits a stocktake recovery to its own identifier",()=>{expect(recoverySessionId("/stocktake/session-a/result","session-b")).toBe("session-a");expect(recoverySessionId("/stocktake/start")).toBe(null);});
 it("selects barcode checks for barcode failures",()=>{expect(recoveryCheckCodes("/items","BARCODE_MISSING")).toEqual(["CHECK_DATABASE_CONNECTION","CHECK_PRODUCT_IDENTIFIERS"]);});
 it("only the dedicated system check is comprehensive",()=>{expect(recoveryCheckCodes()).toBe(null);expect(recoveryCheckCodes("/admin/unknown")).toEqual(["CHECK_DATABASE_CONNECTION"]);});
+
+it("keeps data defects visible when recovering a failed system inspection",()=>{expect(recoveryCheckCodes("/admin/system-check","SYSTEM_CHECK_FAILED")).toBe(null);expect(recoveryCheckCodes("/admin/recovery","SYSTEM_CHECK_FAILED")).toBe(null);});

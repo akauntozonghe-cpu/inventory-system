@@ -1,4 +1,5 @@
 "use client";
+import ProductIdentity from "./inventory/ProductIdentity";
 import { displayUnit } from "@/lib/unit";
 
 import QuantityInput from "./QuantityInput";
@@ -23,6 +24,7 @@ type InventoryItem = {
     id: string;
     name: string;
     janCode: string | null;
+    systemBarcode?: string | null;
     managementCode: string | null;
     manufacturer: string | null;
     majorCategory: string | null;
@@ -76,15 +78,9 @@ export default function ItemCard({
 
         <div className="mt-4 grid grid-cols-2 gap-4 text-sm">
 
-          <div>
-            <div className="text-gray-500">JANコード</div>
-            <div>{item.item.janCode ?? "-"}</div>
-          </div>
+          <ProductIdentity item={item.item}/>
 
-          <div>
-            <div className="text-gray-500">管理コード</div>
-            <div>{item.item.managementCode ?? "-"}</div>
-          </div>
+
 
           <div>
             <div className="text-gray-500">メーカー</div>

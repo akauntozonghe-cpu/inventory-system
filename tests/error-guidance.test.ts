@@ -9,7 +9,8 @@ describe("error guidance", () => {
 
   it("利用者の対応と認証後の復旧手順を必ず返す", () => {
     const guidance = getErrorGuidance("MARKETPLACE_SCHEMA_NOT_READY");
-    expect(guidance.action).toContain("自動再取得");
+    expect(guidance.action).toContain("完了したことを確認できません");
+    expect(guidance.action).not.toContain("自動再取得します");
     expect(guidance.adminSteps.length).toBeGreaterThanOrEqual(4);
     expect(guidance.recoveryRoute).toBe("/admin/system-check");
   });

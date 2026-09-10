@@ -1,3 +1,4 @@
+import ProductIdentity from "./inventory/ProductIdentity";
 type ProductDetail = {
   name: string;
   janCode?: string | null;
@@ -118,19 +119,9 @@ export default function ProductDetailPanel({
           <h3 className="font-black text-slate-900">商品情報</h3>
 
           <dl className="mt-4 grid gap-x-5 gap-y-4 sm:grid-cols-2 lg:grid-cols-3">
-            <DetailCell label="既存JANコード" value={product.janCode} />
-            <DetailCell
-              label="システムJAN"
-              value={product.systemBarcode}
-            />
-            <DetailCell
-              label="商品管理コード"
-              value={product.managementCode}
-            />
-            <DetailCell
-              label="管理グループコード"
-              value={product.managementGroupCode}
-            />
+            <div><ProductIdentity item={product}/></div>
+
+
             <DetailCell label="メーカー" value={product.manufacturer} />
             <DetailCell label="分類" value={category} />
             <DetailCell

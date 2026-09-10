@@ -1,4 +1,5 @@
 "use client";
+import ProductCodeField from "@/components/ProductCodeField";
 import ProductIdentity from "@/components/inventory/ProductIdentity";
 import StockStateSummary from "@/components/inventory/StockStateSummary";
 import type {StockListing} from "@/lib/stock-state";
@@ -33,8 +34,6 @@ type InventoryInstance = {
   quantity: number;
   actualQuantity: number | null;
   marketplaceListings?: StockListing[];
-  managementCode: string | null;
-  managementGroupCode: string | null;
   manufacturer: string | null;
   majorCategory: string | null;
   minorCategory: string | null;
@@ -55,8 +54,6 @@ type Item = {
   name: string;
   janCode: string | null;
   systemBarcode: string | null;
-  managementCode: string | null;
-  managementGroupCode: string | null;
   manufacturer: string | null;
   majorCategory: string | null;
   minorCategory: string | null;
@@ -68,8 +65,6 @@ type ItemForm = {
   name: string;
   janCode: string;
   systemBarcode: string;
-  managementCode: string;
-  managementGroupCode: string;
   manufacturer: string;
   majorCategory: string;
   minorCategory: string;
@@ -79,8 +74,6 @@ type ItemForm = {
 
 type InventoryForm = {
   storageLocationId: string;
-  managementCode: string;
-  managementGroupCode: string;
   manufacturer: string;
   majorCategory: string;
   minorCategory: string;
@@ -216,8 +209,6 @@ function itemToForm(item: Item): ItemForm {
     name: item.name,
     janCode: item.janCode ?? "",
     systemBarcode: item.systemBarcode ?? "",
-    managementCode: item.managementCode ?? "",
-    managementGroupCode: item.managementGroupCode ?? "",
     manufacturer: item.manufacturer ?? "",
     majorCategory: item.majorCategory ?? "",
     minorCategory: item.minorCategory ?? "",
@@ -229,8 +220,6 @@ function itemToForm(item: Item): ItemForm {
 function inventoryToForm(inventory: InventoryInstance): InventoryForm {
   return {
     storageLocationId: inventory.storageLocationId ?? "",
-    managementCode: inventory.managementCode ?? "",
-    managementGroupCode: inventory.managementGroupCode ?? "",
     manufacturer: inventory.manufacturer ?? "",
     majorCategory: inventory.majorCategory ?? "",
     minorCategory: inventory.minorCategory ?? "",
@@ -667,67 +656,11 @@ export default function ItemDetailPage() {
                     />
                   </label>
 
-                  <label className="block">
-                    <span className="font-bold text-slate-700">
-                      既存JANコード
-                    </span>
-                    <input
-                      value={itemForm.janCode}
-                      onChange={(event) =>
-                        setItemForm({
-                          ...itemForm,
-                          janCode: event.target.value,
-                        })
-                      }
-                      className="mt-2 w-full rounded-xl border border-slate-300 px-4 py-3"
-                    />
-                  </label>
+                  <ProductCodeField janCode={itemForm.janCode} systemBarcode={itemForm.systemBarcode} onChange={codes=>setItemForm({...itemForm,...codes})}/>
 
-                  <label className="block">
-                    <span className="font-bold text-slate-700">
-                      システムJAN
-                    </span>
-                    <input
-                      value={itemForm.systemBarcode}
-                      onChange={(event) =>
-                        setItemForm({
-                          ...itemForm,
-                          systemBarcode: event.target.value,
-                        })
-                      }
-                      className="mt-2 w-full rounded-xl border border-slate-300 px-4 py-3"
-                    />
-                  </label>
 
-                  <label className="block">
-                    <span className="font-bold text-slate-700">任意管理コード</span>
-                    <input
-                      value={itemForm.managementCode}
-                      onChange={(event) =>
-                        setItemForm({
-                          ...itemForm,
-                          managementCode: event.target.value,
-                        })
-                      }
-                      className="mt-2 w-full rounded-xl border border-slate-300 px-4 py-3"
-                    />
-                  </label>
 
-                  <label className="block">
-                    <span className="font-bold text-slate-700">
-                      管理グループコード
-                    </span>
-                    <input
-                      value={itemForm.managementGroupCode}
-                      onChange={(event) =>
-                        setItemForm({
-                          ...itemForm,
-                          managementGroupCode: event.target.value,
-                        })
-                      }
-                      className="mt-2 w-full rounded-xl border border-slate-300 px-4 py-3"
-                    />
-                  </label>
+
 
                   <label className="block">
                     <span className="font-bold text-slate-700">メーカー</span>
@@ -803,41 +736,13 @@ export default function ItemDetailPage() {
               <h2 className="text-xl font-black text-slate-950">商品情報</h2><ProductIdentity item={item}/>
 
               <dl className="mt-5 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
-                <div>
-                  <dt className="text-sm font-bold text-slate-500">
-                    既存JANコード
-                  </dt>
-                  <dd className="mt-1 break-all text-lg font-black text-slate-900">
-                    {text(item.janCode)}
-                  </dd>
-                </div>
 
-                <div>
-                  <dt className="text-sm font-bold text-slate-500">
-                    システムJAN
-                  </dt>
-                  <dd className="mt-1 break-all text-lg font-black text-slate-900">
-                    {text(item.systemBarcode)}
-                  </dd>
-                </div>
 
-                <div>
-                  <dt className="text-sm font-bold text-slate-500">
-                    管理番号
-                  </dt>
-                  <dd className="mt-1 text-lg font-black text-slate-900">
-                    {text(item.managementCode)}
-                  </dd>
-                </div>
 
-                <div>
-                  <dt className="text-sm font-bold text-slate-500">
-                    管理グループコード
-                  </dt>
-                  <dd className="mt-1 text-lg font-black text-slate-900">
-                    {text(item.managementGroupCode)}
-                  </dd>
-                </div>
+
+
+
+
 
                 <div>
                   <dt className="text-sm font-bold text-slate-500">

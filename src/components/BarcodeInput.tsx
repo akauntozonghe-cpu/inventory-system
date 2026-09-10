@@ -15,7 +15,7 @@ const BarcodeInput = forwardRef<HTMLInputElement, Props>(
         ref={ref}
         type="text"
         value={value}
-        placeholder="バーコード・商品名・JAN・管理コードを入力"
+        placeholder="バーコード・商品名・JANを入力"
         autoFocus
         onChange={(e) => onChange(e.target.value)}
         onKeyDown={(e) => {

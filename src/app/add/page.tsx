@@ -24,8 +24,6 @@ type CurrentUser = {
 type FormState = {
   name: string;
   janCode: string;
-  managementCode: string;
-  managementGroupCode: string;
   manufacturer: string;
   majorCategory: string;
   minorCategory: string;
@@ -40,8 +38,6 @@ type FormState = {
 const initialForm: FormState = {
   name: "",
   janCode: "",
-  managementCode: "",
-  managementGroupCode: "",
   manufacturer: "",
   majorCategory: "",
   minorCategory: "",
@@ -414,35 +410,9 @@ export default function AddPage() {
                 )}
               </div>
 
-              <label>
-                <span className="font-bold text-slate-800">
-                  任意管理コード
-                </span>
 
-                <input
-                  value={form.managementCode}
-                  onChange={(event) =>
-                    change("managementCode", normalizeAsciiCodeInput(event.target.value))
-                  }
-                  placeholder="任意"
-                  className="mt-2 w-full rounded-xl border border-slate-300 px-4 py-3 outline-none transition focus:border-blue-600 focus:ring-2 focus:ring-blue-100"
-                />
-              </label>
 
-              <label>
-                <span className="font-bold text-slate-800">
-                  管理グループコード
-                </span>
 
-                <input
-                  value={form.managementGroupCode}
-                  onChange={(event) =>
-                    change("managementGroupCode", normalizeAsciiCodeInput(event.target.value))
-                  }
-                  placeholder="任意"
-                  className="mt-2 w-full rounded-xl border border-slate-300 px-4 py-3 outline-none transition focus:border-blue-600 focus:ring-2 focus:ring-blue-100"
-                />
-              </label>
 
               <label className="sm:col-span-2">
                 <span className="font-bold text-slate-800">

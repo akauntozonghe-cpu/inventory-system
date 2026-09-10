@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import Link from "next/link";
+
 import { displayActionLabel } from "@/lib/display-labels";
 
 type Severity = "INFO" | "WARNING" | "ERROR" | "CRITICAL";
@@ -479,7 +479,7 @@ export default function ErrorReportsPage() {
               </p>
             </section>
 
-            {selected.recoveryStatus === "ADMIN_REQUIRED" && <section className="mt-5 rounded-2xl border-2 border-amber-400 bg-amber-50 p-5"><h3 className="text-lg font-black text-amber-950">管理者復旧手順</h3><ol className="mt-3 list-decimal space-y-2 pl-6 font-semibold text-amber-950">{recoveryGuide(selected).steps.map((step) => <li key={step}>{step}</li>)}</ol><Link href={recoveryGuide(selected).href} className="mt-4 inline-block rounded-xl bg-amber-600 px-5 py-3 font-black text-white">復旧画面を開く</Link><p className="mt-3 text-xs font-bold text-amber-800">コードやDBを直接操作する必要はありません。復旧操作と履歴記録は管理画面内で完結します。</p></section>}
+            {selected.recoveryStatus === "ADMIN_REQUIRED" && <section className="mt-5 rounded-xl bg-amber-50 p-4"><p className="font-bold">このエラーを選んだ状態で診断・復旧します</p><p className="mt-2 text-sm">下の「このエラーの診断・復旧を始める」で、対象の商品・棚卸と具体的な処置を表示します。処置後の再チェックと元の操作の確認が済むまで、解決済みにはしません。</p></section>}
 
             <section className="mt-5">
               <p className="font-bold">技術詳細</p>
@@ -542,7 +542,7 @@ export default function ErrorReportsPage() {
                 disabled={saving||selected.recoveryStatus!=="ADMIN_REQUIRED"||!["OPEN","INVESTIGATING"].includes(selected.status)}
                 className="rounded-xl bg-emerald-600 px-5 py-3 font-bold text-white hover:bg-emerald-700 disabled:opacity-50"
               >
-                {saving ? "記録中…" : "共通の復旧手順を開く"}
+                {saving ? "記録中…" : "このエラーの診断・復旧を始める"}
               </button>
             </div>
           </section>
@@ -550,14 +550,5 @@ export default function ErrorReportsPage() {
       )}
     </main>
   );
-}
-
-function recoveryGuide(report: ErrorReport) {
-  const detail = report.detail && typeof report.detail === "object" ? report.detail as Record<string, unknown> : {};
-  const suppliedSteps = Array.isArray(detail.steps) ? detail.steps.filter((step): step is string => typeof step === "string") : [];
-  if (suppliedSteps.length) return { href: typeof detail.recoveryRoute === "string" ? detail.recoveryRoute : "/admin/system-check", steps: suppliedSteps };
-  if (report.code.includes("STOCKTAKE")) return { href: report.sessionId ? `/stocktake/${report.sessionId}` : "/admin/stocktake", steps: ["対象の棚卸を開く", "簡易保存・競合・未反映の件数を確認", "画面の再送信または競合解決を実行", "最新状態を再取得して正常を確認"] };
-  if (report.code.includes("BARCODE") || report.code.includes("ITEM")) return { href: "/items", steps: ["商品・在庫一覧を開く", "JAN・商品名・管理コードの重複候補を確認", "詳細・すべて編集から正しい情報へ統合", "再度対象操作を実行して正常を確認"] };
-  return { href: "/admin/system-check", steps: ["システム点検を開いて最新の自動点検を実行", "異常項目に表示される対応操作を実行", "同じ点検が正常になることを確認", "共通の復旧手順で再チェックし、元の操作を確認して完了する"] };
 }
 

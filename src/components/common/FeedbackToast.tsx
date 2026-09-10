@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
-import { extractErrorCode } from "@/lib/error-guidance";
+import { extractErrorCode, getErrorGuidance } from "@/lib/error-guidance";
 
 type Props = {
   message: string;
@@ -30,6 +30,10 @@ export default function FeedbackToast({
   onClose,
   autoCloseMs,
   errorCode,
+  action,
+  recoveryStatus,
+  onRetry,
+  retrying,
 }: Props) {
   useEffect(() => {
     if (!message || !onClose || !autoCloseMs) return;
@@ -55,6 +59,8 @@ export default function FeedbackToast({
             {title && <p data-admin-recovery-title={tone === "error" ? "true" : undefined} className="font-black">{title}</p>}
             <p className={title ? "mt-1 font-semibold" : "font-bold"}>{message}</p>
             {tone === "error" && <p className="mt-2 break-all text-sm">エラーコード：{code}</p>}
+            {tone === "error" && <p className="mt-2 text-sm">{recoveryStatus === "RECOVERING" ? "自動復旧を試しています。結果が表示されるまで、同じ操作を重ねて実行しないでください。" : recoveryStatus === "RECOVERED" ? "自動復旧が成功しました。画面の最新状態を確認してください。" : action || getErrorGuidance(code).action}</p>}
+            {tone === "error" && onRetry && <button type="button" disabled={retrying || recoveryStatus === "RECOVERING"} onClick={onRetry} className="mt-3 rounded-lg border bg-white px-4 py-2 font-bold disabled:opacity-50">{retrying || recoveryStatus === "RECOVERING" ? "再確認中…" : "もう一度確認する"}</button>}
           </div>
           {onClose && (
             <button

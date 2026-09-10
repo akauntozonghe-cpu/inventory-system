@@ -1,3 +1,4 @@
+import ProductIdentity from "../inventory/ProductIdentity";
 import { assessExpiry, formatExpirationDate } from "@/lib/expiry-management";
 
 type Props = {
@@ -5,6 +6,7 @@ type Props = {
     id: string;
     name: string;
     janCode: string | null;
+    systemBarcode?: string | null;
 
     quantity: number;
     actualQuantity: number | null;
@@ -63,12 +65,7 @@ export default function ProductCard({
           {item.name}
         </p>
 
-        <p>
-          <span className="font-semibold">
-            JAN：
-          </span>
-          {item.janCode ?? "未登録"}
-        </p>
+        <ProductIdentity item={item}/>
 
         <p>
           <span className="font-semibold">
