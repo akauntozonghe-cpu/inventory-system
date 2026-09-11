@@ -65,6 +65,7 @@ export async function POST(request: NextRequest) {
         await transaction.stocktakeTarget.deleteMany();
         await transaction.stocktakeSession.deleteMany();
 
+        await transaction.zaicoImportRecord.deleteMany();
         await transaction.inventoryHistory.deleteMany();
         await transaction.inventoryInstance.deleteMany();
         await transaction.item.deleteMany();

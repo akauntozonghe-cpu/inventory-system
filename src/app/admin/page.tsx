@@ -83,6 +83,7 @@ const stocktakeMenus: MenuItem[] = [
 ];
 
 const inventoryMenus: MenuItem[] = [
+  { href: "/import", icon: "⇧", title: "在庫データの取り込み", description: "zaico CSVのJAN重複確認・一括登録・確認待ちの処理を行います。", color: "bg-indigo-600" },
   {
     href: "/marketplace",
     icon: "🛍️",

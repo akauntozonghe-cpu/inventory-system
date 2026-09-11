@@ -1,3 +1,4 @@
+import { shippingDeadline } from "@/lib/marketplace-settings";
 import {availableStock,RESERVED_LISTING_STATUSES} from "@/lib/stock-state";
 import { scheduleDeviceNotifications } from "@/lib/device-push";
 import { reverseMarketplace } from "@/lib/marketplace-reversal";
@@ -142,9 +143,12 @@ async function createListing(request: NextRequest) {
     const inventory = await tx.inventoryInstance.findUnique({ where: { id: inventoryInstanceId }, include: { item: true } });
     const reserved = await tx.marketplaceListing.aggregate({ where: { inventoryInstanceId, status: { in: [...RESERVED_LISTING_STATUSES] } }, _sum: { listedQuantity: true } });
     if (!inventory || inventory.item.isArchived || inventory.status === "廃止" || inventory.quantity - (reserved._sum.listedQuantity ?? 0) < listedQuantity) throw new Error("MARKETPLACE_STOCK_SHORTAGE");
+    const preferences = await tx.salesRecommendationSetting.findUnique({ where: { id: "system" } });
     const created = await tx.marketplaceListing.create({
       data: {
         inventoryInstanceId,
+        shippingOriginPrefecture: preferences?.shippingOriginPrefecture ?? null,
+        shippingLeadDays: preferences?.shippingLeadDays ?? null,
         channel: text(body?.channel, 50) || "mercari",
         title: text(body?.title, 200) || inventory.item.name,
         description: text(body?.description, 4000) || null,
@@ -250,7 +254,8 @@ async function changeListing(request: NextRequest) {
       await tx.inventoryEvent.create({ data: { inventoryInstanceId: existing.inventoryInstanceId, eventType: "ISSUE", quantityBefore: before, quantityChange: -soldQuantity, quantityAfter: after, reason: "フリマ販売", detail: { marketplaceListingId: id, channel: existing.channel, externalListingId: existing.externalListingId }, performedByUserId: auth.user.id } });
       const siblingResult = await tx.marketplaceListing.updateMany({ where: { inventoryInstanceId: existing.inventoryInstanceId, id: { not: id }, status: { in: [...RESERVED_LISTING_STATUSES] } }, data: { status: "CANCELLED", notes: "他の販売先で売却されたため取り下げ確認が必要です。" } });
       await tx.notification.create({ data: { type: "MARKETPLACE_SOLD", audience: "ADMIN", title: siblingResult.count ? "売却済み：他サイトの出品を取り下げてください" : "フリマ販売を在庫へ反映", message: `${existing.inventoryInstance.item.name}を${soldQuantity}点販売し、残数は${after}点です。${siblingResult.count ? ` 併売${siblingResult.count}件を停止扱いにしました。` : ""}`, detail: { marketplaceListingId: id, cancelledSiblingCount: siblingResult.count } } });
-      return tx.marketplaceListing.update({ where: { id }, data: { status: "SOLD", soldQuantity, soldAt: new Date(), shippingStatus: "PACKING", fee: nonNegativeInt(body?.fee) ?? existing.fee, shippingCost: nonNegativeInt(body?.shippingCost) ?? existing.shippingCost } });
+      const soldAt = new Date();
+      return tx.marketplaceListing.update({ where: { id }, data: { status: "SOLD", soldQuantity, soldAt, shippingDueAt: shippingDeadline(soldAt, existing.shippingLeadDays), shippingStatus: "PACKING", fee: nonNegativeInt(body?.fee) ?? existing.fee, shippingCost: nonNegativeInt(body?.shippingCost) ?? existing.shippingCost } });
     }
     const updated = await tx.marketplaceListing.update({ where: { id }, data: { status: status as typeof LISTING_STATUSES[number], listedAt: status === "LISTED" ? new Date() : existing.listedAt, listingUrl: text(body?.listingUrl, 1000) || existing.listingUrl, externalListingId: text(body?.externalListingId, 100) || existing.externalListingId } });
     if (status === "CANCELLED") {

@@ -1,3 +1,4 @@
+import { marketplaceTakeHome } from "./marketplace-settings";
 // Evidence and arithmetic are independent of any future language-model provider.
 export type Parcel = { weight: number | null; length: number | null; width: number | null; height: number | null };
 export type DeliveryOption = { id: string; name: string; fee: number; boxCost: number | null; maxWeight?: number | null; maxTotal?: number | null; maxLength?: number | null; maxWidth?: number | null; maxHeight?: number | null; minLength?: number; minWidth?: number; source: string | null; checkedAt: string | null; note: string };
@@ -39,5 +40,6 @@ export function proposalNumbers(input:{history:number[];acquisitionCost:number|n
   const minimum=known?minimumUnitPrice(costs,input.quantity,input.feeBps!,input.targetBps):null;
   const price=observed??minimum;
   const profit=price!==null&&known?price*input.quantity-Math.ceil(price*input.quantity*input.feeBps!/10000)-costs:null;
-  return {price,minimum,profit,source:observed!==null?"HISTORY":minimum!==null?"COST":"UNKNOWN",sampleCount:input.history.length};
+  const takeHome = price === null ? null : marketplaceTakeHome(price, input.quantity, input.feeBps, input.shipping, input.packaging);
+  return {price,minimum,profit,takeHome,source:observed!==null?"HISTORY":minimum!==null?"COST":"UNKNOWN",sampleCount:input.history.length};
 }

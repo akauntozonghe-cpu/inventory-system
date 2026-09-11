@@ -30,3 +30,12 @@ it("rejects malformed dimensions and archived products",async()=>{
 it("does not fetch a whole-category median when condition is unknown",async()=>{
  const response=await request({condition:""});expect(response?.status).toBe(200);expect(db.marketplaceListing.findMany).not.toHaveBeenCalled();expect((await response!.json()).methods[0].numbers.source).toBe("COST");
 });
+
+it("selects shipping rates for the saved origin and prefers its rate over a nationwide duplicate", async () => {
+  db.salesRecommendationSetting.findUnique.mockResolvedValue({ targetProfitRateBps: 2000, shippingOriginPrefecture: "広島県", shippingLeadDays: 2 });
+  const rate = { channel: "mercari", carrier: "配送", methodName: "小型", maxWeightGrams: 1000, maxTotalDimensionsCm: 60 };
+  db.shippingRate.findMany.mockResolvedValue([{ ...rate, id: "all", originPrefecture: null, fee: 400 }, { ...rate, id: "hiroshima", originPrefecture: "広島県", fee: 300 }, { ...rate, id: "tokyo", originPrefecture: "東京都", fee: 200 }]);
+  const data = await (await request())!.json();
+  expect(data).toMatchObject({ shippingOriginPrefecture: "広島県", shippingLeadDays: 2 });
+  expect(data.methods.map((method: { id: string }) => method.id)).toEqual(["hiroshima"]);
+});

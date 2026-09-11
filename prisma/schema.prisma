@@ -153,6 +153,9 @@ model ClassificationLabelAlias {
 }
 
 model MarketplaceListing {
+  shippingOriginPrefecture String?
+  shippingLeadDays Int?
+  shippingDueAt DateTime?
   id String @id @default(cuid())
   inventoryInstanceId String
   inventoryInstance InventoryInstance @relation(fields: [inventoryInstanceId], references: [id], onDelete: Restrict)
@@ -206,6 +209,7 @@ model SalesChannelSetting {
 }
 
 model ShippingRate {
+  originPrefecture String?
   id String @id @default(cuid())
   channel String
   carrier String
@@ -229,6 +233,8 @@ model ShippingRate {
 }
 
 model SalesRecommendationSetting {
+  shippingOriginPrefecture String?
+  shippingLeadDays Int?
   id String @id @default("system")
   regionName String @default("東京都")
   latitude Float @default(35.6762)
@@ -711,4 +717,19 @@ model NotificationRead {
   readAt DateTime @default(now())
   @@unique([notificationId,userId])
   @@index([userId])
+}
+
+model ZaicoImportRecord {
+  id String @id @default(cuid())
+  key String @unique
+  originalRow Json
+  row Json
+  status String @default("PENDING")
+  reason String
+  itemId String?
+  inventoryId String?
+  reviewedByUserId String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  @@index([status, createdAt])
 }

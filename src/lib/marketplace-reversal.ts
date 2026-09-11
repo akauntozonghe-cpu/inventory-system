@@ -24,7 +24,7 @@ export async function reverseMarketplace(request: NextRequest, body: Record<stri
       const reserved = await tx.marketplaceListing.aggregate({where:{inventoryInstanceId:inventory.id,id:{not:id},status:{in:["DRAFT","READY","LISTED"]}},_sum:{listedQuantity:true}});
       if (after - (reserved._sum.listedQuantity ?? 0) < current.listedQuantity) throw new Error("MARKETPLACE_STOCK_SHORTAGE");
     }
-    const claimed = await tx.marketplaceListing.updateMany({where:{id,status:current.status,updatedAt:current.updatedAt},data:{status:target as "DRAFT"|"CANCELLED",soldQuantity:0,soldAt:null,listedAt:null,shippingStatus:"NOT_READY",shippedAt:null,deliveredAt:null,settledAt:null,trackingNumber:null}});
+    const claimed = await tx.marketplaceListing.updateMany({where:{id,status:current.status,updatedAt:current.updatedAt},data:{status:target as "DRAFT"|"CANCELLED",soldQuantity:0,soldAt:null,shippingDueAt:null,listedAt:null,shippingStatus:"NOT_READY",shippedAt:null,deliveredAt:null,settledAt:null,trackingNumber:null}});
     if (claimed.count !== 1) throw new Error("MARKETPLACE_CHANGED");
     if (restored) {
       const changed = await tx.inventoryInstance.updateMany({where:{id:inventory.id,updatedAt:inventory.updatedAt,quantity:inventory.quantity},data:{quantity:after,actualQuantity:inventory.actualQuantity === null ? null : inventory.actualQuantity + restored}});

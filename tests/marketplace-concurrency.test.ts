@@ -1,7 +1,7 @@
 import { beforeEach, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
 const db = vi.hoisted(() => ({
-  marketplaceListing: { findUnique: vi.fn(), aggregate: vi.fn(), create: vi.fn(), updateMany: vi.fn(), update: vi.fn(), count: vi.fn() },
+  salesRecommendationSetting: { findUnique: vi.fn() }, marketplaceListing: { findUnique: vi.fn(), aggregate: vi.fn(), create: vi.fn(), updateMany: vi.fn(), update: vi.fn(), count: vi.fn() },
   inventoryInstance: { findUnique: vi.fn(), updateMany: vi.fn(), update: vi.fn() },
   inventoryHistory: { create: vi.fn() }, inventoryEvent: { create: vi.fn() }, notification: { create: vi.fn() }, adminActionLog: { create: vi.fn() }, $transaction: vi.fn(),
 }));
@@ -53,4 +53,22 @@ it("does not allow ordinary shipping updates to reverse a completed shipment",as
   db.marketplaceListing.findUnique.mockResolvedValue({id:"listing",status:"SOLD",shippingStatus:"SHIPPED",updatedAt:new Date(0),inventoryInstance:inventory});
   expect((await PATCH(request({id:"listing",action:"UPDATE_SHIPPING",shippingStatus:"PACKING"})))?.status).toBe(409);
   expect(db.marketplaceListing.update).not.toHaveBeenCalled();
+});
+
+it("snapshots the shared shipping preferences when creating a draft", async () => {
+  db.marketplaceListing.aggregate.mockResolvedValue({ _sum: { listedQuantity: 0 } });
+  db.salesRecommendationSetting.findUnique.mockResolvedValue({ shippingOriginPrefecture: "広島県", shippingLeadDays: 2 });
+  db.marketplaceListing.create.mockResolvedValue({ id: "created", channel: "mercari" });
+  expect((await POST(request({ inventoryInstanceId: "inv", price: 100, listedQuantity: 2 })))?.status).toBe(201);
+  expect(db.marketplaceListing.create).toHaveBeenCalledWith({ data: expect.objectContaining({ shippingOriginPrefecture: "広島県", shippingLeadDays: 2 }) });
+});
+it("records the shipping deadline with the sale without changing stock twice", async () => {
+  vi.useFakeTimers(); vi.setSystemTime(new Date("2026-09-30T16:00:00Z"));
+  try {
+    db.marketplaceListing.findUnique.mockResolvedValue({ id: "listing", status: "LISTED", updatedAt: new Date(0), listedQuantity: 2, inventoryInstanceId: "inv", inventoryInstance: inventory, shippingLeadDays: 2 });
+    db.marketplaceListing.update.mockResolvedValue({ id: "listing" });
+    expect((await PATCH(request({ id: "listing", status: "SOLD" })))?.status).toBe(200);
+    expect(db.marketplaceListing.update).toHaveBeenCalledWith({ where: { id: "listing" }, data: expect.objectContaining({ shippingDueAt: new Date("2026-10-03T14:59:59.999Z") }) });
+    expect(db.inventoryInstance.updateMany).toHaveBeenCalledTimes(1);
+  } finally { vi.useRealTimers(); }
 });

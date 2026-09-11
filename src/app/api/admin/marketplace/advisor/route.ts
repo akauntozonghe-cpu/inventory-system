@@ -1,3 +1,4 @@
+import { parseShippingPreferences, PREFECTURES } from "@/lib/marketplace-settings";
 import { NextRequest, NextResponse } from "next/server";
 import { requireLogin } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
@@ -34,8 +35,11 @@ export async function POST(request: NextRequest) {
   if (action === "SAVE_RECOMMENDATION_SETTING") {
     const goal=numberValue(body?.targetProfitRateBps,0,9000);
     if(goal===null)return NextResponse.json({message:"目標利益率は0〜90%で指定してください。"},{status:400});
-    const setting=await prisma.salesRecommendationSetting.upsert({where:{id:"system"},create:{id:"system",targetProfitRateBps:goal},update:{targetProfitRateBps:goal}});
-    return NextResponse.json({setting,message:"提案の目標を保存しました。"});
+    let preferences;
+    try { preferences = parseShippingPreferences(body ?? {}); }
+    catch (error) { return NextResponse.json({ message: error instanceof Error ? error.message : "設定を確認してください。" }, { status: 400 }); }
+    const setting=await prisma.salesRecommendationSetting.upsert({where:{id:"system"},create:{id:"system",targetProfitRateBps:goal,...preferences},update:{targetProfitRateBps:goal,...preferences}});
+    return NextResponse.json({setting,message:"発送・価格の共通設定を保存しました。"});
   }
   if(action==="SAVE_CHANNEL_FEE") {
     const channel=stringValue(body?.channel,50), fee=numberValue(body?.feeRateBps,0,10000);
@@ -51,7 +55,16 @@ export async function POST(request: NextRequest) {
   }
   if (action === "SAVE_SHIPPING_RATE") {
     const fee = numberValue(body?.fee); const methodName = stringValue(body?.methodName,100); if (fee === null || !methodName) return NextResponse.json({ message: "発送方法と送料を入力してください。" }, { status: 400 });
-    const rate = await prisma.shippingRate.create({ data: { channel: stringValue(body?.channel,50) || "all", carrier: stringValue(body?.carrier,100) || "配送会社", methodName, fee, maxWeightGrams: numberValue(body?.maxWeightGrams), maxTotalDimensionsCm: numberValue(body?.maxTotalDimensionsCm), anonymous: body?.anonymous === true, tracking: body?.tracking !== false, compensation: body?.compensation === true, effectiveFrom: new Date() } });
+    const origin = stringValue(body?.originPrefecture, 20);
+    if (origin && !(PREFECTURES as readonly string[]).includes(origin)) return NextResponse.json({ message: "送料を使う発送地を選んでください。" }, { status: 400 });
+    const shippingChannel = stringValue(body?.channel, 50) || "all";
+    if (!["all", "mercari", "yahoo_furima", "rakuma", "flea_market"].includes(shippingChannel)) return NextResponse.json({ message: "販売先を確認してください。" }, { status: 400 });
+    for (const key of ["maxWeightGrams", "maxTotalDimensionsCm"]) {
+      const value = body?.[key];
+      if (value !== null && value !== undefined && value !== "" && (typeof value !== "number" || !Number.isInteger(value) || value <= 0 || value > 10000000)) return NextResponse.json({ message: "重量・サイズは正の整数で入力してください。" }, { status: 400 });
+    }
+    if (typeof body?.fee !== "number" || !Number.isInteger(body.fee) || body.fee < 0) return NextResponse.json({ message: "送料は0以上の整数で入力してください。" }, { status: 400 });
+    const rate = await prisma.shippingRate.create({ data: { originPrefecture: origin || null, channel: stringValue(body?.channel,50) || "all", carrier: stringValue(body?.carrier,100) || "配送会社", methodName, fee, maxWeightGrams: numberValue(body?.maxWeightGrams), maxTotalDimensionsCm: numberValue(body?.maxTotalDimensionsCm), anonymous: body?.anonymous === true, tracking: body?.tracking !== false, compensation: body?.compensation === true, effectiveFrom: new Date() } });
     return NextResponse.json({ rate, message: "送料表へ追加しました。" });
   }
   if (action === "UPDATE_CHANNEL") {
