@@ -80,3 +80,14 @@ it("keeps original invalid JAN in the record while assigning a scannable system 
   expect(data.janCode).toBe(null);expect(data.systemBarcode).toMatch(/^20\d{11}$/);
   expect(db.zaicoImportRecord.create).toHaveBeenCalledWith({data:expect.objectContaining({originalRow:input,row:input})});
 });
+
+it("bulk JAN review uses the latest stored row and leaves new quantity errors untouched",async()=>{
+ db.zaicoImportRecord.findUnique.mockResolvedValue({id:"pending",status:"PENDING",row:{...row,janCode:"",quantity:"bad"}});
+ expect(await processZaico({systemJanOnly:true,reviews:[{id:"pending",row:{...row,janCode:""},mode:"AUTO"}]},"admin")).toMatchObject({created:0,skipped:1});
+ expect(db.item.create).not.toHaveBeenCalled();expect(db.zaicoImportRecord.update).not.toHaveBeenCalled();
+});
+it("bulk JAN review issues a code from the stored pending row",async()=>{
+ db.zaicoImportRecord.findUnique.mockResolvedValue({id:"pending",status:"PENDING",row:{...row,janCode:"bad"}});
+ expect(await processZaico({systemJanOnly:true,reviews:[{id:"pending",row,mode:"AUTO"}]},"admin")).toMatchObject({created:1});
+ expect(db.item.create).toHaveBeenCalledWith(expect.objectContaining({data:expect.objectContaining({janCode:null,systemBarcode:expect.stringMatching(/^20\d{11}$/)})}));
+});

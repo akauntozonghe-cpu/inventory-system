@@ -71,6 +71,17 @@ export default function ZaicoImportPanel() {
     } catch (e) { setError(e instanceof Error ? e.message : "保存できませんでした。"); }
     finally { setBusy(false); }
   }
+  async function registerPendingSystemJan() {
+    setBusy(true);setError("");setNotice("");
+    let created=0;
+    try {
+      let more=true;
+      while(more){const result=await api({action:"SYSTEM_JAN_PENDING"});created+=result.created;more=result.hasMore===true;setNotice("システムJANを付けて登録中："+created+"件");}
+      setNotice("システムJANを付けて"+created+"件登録しました。数量不備・重複候補は確認待ちに残しています。");
+      await load();
+    }catch(e){setError(e instanceof Error?e.message:"処理できませんでした。保存済みの行は再登録されません。");await load().catch(()=>{});}
+    finally{setBusy(false);}
+  }
   async function moreHistory() {
     if (!historyCursor) return;
     setBusy(true); setError("");
@@ -99,6 +110,7 @@ export default function ZaicoImportPanel() {
     <div className="rounded-2xl border bg-white p-5">
       <h2 className="text-xl font-bold">確認待ち {count}件</h2>
       <p className="mt-2 text-sm text-slate-600">JANや数量を修正して選択行をまとめて処理できます。「対象外にする」は在庫を変更しません。</p>
+      {count > 0 && <button type="button" disabled={busy} onClick={()=>void registerPendingSystemJan()} className="mt-3 rounded-xl bg-indigo-700 px-4 py-3 font-bold text-white disabled:opacity-50">JAN不備だけの確認待ちをまとめて登録</button>}
       {count > pending.length && <p className="mt-2 text-sm">先頭{pending.length}件を表示中です。処理すると次の行が表示されます。</p>}
       {pending.some(entry => !validJan(entry.row.janCode) && !rowProblem(entry.row) && !entry.candidates.length) && <button disabled={busy} className="mt-3 rounded-xl border px-4 py-3 font-bold" onClick={() => setPending(values => values.map(entry => ({ ...entry, selected: !validJan(entry.row.janCode) && !rowProblem(entry.row) && !entry.candidates.length, mode: "AUTO" })))}>JANなし・不正で登録できる行を選択</button>}
       {pending.length > 0 && <label className="mt-4 block"><input type="checkbox" disabled={busy} checked={pending.every(row => row.selected)} onChange={e => setPending(values => values.map(row => ({ ...row, selected: e.target.checked })))} /> 表示中の行をすべて選択</label>}

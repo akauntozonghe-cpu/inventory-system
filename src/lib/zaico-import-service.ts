@@ -26,7 +26,7 @@ export async function previewZaico(rows: ZaicoRow[]) {
   });
 }
 
-export async function processZaico(input: { rows?: ZaicoRow[]; reviews?: ReviewInput[] }, userId: string) {
+export async function processZaico(input: { rows?: ZaicoRow[]; reviews?: ReviewInput[]; systemJanOnly?: boolean }, userId: string) {
   for (let attempt = 0; ; attempt++) {
     try {
       return await prisma.$transaction(async tx => {
@@ -37,7 +37,7 @@ export async function processZaico(input: { rows?: ZaicoRow[]; reviews?: ReviewI
         const results: { id: string; status: string; reason: string }[] = [];
         const entries = input.reviews ?? (input.rows ?? []).map(row => ({ row, mode: "AUTO" as const, id: "" }));
         for (const entry of entries) {
-          const row = normalizeZaicoRow(entry.row);
+          let row = normalizeZaicoRow(entry.row);
           const prior = entry.id
             ? await tx.zaicoImportRecord.findUnique({ where: { id: entry.id } })
             : await tx.zaicoImportRecord.findUnique({ where: { key: importKey(row) } });
@@ -46,7 +46,12 @@ export async function processZaico(input: { rows?: ZaicoRow[]; reviews?: ReviewI
             results.push({ id: prior.id, status: "SKIPPED", reason: "この内容は保存済みです。" });
             continue;
           }
+          if (input.systemJanOnly && prior) row = normalizeZaicoRow(prior.row);
           let decision = decideZaicoRow(row, items, entry.mode === "NEW_NO_JAN");
+          if (input.systemJanOnly && (!prior || validJan(row.janCode) || decision.status !== "CREATE")) {
+            results.push({id:entry.id,status:"SKIPPED",reason:"JAN以外の確認が必要なため変更していません。"});
+            continue;
+          }
           if (entry.mode === "LINK") {
             const target = decision.candidates.find(item => item.id === entry.itemId && !item.isArchived);
             if (!target || !validJan(row.janCode) || rowProblem(row)) decision = { ...decision, status: "PENDING", reason: "有効なJAN一致先と入力内容を確認してください。" };
@@ -91,4 +96,16 @@ export async function processZaico(input: { rows?: ZaicoRow[]; reviews?: ReviewI
       throw error;
     }
   }
+}
+
+/** Recheck stored rows under the import lock; never trust edited client row data. */
+export async function processPendingSystemJan(userId:string) {
+  const [records,items]=await Promise.all([
+    prisma.zaicoImportRecord.findMany({where:{status:"PENDING"},orderBy:[{createdAt:"asc"},{id:"asc"}]}),
+    prisma.item.findMany({select:selection}),
+  ]);
+  const eligible=records.filter(record=>{const row=normalizeZaicoRow(record.row);return !validJan(row.janCode)&&decideZaicoRow(row,items).status==="CREATE";});
+  if(!eligible.length)return {created:0,linked:0,pending:0,skipped:0,hasMore:false};
+  const result=await processZaico({systemJanOnly:true,reviews:eligible.slice(0,25).map(record=>({id:record.id,row:normalizeZaicoRow(record.row),mode:"AUTO"}))},userId);
+  return {...result,hasMore:eligible.length>25&&result.created>0};
 }

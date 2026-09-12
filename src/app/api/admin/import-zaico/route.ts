@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireAdmin } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { MAX_ZAICO_ROWS, decideZaicoRow, normalizeZaicoRow } from "@/lib/zaico-import";
-import { previewZaico, processZaico, type ReviewInput } from "@/lib/zaico-import-service";
+import { previewZaico, processZaico, processPendingSystemJan, type ReviewInput } from "@/lib/zaico-import-service";
 
 export async function GET(request: NextRequest) {
   const auth = requireAdmin(request);
@@ -29,6 +29,7 @@ export async function POST(request: NextRequest) {
   if (!auth.user) return NextResponse.json({ message: "管理者権限が必要です。" }, { status: 403 });
   try {
     const body = await request.json().catch(() => null);
+    if (body?.action === "SYSTEM_JAN_PENDING") return NextResponse.json(await processPendingSystemJan(auth.user.id));
     if (!["PREVIEW", "IMPORT", "REVIEW"].includes(body?.action)) return NextResponse.json({ message: "処理方法を確認してください。" }, { status: 400 });
     const values: unknown = body.action === "REVIEW" ? body.reviews : body.rows;
     if (!Array.isArray(values) || values.length === 0 || values.length > MAX_ZAICO_ROWS || JSON.stringify(values).length > 2_000_000) return NextResponse.json({ message: `1〜${MAX_ZAICO_ROWS}行のファイルを選んでください。` }, { status: 400 });
