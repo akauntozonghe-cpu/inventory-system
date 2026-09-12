@@ -44,6 +44,7 @@ export class ItemRepository {
       where: options.includeArchived ? undefined : { isArchived: false },
       orderBy: [{ isArchived: "asc" }, { name: "asc" }],
       include: {
+        photos: {select:{id:true},orderBy:[{createdAt:"asc"},{id:"asc"}],take:1},
         inventoryInstances: {
           select: {
             id: true,

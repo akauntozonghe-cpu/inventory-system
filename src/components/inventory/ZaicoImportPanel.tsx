@@ -1,9 +1,9 @@
 "use client";
 
-import Link from "next/link";
+import Link from "@/components/auth/PermissionLink";
 import { useEffect, useState } from "react";
 import * as XLSX from "xlsx";
-import { MAX_ZAICO_ROWS, mapZaicoRows, type ZaicoRow, type ImportCandidate } from "@/lib/zaico-import";
+import { MAX_ZAICO_ROWS, rowProblem, validJan, mapZaicoRows, type ZaicoRow, type ImportCandidate } from "@/lib/zaico-import";
 
 type Preview = { rowNumber: number; row: ZaicoRow; status: string; reason: string };
 type Pending = { id: string; row: ZaicoRow; reason: string; candidates: ImportCandidate[]; selected: boolean; mode: string; itemId: string };
@@ -42,10 +42,11 @@ export default function ZaicoImportPanel() {
         catch { csv = new TextDecoder("shift-jis").decode(buffer); }
         workbook = XLSX.read(csv, { type: "string", raw: true });
       } else workbook = XLSX.read(buffer, { type: "array" });
-      const sheet = workbook.Sheets[workbook.SheetNames[0]];
+      const sheet = workbook.Sheets["管理表"] ?? workbook.Sheets[workbook.SheetNames[0]];
       const grid = XLSX.utils.sheet_to_json<string[]>(sheet, { header: 1, raw: false, defval: "" });
-      if (!["物品名", "数量", "QRコード・バーコードの値"].every(name => grid[0]?.includes(name))) throw new Error("zaicoのCSVを選んでください。「物品名」「数量」「QRコード・バーコードの値」が必要です。");
-      const raw = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, { raw: false, defval: "" });
+      const headerRow = grid.slice(0, 5).findIndex(header => ["商品名", "品名", "物品名"].some(name => header.includes(name)) && ["数量", "個数"].some(name => header.includes(name)));
+      if (headerRow < 0) throw new Error("商品名（品名・物品名）と数量（個数）の列が必要です。");
+      const raw = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, { raw: false, defval: "", range: headerRow });
       if (!raw.length || raw.length > MAX_ZAICO_ROWS) throw new Error(`1〜${MAX_ZAICO_ROWS}行に分けてください。`);
       const mapped = mapZaicoRows(raw);
       const data = await api({ action: "PREVIEW", rows: mapped });
@@ -79,11 +80,11 @@ export default function ZaicoImportPanel() {
   }
   return <section className="space-y-6">
     <div className="rounded-2xl border bg-white p-5">
-      <h2 className="text-xl font-bold">zaicoから取り込む</h2>
-      <p className="mt-2 text-sm text-slate-600">JANが一致する商品は紐付け、新しい商品は通常の在庫に登録します。JANの確認が必要な行だけ確認待ちに残ります。</p>
-      <p className="mt-2 text-sm text-slate-600">既存商品への数量加算・上書きはしません。移行元の数量は履歴に残し、実際の数は棚卸で確定します。zaicoの在庫IDは照合に使いません。</p>
-      <label className="mt-4 block font-bold">zaico CSV・Excelファイル<input aria-label="zaicoファイル" type="file" accept=".csv,.xlsx,.xls" disabled={busy} className={inputClass} onChange={e => { const file = e.target.files?.[0]; if (file) void read(file); e.target.value = ""; }} /></label>
-      <p className="mt-2 text-xs text-slate-500">1回1,000行まで。商品名・JAN・数量・単位・保管場所・カテゴリ（大分類）を取り込みます。空欄の保管場所・期限は未設定になります。新規在庫は対象範囲に合う作業中・中断中の棚卸にも追加されます。</p>
+      <h2 className="text-xl font-bold">CSV・Excelを取り込む</h2>
+      <p className="mt-2 text-sm text-slate-600">JANが一致する商品は紐付け、新しい商品は通常の在庫に登録します。JANが空欄・不正な商品にはシステムJANを付けます。数量不備や重複候補は確認待ちに残ります。</p>
+      <p className="mt-2 text-sm text-slate-600">既存商品への数量加算・上書きはしません。移行元の数量は履歴に残し、実際の数は棚卸で確定します。zaicoのCSVと従来の管理表にも対応しています。</p>
+      <label className="mt-4 block font-bold">CSV・Excelファイル<input aria-label="取り込みファイル" type="file" accept=".csv,.xlsx,.xls" disabled={busy} className={inputClass} onChange={e => { const file = e.target.files?.[0]; if (file) void read(file); e.target.value = ""; }} /></label>
+      <p className="mt-2 text-xs text-slate-500">1回1,000行まで。商品名・JAN・数量・単位・保管場所・カテゴリ（大分類）を取り込みます。メーカー・小分類・ロット・期限にも対応。空欄の項目は未設定になります。新規在庫は対象範囲に合う作業中・中断中の棚卸にも追加されます。</p>
     </div>
     {busy && <p role="status">処理しています…</p>}
     {error && <p role="alert" className="rounded-xl bg-red-50 p-4 text-red-800">{error}</p>}
@@ -99,17 +100,18 @@ export default function ZaicoImportPanel() {
       <h2 className="text-xl font-bold">確認待ち {count}件</h2>
       <p className="mt-2 text-sm text-slate-600">JANや数量を修正して選択行をまとめて処理できます。「対象外にする」は在庫を変更しません。</p>
       {count > pending.length && <p className="mt-2 text-sm">先頭{pending.length}件を表示中です。処理すると次の行が表示されます。</p>}
+      {pending.some(entry => !validJan(entry.row.janCode) && !rowProblem(entry.row) && !entry.candidates.length) && <button disabled={busy} className="mt-3 rounded-xl border px-4 py-3 font-bold" onClick={() => setPending(values => values.map(entry => ({ ...entry, selected: !validJan(entry.row.janCode) && !rowProblem(entry.row) && !entry.candidates.length, mode: "AUTO" })))}>JANなし・不正で登録できる行を選択</button>}
       {pending.length > 0 && <label className="mt-4 block"><input type="checkbox" disabled={busy} checked={pending.every(row => row.selected)} onChange={e => setPending(values => values.map(row => ({ ...row, selected: e.target.checked })))} /> 表示中の行をすべて選択</label>}
       <fieldset disabled={busy} className="mt-4 space-y-4">{pending.map(entry => <article key={entry.id} className="rounded-xl border p-4">
         <label className="font-bold"><input type="checkbox" checked={entry.selected} onChange={e => update(entry.id, { selected: e.target.checked })}/> {entry.row.name || "商品名なし"}</label>
         <p className="mt-2 text-sm text-amber-800">{entry.reason}</p>
         <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">{([['name', '商品名'], ['janCode', 'JAN'], ['quantity', '数量'], ['unit', '単位'], ['storageLocation', '保管場所'], ['majorCategory', '大分類']] as const).map(([key, label]) => <label key={key} className="text-sm">{label}<input aria-label={`${entry.id}-${label}`} type="text" inputMode={key === "quantity" || key === "janCode" ? "numeric" : "text"} value={entry.row[key]} onChange={e => update(entry.id, { row: { ...entry.row, [key]: e.target.value } })} className={inputClass}/></label>)}</div>
-        <label className="mt-3 block text-sm">処理方法<select className={inputClass} value={entry.mode} onChange={e => update(entry.id, { mode: e.target.value })}><option value="AUTO">修正したJANで再判定</option><option value="NEW_NO_JAN">JANなしの新規在庫として登録（JAN欄を空にする）</option>{entry.candidates.some(item => !item.isArchived) && <option value="LINK">JANが一致する既存商品を選ぶ</option>}<option value="SKIP">対象外にする</option></select></label>
+        <label className="mt-3 block text-sm">処理方法<select className={inputClass} value={entry.mode} onChange={e => update(entry.id, { mode: e.target.value })}><option value="AUTO">再判定（JANなし・不正は自動発行）</option><option value="NEW_NO_JAN">システムJANを付けて登録</option>{entry.candidates.some(item => !item.isArchived) && <option value="LINK">JANが一致する既存商品を選ぶ</option>}<option value="SKIP">対象外にする</option></select></label>
         {entry.mode === "LINK" && <label className="mt-3 block text-sm">紐付ける商品<select className={inputClass} value={entry.itemId} onChange={e => update(entry.id, { itemId: e.target.value })}><option value="">商品を選択</option>{entry.candidates.filter(item => !item.isArchived).map(item => <option key={item.id} value={item.id}>{item.name}（{item.id}）</option>)}</select></label>}
       </article>)}</fieldset>
       {pending.length > 0 && <button disabled={busy || !pending.some(row => row.selected)} onClick={() => void save(true)} className="mt-4 rounded-xl bg-indigo-700 px-5 py-3 font-bold text-white disabled:opacity-50">選択した{pending.filter(row => row.selected).length}件を処理</button>}
       {!count && <p className="mt-3 text-sm text-slate-500">確認待ちはありません。</p>}
     </div>
-    {recent.length > 0 && <details className="rounded-2xl border bg-white p-5"><summary className="cursor-pointer font-bold">最近の取り込み履歴（{recent.length}件）</summary><ul className="mt-3 space-y-3">{recent.map(entry => <li key={entry.id} className="border-t pt-3 text-sm"><strong>{entry.row.name}：{labels[entry.status]}</strong><p>移行元CSV {entry.originalRow.quantity} {entry.originalRow.unit} ／ JAN {entry.row.janCode || "なし"}</p><p>{entry.reason}</p>{entry.itemId && <Link className="text-indigo-700 underline" href={`/items/${entry.itemId}`}>商品を確認</Link>}</li>)}</ul>{historyCursor&&<button disabled={busy} onClick={() => void moreHistory()} className="mt-4 rounded-xl border px-4 py-3 font-bold">以前の履歴を表示</button>}</details>}
+    {recent.length > 0 && <details className="rounded-2xl border bg-white p-5"><summary className="cursor-pointer font-bold">最近の取り込み履歴（{recent.length}件）</summary><ul className="mt-3 space-y-3">{recent.map(entry => <li key={entry.id} className="border-t pt-3 text-sm"><strong>{entry.row.name}：{labels[entry.status]}</strong><p>取り込み元 {entry.originalRow.quantity} {entry.originalRow.unit} ／ JAN {entry.row.janCode || "なし"}</p><p>{entry.reason}</p>{entry.itemId && <Link className="text-indigo-700 underline" href={`/items/${entry.itemId}`}>商品を確認</Link>}</li>)}</ul>{historyCursor&&<button disabled={busy} onClick={() => void moreHistory()} className="mt-4 rounded-xl border px-4 py-3 font-bold">以前の履歴を表示</button>}</details>}
   </section>;
 }

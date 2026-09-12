@@ -1,4 +1,4 @@
-import Link from "next/link";
+import Link from "@/components/auth/PermissionLink";
 import { summarizeStock, type LinkedStock } from "@/lib/stock-state";
 export default function StockStateSummary({stocks,defaultUnit,itemId,inventoryId}:{stocks:LinkedStock[];defaultUnit?:string|null;itemId:string;inventoryId?:string}) {
   const rows=summarizeStock(stocks,defaultUnit);

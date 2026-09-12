@@ -1,6 +1,6 @@
 "use client";
 
-import Link from "next/link";
+import Link from "@/components/auth/PermissionLink";
 
 type Props = {
   title?: string;

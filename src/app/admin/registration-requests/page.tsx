@@ -3,7 +3,7 @@ import { useLiveRefresh } from "@/hooks/useLiveRefresh";
 import { fetchFresh } from "@/lib/fetch-fresh";
 import { displayUnit } from "@/lib/unit";
 
-import Link from "next/link";
+import Link from "@/components/auth/PermissionLink";
 import { type FormEvent, useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import FeedbackToast from "@/components/common/FeedbackToast";

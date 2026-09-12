@@ -1,5 +1,6 @@
 import type {StockListing} from "@/lib/stock-state";
 export type Item = {
+  photos?: {id:string}[];
   id: string;
   name: string;
   janCode: string | null;

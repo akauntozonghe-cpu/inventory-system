@@ -1,6 +1,6 @@
 import { beforeEach, expect, it, vi } from "vitest";
 import { Prisma } from "@prisma/client";
-const db = vi.hoisted(() => ({ stocktakeSession: { findMany: vi.fn(), updateMany: vi.fn() }, stocktakeTarget: { createMany: vi.fn() }, $transaction: vi.fn(), $executeRaw: vi.fn(), item: { findMany: vi.fn(), create: vi.fn() }, zaicoImportRecord: { findUnique: vi.fn(), create: vi.fn(), update: vi.fn() }, storageLocation: { upsert: vi.fn() }, inventoryInstance: { create: vi.fn() }, inventoryEvent: { create: vi.fn() }, inventoryHistory: { create: vi.fn() }, adminActionLog: { create: vi.fn() } }));
+const db = vi.hoisted(() => ({ classification: {upsert:vi.fn()}, stocktakeSession: { findMany: vi.fn(), updateMany: vi.fn() }, stocktakeTarget: { createMany: vi.fn() }, $transaction: vi.fn(), $executeRaw: vi.fn(), item: { findMany: vi.fn(), create: vi.fn() }, zaicoImportRecord: { findUnique: vi.fn(), create: vi.fn(), update: vi.fn() }, storageLocation: { upsert: vi.fn() }, inventoryInstance: { create: vi.fn() }, inventoryEvent: { create: vi.fn() }, inventoryHistory: { create: vi.fn() }, adminActionLog: { create: vi.fn() } }));
 vi.mock("@/lib/prisma", () => ({ prisma: db }));
 import { importKey, processZaico } from "../src/lib/zaico-import-service";
 import { normalizeZaicoRow } from "../src/lib/zaico-import";
@@ -57,7 +57,7 @@ it("review cannot force a link to a product with a different JAN", async () => {
 it("bulk review permits explicit no-JAN creation and exclusion", async () => {
   db.zaicoImportRecord.findUnique.mockResolvedValue({ id: "pending", status: "PENDING" });
   expect(await processZaico({ reviews: [{ id: "pending", row: { ...row, janCode: "" }, mode: "NEW_NO_JAN" }, { id: "exclude", row, mode: "SKIP" }] }, "admin")).toMatchObject({ created: 1, skipped: 1 });
-  expect(db.item.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ janCode: null, systemBarcode: expect.stringMatching(/^SYS-/) }) }));
+  expect(db.item.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ janCode: null, systemBarcode: expect.stringMatching(/^20\d{11}$/) }) }));
 });
 it("retries serialization conflicts before reporting a failed import", async () => {
   db.$transaction.mockRejectedValueOnce(new Prisma.PrismaClientKnownRequestError("conflict", { code: "P2034", clientVersion: "6" }));
@@ -71,4 +71,12 @@ it("adds new stock only to matching ongoing stocktakes without counting it", asy
   expect(db.stocktakeSession.findMany).toHaveBeenCalledWith(expect.objectContaining({ where: { status: { in: ["IN_PROGRESS", "PAUSED"] } } }));
   expect(db.stocktakeTarget.createMany).toHaveBeenCalledOnce();
   expect(db.stocktakeTarget.createMany).toHaveBeenCalledWith({ data: [{ sessionId: "all", inventoryInstanceId: "new-inventory", expectedQuantity: 4 }], skipDuplicates: true });
+});
+
+it("keeps original invalid JAN in the record while assigning a scannable system JAN",async()=>{
+  const input={...row,janCode:"4.98E+12"};
+  await processZaico({rows:[input]},"admin");
+  const data=db.item.create.mock.calls[0][0].data;
+  expect(data.janCode).toBe(null);expect(data.systemBarcode).toMatch(/^20\d{11}$/);
+  expect(db.zaicoImportRecord.create).toHaveBeenCalledWith({data:expect.objectContaining({originalRow:input,row:input})});
 });

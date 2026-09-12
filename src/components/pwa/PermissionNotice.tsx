@@ -1,5 +1,5 @@
 "use client";
-import Link from "next/link";
+import Link from "@/components/auth/PermissionLink";
 import {usePathname} from "next/navigation";
 import {publicPage} from "@/lib/page-flow";
 import {useDevicePermissions} from "./PermissionProvider";

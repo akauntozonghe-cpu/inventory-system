@@ -5,7 +5,7 @@ import { useRegistrationOptions } from "@/hooks/useRegistrationOptions";
 import { unitValidationMessage } from "@/lib/unit";
 
 import { useEffect, useRef, useState } from "react";
-import Link from "next/link";
+import Link from "@/components/auth/PermissionLink";
 import FeedbackToast from "@/components/common/FeedbackToast";
 
 type Location = {

@@ -1,5 +1,7 @@
 "use client";
 
+import { useAppAccess } from "@/components/auth/AppAccessProvider";
+import { useAdminMode } from "@/components/auth/PageAdminMode";
 import { useEffect, useRef, useState } from "react";
 import LabelPrintDialog from "@/components/LabelPrintDialog";
 import { barcodeLabel } from "@/lib/barcode-label";
@@ -45,8 +47,11 @@ export default function SystemBarcodeLabel({
   const svgRef = useRef<SVGSVGElement | null>(null);
 
   const [systemJan, setSystemJan] = useState(initialSystemJan);
-  const [isAdmin, setIsAdmin] = useState(false);
-  const [checkingRole, setCheckingRole] = useState(true);
+  const {user,ready,can}=useAppAccess();
+  const adminMode=useAdminMode();
+  const isAdmin=user?.role==="ADMIN"||adminMode.active;
+  const checkingRole=!ready;
+  const canPrint=can("LABEL_PRINT");
   const [issuing, setIssuing] = useState(false);
   const [message, setMessage] = useState("");
   const [printOpen,setPrintOpen]=useState(false);
@@ -60,39 +65,6 @@ export default function SystemBarcodeLabel({
     setSystemJan(initialSystemJan);
   }, [initialSystemJan]);
 
-  useEffect(() => {
-    const loadUser = async () => {
-      try {
-        const response = await fetch("/api/auth/me", {
-          cache: "no-store",
-        });
-
-        const text = await response.text();
-
-        let data: unknown = null;
-
-        try {
-          data = text ? JSON.parse(text) : null;
-        } catch {
-          data = null;
-        }
-
-        if (
-          response.ok &&
-          typeof data === "object" &&
-          data !== null &&
-          "role" in data &&
-          data.role === "ADMIN"
-        ) {
-          setIsAdmin(true);
-        }
-      } finally {
-        setCheckingRole(false);
-      }
-    };
-
-    void loadUser();
-  }, []);
 
   useEffect(() => {
     if (!barcode || !svgRef.current) {
@@ -109,7 +81,7 @@ export default function SystemBarcodeLabel({
       svgRef.current.replaceChildren();
       setBarcodeError(`商品「${itemName}」：${error instanceof Error ? error.message : "バーコードを表示できませんでした。"}`);
     }
-  }, [barcode, scale, itemName]);
+  }, [barcode, scale, itemName, canPrint]);
 
   const issueSystemJan = async () => {
     if (janCode) {
@@ -171,6 +143,7 @@ export default function SystemBarcodeLabel({
 
   const printLabel = () => setPrintOpen(true);
 
+  if (!canPrint) return null;
   return (
     <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-7">
       {printOpen&&<LabelPrintDialog labels={[{id:itemId,itemId,name:itemName,barcode}]} canEdit={isAdmin} onClose={()=>setPrintOpen(false)} onRefresh={onUpdated}/>}

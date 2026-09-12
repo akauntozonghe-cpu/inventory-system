@@ -1,3 +1,4 @@
+import { canVisit } from "./app-access";
 import type { FeatureKey } from "./feature-permissions";
 type MenuLink = { href: string; label: string; feature?: FeatureKey; admin?: boolean };
 export const appMenu: ReadonlyArray<{ title: string; links: MenuLink[] }> = [
@@ -6,5 +7,5 @@ export const appMenu: ReadonlyArray<{ title: string; links: MenuLink[] }> = [
   {title:"設定",links:[{href:"/account/password",label:"パスワード変更"},{href:"/admin",label:"システム設定",admin:true},{href:"/admin/classifications",label:"分類・保管場所・JAN",admin:true},{href:"/admin/users",label:"利用者設定",admin:true},{href:"/admin/system-check",label:"点検・復旧",admin:true}]},
 ];
 export function visibleAppMenu(user: { role: string; featurePermissions?: string[] }) {
-  return appMenu.map(group=>({...group,links:group.links.filter(link=>(!link.admin||user.role==="ADMIN")&&(!link.feature||user.role==="ADMIN"||user.featurePermissions?.includes(link.feature)))})).filter(group=>group.links.length);
+  return appMenu.map(group=>({...group,links:group.links.filter(link=>canVisit({id:"",displayName:"",...user,featurePermissions:user.featurePermissions??[]},link.href))})).filter(group=>group.links.length);
 }

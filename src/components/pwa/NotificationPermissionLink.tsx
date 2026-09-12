@@ -1,5 +1,5 @@
 "use client";
-import Link from "next/link";
+import Link from "@/components/auth/PermissionLink";
 import {useDevicePermissions} from "./PermissionProvider";
 export default function NotificationPermissionLink(){
   const state=useDevicePermissions();

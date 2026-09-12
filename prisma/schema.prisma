@@ -33,6 +33,7 @@ model AppUser {
 }
 
 model Item {
+  photos ItemPhoto[]
   inspectionExcluded Boolean @default(false)
   inspectionExclusionReason String?
   id                  String   @id @default(cuid())
@@ -732,4 +733,14 @@ model ZaicoImportRecord {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   @@index([status, createdAt])
+}
+
+model ItemPhoto {
+  id String @id @default(cuid())
+  itemId String
+  item Item @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  data Bytes
+  thumbnail Bytes
+  createdAt DateTime @default(now())
+  @@index([itemId, createdAt])
 }

@@ -1,5 +1,5 @@
 "use client";
-import Link from "next/link";
+import Link from "@/components/auth/PermissionLink";
 import ProductEditDialog from "@/components/ProductEditDialog";
 import { useEffect, useRef, useState } from "react";
 import { targetChecks, type InspectionTarget } from "@/lib/inspection-target-types";

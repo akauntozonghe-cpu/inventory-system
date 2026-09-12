@@ -2,7 +2,7 @@
 import DeviceNotifications from "@/components/pwa/DeviceNotifications";
 import InstallPanel from "@/components/pwa/InstallPanel";
 
-import Link from "next/link";
+import Link from "@/components/auth/PermissionLink";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 

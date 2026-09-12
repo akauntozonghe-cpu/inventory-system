@@ -2,7 +2,7 @@
 import {rememberRecoveryReturn} from "@/lib/recovery-return";
 import { recoveryCheckCodes, recoveryNextStep } from "@/lib/recovery-context";
 import { fetchFresh } from "@/lib/fetch-fresh";
-import Link from "next/link";
+import Link from "@/components/auth/PermissionLink";
 import { useCallback, useEffect, useRef, useState } from "react";
 import InspectionRecovery from "@/components/InspectionRecovery";
 

@@ -1,5 +1,7 @@
 "use client";
 import InventoryStatusBadges from "@/components/inventory/InventoryStatusBadges";
+import { useAppAccess } from "@/components/auth/AppAccessProvider";
+import Image from "next/image";
 import ProductIdentity from "@/components/inventory/ProductIdentity";
 import StockStateSummary from "@/components/inventory/StockStateSummary";
 import { displayUnit } from "@/lib/unit";
@@ -7,7 +9,7 @@ import { displayUnit } from "@/lib/unit";
 import Pagination from "@/components/common/Pagination";
 import { usePagedItems } from "@/hooks/usePagedItems";
 import Modal from "@/components/common/Modal";
-import Link from "next/link";
+import Link from "@/components/auth/PermissionLink";
 import { useEffect, useMemo, useState } from "react";
 import LabelPrintDialog from "@/components/LabelPrintDialog";
 
@@ -56,6 +58,7 @@ async function readJson(response: Response): Promise<unknown> {
 }
 
 export default function ItemTable({ items, reload, isAdmin, onEdit, filterKey }: Props) {
+  const {can} = useAppAccess();
   const pagination = usePagedItems(items, filterKey);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [message, setMessage] = useState("");
@@ -195,9 +198,9 @@ export default function ItemTable({ items, reload, isAdmin, onEdit, filterKey }:
 
   return (
     <>
-      {printIds&&<LabelPrintDialog labels={items.filter(item=>printIds.includes(item.id)).map(item=>({id:item.id,itemId:item.id,name:item.name,barcode:item.janCode||item.systemBarcode}))} canEdit={isAdmin} onRefresh={reload} onClose={()=>setPrintIds(null)} onComplete={()=>setSelectedIds([])}/>}
+      {can("LABEL_PRINT")&&printIds&&<LabelPrintDialog labels={items.filter(item=>printIds.includes(item.id)).map(item=>({id:item.id,itemId:item.id,name:item.name,barcode:item.janCode||item.systemBarcode}))} canEdit={isAdmin} onRefresh={reload} onClose={()=>setPrintIds(null)} onComplete={()=>setSelectedIds([])}/>}
       <section className="space-y-4">
-        <details className="rounded-2xl border bg-white p-3"><summary className="cursor-pointer font-bold">ラベル印刷・複数商品の操作</summary>
+        {(isAdmin || can("LABEL_PRINT")) && <details className="rounded-2xl border bg-white p-3"><summary className="cursor-pointer font-bold">ラベル印刷・複数商品の操作</summary>
 
         {(message || error) && (
           <div
@@ -230,7 +233,7 @@ export default function ItemTable({ items, reload, isAdmin, onEdit, filterKey }:
             )}
 
             <div className="flex flex-wrap gap-2">
-              <button
+              {can("LABEL_PRINT") && <button
                 type="button"
                 onClick={printSelected}
                 disabled={items.length === 0}
@@ -239,7 +242,7 @@ export default function ItemTable({ items, reload, isAdmin, onEdit, filterKey }:
                 {selectedItems.length > 0
                   ? `選択した${selectedItems.length}件を印刷`
                   : `検索結果の${items.length}件を印刷`}
-              </button>
+              </button>}
 
               {isAdmin && (
                 <>
@@ -272,7 +275,7 @@ export default function ItemTable({ items, reload, isAdmin, onEdit, filterKey }:
           )}
         </div>
 
-        </details>
+        </details>}
         <Pagination {...pagination} />
         <div className="grid gap-4 md:grid-cols-2">
           {pagination.visible.map((item) => {
@@ -326,7 +329,7 @@ export default function ItemTable({ items, reload, isAdmin, onEdit, filterKey }:
                       </div>
                     </div>
 
-                    <InventoryStatusBadges item={item} stocks={item.inventoryInstances}/><ProductIdentity item={item}/>{item.inspectionExcluded&&<p className="rounded-xl bg-amber-50 p-2 text-sm">点検対象外：{item.inspectionExclusionReason}</p>}
+                    <>{item.photos?.[0]&&<Image unoptimized width={120} height={100} src={"/api/items/"+item.id+"/photos/"+item.photos[0].id+"?thumbnail=1"} alt={item.name+"の写真"} className="mb-2 h-24 w-28 rounded-lg bg-slate-50 object-contain"/>}</><InventoryStatusBadges item={item} stocks={item.inventoryInstances}/><ProductIdentity item={item}/>{item.inspectionExcluded&&<p className="rounded-xl bg-amber-50 p-2 text-sm">点検対象外：{item.inspectionExclusionReason}</p>}
                     <StockStateSummary stocks={item.inventoryInstances} defaultUnit={item.defaultUnit} itemId={item.id}/>
                     <dl className="mt-4 grid grid-cols-2 gap-3 text-sm">
                       <div>
@@ -372,7 +375,7 @@ export default function ItemTable({ items, reload, isAdmin, onEdit, filterKey }:
 
                     <div className="mt-5 flex flex-wrap gap-2">
                       {isAdmin && <button type="button" onClick={() => onEdit(item)} className="min-h-11 rounded-xl bg-blue-700 px-4 py-2 font-bold text-white">商品情報を編集</button>}
-                      <button type="button" onClick={()=>setPrintIds([item.id])} className="rounded-xl border px-4 py-2 font-bold">この商品のJANを印刷</button><Link
+                      {can("LABEL_PRINT") && <button type="button" onClick={()=>setPrintIds([item.id])} className="rounded-xl border px-4 py-2 font-bold">この商品のJANを印刷</button>}<Link
                         href={`/items/${item.id}`}
                         className="rounded-xl bg-sky-600 px-4 py-2 font-bold text-white transition hover:bg-sky-700"
                       >

@@ -1,6 +1,6 @@
 "use client";
 
-import Link from "next/link";
+import Link from "@/components/auth/PermissionLink";
 import { useEffect, useState } from "react";
 import FeedbackToast from "@/components/common/FeedbackToast";
 

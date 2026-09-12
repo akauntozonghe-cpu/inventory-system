@@ -13,15 +13,15 @@ describe("zaico import decisions", () => {
     expect(decideZaicoRow(row, [{ id: "other", name: "別の表記", janCode: row.janCode, isArchived: false }])).toMatchObject({ status: "LINK", itemId: "other" });
     expect(decideZaicoRow(row, [{ id: "same-name", name: row.name, janCode: "4901234567894", isArchived: false }]).status).toBe("CREATE");
   });
-  it("requires review for absent, rounded, invalid or ambiguous JAN", () => {
-    for (const janCode of ["", "4.98738E+12", "4987379007564", "123"]) expect(decideZaicoRow({ ...row, janCode }, []).status).toBe("PENDING");
+  it("issues a system JAN for absent or invalid codes but reviews ambiguous matches", () => {
+    for (const janCode of ["", "4.98738E+12", "4987379007564", "123"]) expect(decideZaicoRow({ ...row, janCode }, []).status).toBe("CREATE");
     const item = { id: "a", name: "商品", janCode: row.janCode, isArchived: false };
     expect(decideZaicoRow(row, [item, { ...item, id: "b" }]).status).toBe("PENDING");
     expect(decideZaicoRow(row, [{ ...item, isArchived: true }]).status).toBe("PENDING");
   });
-  it("requires an explicit choice for a new product without JAN", () => {
+  it("accepts old no-JAN review mode with automatic assignment", () => {
     expect(decideZaicoRow({ ...row, janCode: "" }, [], true).status).toBe("CREATE");
-    expect(decideZaicoRow({ ...row, janCode: "bad" }, [], true).status).toBe("PENDING");
+    expect(decideZaicoRow({ ...row, janCode: "bad" }, [], true).status).toBe("CREATE");
   });
   it("rejects quantities that cannot be stored without losing information", () => {
     for (const quantity of ["", "-1", "1.5", "1e3", "2147483648"]) expect(decideZaicoRow({ ...row, quantity }, []).status).toBe("PENDING");
@@ -33,4 +33,15 @@ describe("zaico import decisions", () => {
     expect(mapped[0]).toMatchObject({ name: "商品,赤", janCode: "01234565", quantity: "4" });
     expect(validJan("01234565")).toBe(true);
   });
+});
+
+it("reads generic and legacy columns without dropping lot or expiry",()=>{
+  const mapped=mapZaicoRows([{品名:"白い皿",個数:"6",個数単位:"枚",大分類:"食器",小分類:"皿",期限:"2028/2/29","Lot.No・製造番号":"LOT-A"}])[0];
+  expect(mapped).toMatchObject({name:"白い皿",quantity:"6",unit:"枚",majorCategory:"食器",minorCategory:"皿",lotNo:"LOT-A",expirationDate:"2028/2/29"});
+  expect(decideZaicoRow(mapped,[]).status).toBe("CREATE");
+  expect(decideZaicoRow({...mapped,expirationDate:"2027/2/29"},[]).status).toBe("PENDING");
+  expect(decideZaicoRow({...mapped,quantity:"-1"},[]).status).toBe("PENDING");
+});
+it("does not duplicate an existing item with the same invalid barcode",()=>{
+  expect(decideZaicoRow({...row,janCode:"bad"},[{id:"existing",name:"商品",janCode:"bad",isArchived:false}]).status).toBe("PENDING");
 });

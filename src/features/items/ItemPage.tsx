@@ -1,10 +1,11 @@
 "use client";
+import { useAppAccess } from "@/components/auth/AppAccessProvider";
 import {matchesStockFilter,stockFilterLabels,type StockFilter} from "@/lib/stock-state";
 import { useAdminMode } from "@/components/auth/PageAdminMode";
 import { fetchFresh } from "@/lib/fetch-fresh";
 
 import CompactFilter from "@/components/common/CompactFilter";
-import Link from "next/link";
+import Link from "@/components/auth/PermissionLink";
 import {
   useCallback,
   useEffect,
@@ -29,11 +30,6 @@ type SortType =
   | "barcodeAsc"
   | "barcodeDesc";
 
-type CurrentUser = {
-  id: string;
-  displayName: string;
-  role: "ADMIN" | "WORKER";
-};
 
 function getMessage(data: unknown, fallback: string) {
   if (
@@ -69,7 +65,7 @@ async function readJson(response: Response): Promise<unknown> {
 export default function ItemPage() {
   const listRequestRef = useRef(0);
   const [items, setItems] = useState<Item[]>([]);
-  const [currentUser, setCurrentUser] = useState<CurrentUser | null>(null);
+  const {user:currentUser} = useAppAccess();
   const [stockFilter,setStockFilter]=useState<StockFilter>("ALL");
   const [search, setSearch] = useState("");
   const [majorCategory, setMajorCategory] = useState("");
@@ -85,34 +81,8 @@ export default function ItemPage() {
   const [editingItem, setEditingItem] = useState<Item | null>(null);
 
   const adminMode = useAdminMode();
-  const isAdmin = currentUser?.role === "ADMIN" || adminMode.active;
+  const isAdmin = Boolean(currentUser) && (currentUser?.role === "ADMIN" || adminMode.active);
 
-  const fetchUser = useCallback(async () => {
-    try {
-      const response = await fetchFresh("/api/auth/me");
-
-      const data = await readJson(response);
-
-      if (
-        !response.ok ||
-        !data ||
-        typeof data !== "object" ||
-        !("id" in data) ||
-        !("displayName" in data) ||
-        !("role" in data)
-      ) {
-        return;
-      }
-
-      const user = data as CurrentUser;
-
-      if (user.role === "ADMIN" || user.role === "WORKER") {
-        setCurrentUser(user);
-      }
-    } catch {
-      // 権限が判定できない場合は管理者操作を表示しない
-    }
-  }, []);
 
   const fetchItems = useCallback(async (silent = false) => {
     const requestId = ++listRequestRef.current;
@@ -148,9 +118,6 @@ export default function ItemPage() {
 
   const syncFailed = useLiveRefresh(() => fetchItems(true));
 
-  useEffect(() => {
-    void fetchUser();
-  }, [fetchUser]);
 
   useEffect(() => {
     const date = new URLSearchParams(window.location.search).get("registeredDate") ?? "";

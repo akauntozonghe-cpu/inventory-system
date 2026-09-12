@@ -6,7 +6,7 @@ import Pagination from "@/components/common/Pagination";
 import { usePagedItems } from "@/hooks/usePagedItems";
 import { matchesSessionSearch } from "@/lib/session-search";
 import SearchBar from "@/components/common/SearchBar";
-import Link from "next/link";
+import Link from "@/components/auth/PermissionLink";
 import { useLiveRefresh } from "@/hooks/useLiveRefresh";
 import { fetchFresh } from "@/lib/fetch-fresh";
 import ReopenStocktakeButton from "@/components/stocktake/ReopenStocktakeButton";

@@ -6,7 +6,7 @@ import ProductEditDialog from "@/components/ProductEditDialog";
 import Pagination from "@/components/common/Pagination";
 import SearchBar from "@/components/common/SearchBar";
 import { usePagedItems } from "@/hooks/usePagedItems";
-import Link from "next/link";
+import Link from "@/components/auth/PermissionLink";
 import ReopenStocktakeButton from "@/components/stocktake/ReopenStocktakeButton";
 import { useLiveRefresh } from "@/hooks/useLiveRefresh";
 import { fetchFresh } from "@/lib/fetch-fresh";

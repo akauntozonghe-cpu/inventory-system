@@ -1,11 +1,13 @@
-import { createHash, randomUUID } from "node:crypto";
+import { createHash } from "node:crypto";
+import { generateSystemJan } from "./system-jan";
+import { ensureClassification } from "./item-links";
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
-import { decideZaicoRow, normalizeZaicoRow, rowProblem, validJan, type ZaicoRow, type ImportCandidate } from "./zaico-import";
+import { decideZaicoRow, importDate, normalizeZaicoRow, rowProblem, validJan, type ZaicoRow, type ImportCandidate } from "./zaico-import";
 
 export const importKey = (row: ZaicoRow) => createHash("sha256").update(JSON.stringify(normalizeZaicoRow(row))).digest("hex");
 export type ReviewInput = { id: string; row: ZaicoRow; mode: "AUTO" | "NEW_NO_JAN" | "LINK" | "SKIP"; itemId?: string };
-const selection = { id: true, name: true, janCode: true, isArchived: true } as const;
+const selection = { id: true, name: true, janCode: true, isArchived: true, managementCode: true } as const;
 
 export async function previewZaico(rows: ZaicoRow[]) {
   const [existing, records] = await Promise.all([
@@ -19,7 +21,7 @@ export async function previewZaico(rows: ZaicoRow[]) {
     if (prior || seen.has(key)) return { row, rowNumber: index + 2, status: "SKIPPED", reason: prior?.status === "PENDING" ? "保存済みの確認待ちにあります。下の一覧で処理できます。" : "同じ内容は登録済み、またはファイル内で重複しています。", candidates: [] };
     seen.add(key);
     const decision = decideZaicoRow(row, items);
-    if (decision.status === "CREATE") items.push({ id: `preview-${index}`, name: row.name, janCode: row.janCode, isArchived: false });
+    if (decision.status === "CREATE") items.push({ id: `preview-${index}`, name: row.name, janCode: validJan(row.janCode) ? row.janCode : null, isArchived: false });
     return { row, rowNumber: index + 2, ...decision };
   });
 }
@@ -53,18 +55,19 @@ export async function processZaico(input: { rows?: ZaicoRow[]; reviews?: ReviewI
           const status: string = entry.mode === "SKIP" ? "SKIPPED" : decision.status === "CREATE" ? "CREATED" : decision.status === "LINK" ? "LINKED" : "PENDING";
           let itemId = decision.itemId ?? null, inventoryId: string | null = null;
           if (status === "CREATED") {
-            const item = await tx.item.create({ data: { name: row.name, janCode: row.janCode || null, systemBarcode: row.janCode ? null : `SYS-${randomUUID().replaceAll("-", "").slice(0, 18).toUpperCase()}`, defaultUnit: row.unit, majorCategory: row.majorCategory || null }, select: selection });
+            const item = await tx.item.create({ data: { name: row.name, janCode: validJan(row.janCode) ? row.janCode : null, systemBarcode: validJan(row.janCode) ? null : generateSystemJan(), defaultUnit: row.unit, majorCategory: row.majorCategory || null, minorCategory: row.minorCategory || null, manufacturer: row.manufacturer || null, managementCode: row.managementCode || null, managementGroupCode: row.managementGroupCode || null }, select: selection });
+            await ensureClassification(tx, row.majorCategory, row.minorCategory);
             items.push(item);
             itemId = item.id;
             const location = row.storageLocation ? await tx.storageLocation.upsert({ where: { name: row.storageLocation }, create: { name: row.storageLocation }, update: {} }) : null;
             const quantity = Number(row.quantity);
-            const inventory = await tx.inventoryInstance.create({ data: { itemId, storageLocationId: location?.id ?? null, majorCategory: row.majorCategory || null, quantity, actualQuantity: quantity, unit: row.unit, allocationType: "home", status: "在庫中", stocktakeStatus: "未棚卸", expirationDate: null, expirationManagementStatus: "ACTIVE" } });
+            const inventory = await tx.inventoryInstance.create({ data: { itemId, storageLocationId: location?.id ?? null, majorCategory: row.majorCategory || null, quantity, actualQuantity: quantity, unit: row.unit, allocationType: "home", status: "在庫中", stocktakeStatus: "未棚卸", lotNo: row.lotNo || null, minorCategory: row.minorCategory || null, manufacturer: row.manufacturer || null, expirationDate: row.expirationDate ? importDate(row.expirationDate)?.toISOString().slice(0,10) ?? null : null, expirationManagementStatus: "ACTIVE" } });
             inventoryId = inventory.id;
             newStocks.push({ id: inventory.id, locationId: location?.id ?? null, category: row.majorCategory, quantity });
-            await tx.inventoryHistory.create({ data: { inventoryInstanceId: inventory.id, changeQuantity: quantity, action: "zaico CSV取込" } });
-            await tx.inventoryEvent.create({ data: { inventoryInstanceId: inventory.id, eventType: "IMPORT", quantityBefore: 0, quantityChange: quantity, quantityAfter: quantity, performedByUserId: userId, reason: "zaico CSV取込" } });
+            await tx.inventoryHistory.create({ data: { inventoryInstanceId: inventory.id, changeQuantity: quantity, action: "在庫データ取込" } });
+            await tx.inventoryEvent.create({ data: { inventoryInstanceId: inventory.id, eventType: "IMPORT", quantityBefore: 0, quantityChange: quantity, quantityAfter: quantity, performedByUserId: userId, reason: "在庫データ取込" } });
           }
-          const reason = status === "SKIPPED" ? "選択した行を取り込み対象から除外しました。" : status === "CREATED" ? "新規在庫として登録しました。棚卸で現物を確認してください。" : decision.reason;
+          const reason = status === "SKIPPED" ? "選択した行を取り込み対象から除外しました。" : status === "CREATED" ? (validJan(row.janCode) ? "新規在庫として登録しました。" : "システムJANを付けて登録しました。") + "棚卸で現物を確認してください。" : decision.reason;
           const data = { row: row as unknown as Prisma.InputJsonValue, status, reason, itemId, inventoryId, reviewedByUserId: userId };
           const record = prior ? await tx.zaicoImportRecord.update({ where: { id: prior.id }, data }) : await tx.zaicoImportRecord.create({ data: { ...data, key: importKey(row), originalRow: row as unknown as Prisma.InputJsonValue } });
           results.push({ id: record.id, status, reason });

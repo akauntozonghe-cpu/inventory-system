@@ -1,6 +1,6 @@
 import NotificationReadMarker from "@/components/pwa/NotificationReadMarker";
 import {cookies} from "next/headers";
-import Link from "next/link";
+import Link from "@/components/auth/PermissionLink";
 import {redirect,notFound} from "next/navigation";
 import {AUTH_COOKIE,verifySessionToken} from "@/lib/auth";
 import {prisma} from "@/lib/prisma";

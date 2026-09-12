@@ -3,7 +3,7 @@ import DeviceNotifications from "@/components/pwa/DeviceNotifications";
 import { useLiveRefresh } from "@/hooks/useLiveRefresh";
 import { fetchFresh } from "@/lib/fetch-fresh";
 
-import Link from "next/link";
+import Link from "@/components/auth/PermissionLink";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 

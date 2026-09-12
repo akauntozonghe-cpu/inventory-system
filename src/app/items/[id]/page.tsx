@@ -2,13 +2,15 @@
 
 import ProductCodeField from "@/components/ProductCodeField";
 import InventoryStatusBadges from "@/components/inventory/InventoryStatusBadges";
+import { useAppAccess } from "@/components/auth/AppAccessProvider";
+import ProductPhotos from "@/components/inventory/ProductPhotos";
 import ProductIdentity from "@/components/inventory/ProductIdentity";
 import StockStateSummary from "@/components/inventory/StockStateSummary";
 import type {StockListing} from "@/lib/stock-state";
 import { useAdminMode } from "@/components/auth/PageAdminMode";
 import { fetchFresh } from "@/lib/fetch-fresh";
 
-import Link from "next/link";
+import Link from "@/components/auth/PermissionLink";
 import { expiryPolicy, expiryPolicyLabels } from "@/lib/expiry-policy";
 import { FormEvent, useCallback, useEffect, useState } from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
@@ -267,7 +269,7 @@ export default function ItemDetailPage() {
   const itemId = typeof params.id === "string" ? params.id : "";
 
   const [item, setItem] = useState<Item | null>(null);
-  const [currentUser, setCurrentUser] = useState<CurrentUser | null>(null);
+  const {user:currentUser} = useAppAccess();
   const [locations, setLocations] = useState<StorageLocation[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -284,7 +286,7 @@ export default function ItemDetailPage() {
     useState<InventoryForm | null>(null);
 
   const adminMode = useAdminMode();
-  const isAdmin = currentUser?.role === "ADMIN" || adminMode.active;
+  const isAdmin = Boolean(currentUser) && (currentUser?.role === "ADMIN" || adminMode.active);
 
   const loadItem = useCallback(async (silent = false) => {
     if (!itemId) {
@@ -329,26 +331,6 @@ export default function ItemDetailPage() {
     void loadItem();
   }, [loadItem]);
 
-  useEffect(() => {
-    const loadUser = async () => {
-      try {
-        const response = await fetchFresh("/api/auth/me");
-
-        const data = await readJson(response);
-
-        if (response.ok) {
-          setCurrentUser(normalizeUser(data));
-          return;
-        }
-
-        setCurrentUser(null);
-      } catch {
-        setCurrentUser(null);
-      }
-    };
-
-    void loadUser();
-  }, []);
 
   useEffect(() => {
     if (!isAdmin) {
@@ -742,7 +724,7 @@ export default function ItemDetailPage() {
             </section>
           ) : (
             <section className="rounded-3xl bg-white p-5 shadow-sm sm:p-7">
-              <h2 className="text-xl font-black text-slate-950">商品情報</h2><InventoryStatusBadges item={item} stocks={inventoryInstances}/><ProductIdentity item={item}/>
+              <ProductPhotos itemId={item.id} canEdit={isAdmin}/><h2 className="text-xl font-black text-slate-950">商品情報</h2><InventoryStatusBadges item={item} stocks={inventoryInstances}/><ProductIdentity item={item}/>
 
               <dl className="mt-5 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
 

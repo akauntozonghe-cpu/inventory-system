@@ -4,7 +4,7 @@ import { useStocktakePresence } from "@/hooks/useStocktakePresence";
 import { fetchFresh } from "@/lib/fetch-fresh";
 import { parseStocktakeQuantity } from "@/lib/stocktake-quantity";
 
-import Link from "next/link";
+import Link from "@/components/auth/PermissionLink";
 import { canReopenStocktake } from "@/lib/stocktake-reopening";
 import ReopenStocktakeButton from "@/components/stocktake/ReopenStocktakeButton";
 import ProductEditDialog from "@/components/ProductEditDialog";

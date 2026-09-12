@@ -4,11 +4,15 @@ import Modal from "@/components/common/Modal";
 import SelectOrCreate from "@/components/SelectOrCreate";
 import { useRegistrationOptions } from "@/hooks/useRegistrationOptions";
 import { fetchFresh } from "@/lib/fetch-fresh";
+import {useAppAccess} from "@/components/auth/AppAccessProvider";
+import {useAdminMode} from "@/components/auth/PageAdminMode";
+import ProductPhotos from "@/components/inventory/ProductPhotos";
 import ProductCodeField from "./ProductCodeField";
 import { unitValidationMessage } from "@/lib/unit";
 
 type Product = { name: string; janCode: string; systemBarcode: string; manufacturer: string; majorCategory: string; minorCategory: string; defaultUnit: string; updatedAt: string };
 export default function ProductEditDialog({ itemId, onClose, onSaved }: { itemId: string; onClose: () => void; onSaved: () => void }) {
+  const {user}=useAppAccess();const admin=useAdminMode();
   const options = useRegistrationOptions();
   const original = useRef<string | null>(null);
   const [product, setProduct] = useState<Product | null>(null);
@@ -55,7 +59,7 @@ export default function ProductEditDialog({ itemId, onClose, onSaved }: { itemId
     }}>
       <fieldset disabled={saving} className="space-y-4">
         <label className="block font-bold">商品名<input required maxLength={200} value={product.name} onChange={(event) => change("name", event.target.value)} className="mt-1 w-full rounded-lg border p-3"/></label>
-        <ProductCodeField janCode={product.janCode} systemBarcode={product.systemBarcode} onChange={codes=>setProduct({...product,...codes})}/>
+        <ProductPhotos itemId={itemId} canEdit={user?.role==="ADMIN"||admin.active}/><ProductCodeField janCode={product.janCode} systemBarcode={product.systemBarcode} onChange={codes=>setProduct({...product,...codes})}/>
         <label className="block font-bold">メーカー<input maxLength={200} value={product.manufacturer} onChange={(event) => change("manufacturer", event.target.value)} className="mt-1 w-full rounded-lg border p-3"/></label>
         <SelectOrCreate scanKind="MAJOR" label="大分類" value={product.majorCategory} options={options.majorCategories} onChange={(value) => change("majorCategory", value)}/>
         <SelectOrCreate key={product.majorCategory} label="小分類" value={product.minorCategory} options={options.minorsFor(product.majorCategory)} onChange={(value) => change("minorCategory", value)}/>

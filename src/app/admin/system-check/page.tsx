@@ -1,6 +1,6 @@
 "use client";
 
-import Link from "next/link";
+import Link from "@/components/auth/PermissionLink";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import InspectionRecovery from "@/components/InspectionRecovery";
 

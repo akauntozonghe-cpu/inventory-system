@@ -4,7 +4,7 @@ import { fetchFresh } from "@/lib/fetch-fresh";
 
 import { useLiveRefresh } from "@/hooks/useLiveRefresh";
 import { displayUnit } from "@/lib/unit";
-import Link from "next/link";
+import Link from "@/components/auth/PermissionLink";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import FeedbackToast from "@/components/common/FeedbackToast";
 import { recoverAfterFailure } from "@/lib/client-error-recovery";

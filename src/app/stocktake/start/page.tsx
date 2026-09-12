@@ -1,4 +1,5 @@
 "use client";
+import { useAppAccess } from "@/components/auth/AppAccessProvider";
 import FieldScanButton from "@/components/FieldScanButton";
 import { fetchFresh } from "@/lib/fetch-fresh";
 
@@ -8,7 +9,7 @@ import Pagination from "@/components/common/Pagination";
 import { usePagedItems } from "@/hooks/usePagedItems";
 import { matchesSessionSearch } from "@/lib/session-search";
 import SearchBar from "@/components/common/SearchBar";
-import Link from "next/link";
+import Link from "@/components/auth/PermissionLink";
 import ReopenStocktakeButton from "@/components/stocktake/ReopenStocktakeButton";
 import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
@@ -25,13 +26,6 @@ type SessionStatus =
   | "COMPLETED"
   | "CANCELLED";
 
-type CurrentUser = {
-  id: string;
-  username: string;
-  displayName: string;
-  role: "ADMIN" | "WORKER";
-  featurePermissions?:string[];
-};
 
 type StocktakeSession = {
   id: string;
@@ -132,7 +126,7 @@ export default function StocktakeStartPage() {
   const titleRef = useRef<HTMLInputElement | null>(null);
   const scopeRef = useRef<HTMLSelectElement | null>(null);
 
-  const [currentUser, setCurrentUser] = useState<CurrentUser | null>(null);
+  const {user:currentUser,can}=useAppAccess();
   const [group, setGroup] = useState<StocktakeGroup>("ACTIVE");
   const [sessionSearch, setSessionSearch] = useState("");
   const [sessions, setSessions] = useState<StocktakeSession[]>([]);
@@ -154,22 +148,15 @@ export default function StocktakeStartPage() {
   const [error, setError] = useState("");
 
   const loadPageData = useCallback(async () => {
-    const [userResponse, sessionResponse, optionsResponse] =
+    const [sessionResponse, optionsResponse] =
       await Promise.all([
-        fetchFresh("/api/auth/me"),
         fetchFresh("/api/stocktake/session"),
         fetchFresh("/api/stocktake/options"),
       ]);
 
-    const userData: unknown = await userResponse.json().catch(() => null);
     const sessionData: unknown = await sessionResponse.json().catch(() => null);
     const optionsData: unknown = await optionsResponse.json().catch(() => null);
 
-    if (!userResponse.ok) {
-      throw new Error(
-        getMessage(userData, "ログイン情報を取得できませんでした。")
-      );
-    }
 
     if (!sessionResponse.ok) {
       throw new Error(
@@ -180,22 +167,6 @@ export default function StocktakeStartPage() {
     if (!optionsResponse.ok) {
       throw new Error(
         getMessage(optionsData, "棚卸の選択肢を取得できませんでした。")
-      );
-    }
-
-    const user =
-  userData &&
-  typeof userData === "object" &&
-  "id" in userData &&
-  "username" in userData &&
-  "displayName" in userData &&
-  "role" in userData
-    ? (userData as CurrentUser)
-    : null;
-
-    if (!user) {
-      throw new Error(
-        "ログイン情報が不完全です。もう一度ログインしてください。"
       );
     }
 
@@ -212,7 +183,6 @@ export default function StocktakeStartPage() {
         ? (optionsData as Record<string, unknown>)
         : {};
 
-    setCurrentUser(user);
     setSessions(sessionList);
 
     setOptions({
@@ -221,9 +191,10 @@ export default function StocktakeStartPage() {
       minorCategories: getStringArray(rawOptions, "minorCategories"),
     });
 
-    setOperator((previous) => previous || user.displayName);
+
   }, []);
 
+  useEffect(()=>{if(currentUser)setOperator(previous=>previous||currentUser.displayName);},[currentUser]);
   useLiveRefresh(loadPageData);
 
   useEffect(() => {
@@ -490,11 +461,11 @@ export default function StocktakeStartPage() {
           </section>
         )}
 
-        <section className="rounded-3xl bg-white p-5 shadow-sm sm:p-7">
+        {can("STOCKTAKE_START") && <section className="rounded-3xl bg-white p-5 shadow-sm sm:p-7">
           <p className="text-sm font-bold text-indigo-600">新しい棚卸</p>
           <h2 className="mt-1 text-2xl font-black">棚卸を開始する</h2>
 
-          <form className="mt-6 space-y-6" onSubmit={startStocktake}><fieldset disabled={currentUser?.role!=="ADMIN"&&!currentUser?.featurePermissions?.includes("STOCKTAKE_START")} className="space-y-6">{currentUser?.role!=="ADMIN"&&!currentUser?.featurePermissions?.includes("STOCKTAKE_START")&&<p role="status">新しい棚卸の作成は許可されていません。既存の棚卸は上の一覧から続けられます。</p>}
+          <form className="mt-6 space-y-6" onSubmit={startStocktake}><fieldset className="space-y-6">
             <div>
               <label className="block font-bold" htmlFor="stocktake-title">
                 棚卸名
@@ -607,7 +578,7 @@ export default function StocktakeStartPage() {
               {starting ? "棚卸を開始しています…" : "棚卸を開始する"}
             </button>
           </fieldset></form>
-        </section>
+        </section>}
       </div>
     </main>
   );

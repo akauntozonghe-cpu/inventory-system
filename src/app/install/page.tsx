@@ -1,4 +1,4 @@
-import Link from "next/link";
+import Link from "@/components/auth/PermissionLink";
 import InstallAction from "@/components/pwa/InstallAction";
 import InstallDiagnostics from "@/components/pwa/InstallDiagnostics";
 

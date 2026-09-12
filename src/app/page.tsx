@@ -3,25 +3,12 @@
 
 
 
-import Link from "next/link";
-import { fetchFresh } from "@/lib/fetch-fresh";
-import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import Link from "@/components/auth/PermissionLink";
+import { useAppAccess } from "@/components/auth/AppAccessProvider";
 import type { FeatureKey } from "@/lib/feature-permissions";
 import { ArrowUpRight, BarChart3, Boxes, CalendarClock, History, ScanLine, Search, Settings2, Store, type LucideIcon } from "lucide-react";
 
-type CurrentUser = {
-  id: string;
-  username: string;
-  displayName: string;
-  role: "ADMIN" | "WORKER";
-  featurePermissions: FeatureKey[];
-};
 
-type ApiError = {
-  code?: string;
-  message?: string;
-};
 
 
 
@@ -94,119 +81,9 @@ const adminMenus: Menu[] = [
   },
 ];
 
-function isCurrentUser(value: unknown): value is CurrentUser {
-  return (
-    value !== null &&
-    typeof value === "object" &&
-    "id" in value &&
-    "username" in value &&
-    "displayName" in value &&
-    "role" in value &&
-    "featurePermissions" in value &&
-    typeof (value as CurrentUser).id === "string" &&
-    typeof (value as CurrentUser).username === "string" &&
-    typeof (value as CurrentUser).displayName === "string" &&
-    Array.isArray((value as CurrentUser).featurePermissions) &&
-    ((value as CurrentUser).role === "ADMIN" ||
-      (value as CurrentUser).role === "WORKER")
-  );
-}
-
-
-
-function getMessage(value: unknown, fallback: string) {
-  if (
-    value !== null &&
-    typeof value === "object" &&
-    "message" in value &&
-    typeof (value as ApiError).message === "string"
-  ) {
-    return (value as ApiError).message ?? fallback;
-  }
-
-  return fallback;
-}
-
-async function readJson(response: Response): Promise<unknown> {
-  const text = await response.text();
-
-  if (!text.trim()) {
-    throw new Error(`サーバー応答が空です。HTTP ${response.status}`);
-  }
-
-  try {
-    return JSON.parse(text) as unknown;
-  } catch {
-    throw new Error(
-      `サーバー応答を読み取れませんでした。HTTP ${response.status}`
-    );
-  }
-}
-
 export default function HomePage() {
-  const router = useRouter();
-
-  const [user, setUser] = useState<CurrentUser | null>(null);
-
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
-
-  useEffect(() => {
-    let cancelled = false;
-
-    const load = async () => {
-      try {
-        setLoading(true);
-        setError("");
-
-        const authResponse = await fetchFresh("/api/auth/me", {
-          cache: "no-store",
-        });
-
-        const authData = await readJson(authResponse);
-        if (cancelled) return;
-
-        if (authResponse.status === 401) {
-          router.replace("/login");
-          return;
-        }
-
-        if (!authResponse.ok || !isCurrentUser(authData)) {
-          throw new Error(
-            getMessage(authData, "ログイン情報を確認できませんでした。")
-          );
-        }
-
-        if (cancelled) return;
-
-        setUser(authData);
-        setLoading(false);
-
-
-      } catch (caughtError) {
-        if (!cancelled) {
-          setError(
-            caughtError instanceof Error
-              ? caughtError.message
-              : "ホーム画面の準備に失敗しました。"
-          );
-        }
-      } finally {
-        if (!cancelled) {
-          setLoading(false);
-        }
-      }
-    };
-
-    void load();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [router]);
-
-
-
+  const {user,ready}=useAppAccess();
+  const loading=!ready, error=ready&&!user?"ログイン情報を確認できませんでした。再読み込みしてください。":"";
 
   if (loading) {
     return (

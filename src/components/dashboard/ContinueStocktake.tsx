@@ -1,5 +1,5 @@
 "use client";
-import Link from "next/link";
+import Link from "@/components/auth/PermissionLink";
 import { useCallback, useEffect, useState } from "react";
 import { fetchFresh } from "@/lib/fetch-fresh";
 import { useLiveRefresh } from "@/hooks/useLiveRefresh";

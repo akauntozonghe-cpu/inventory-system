@@ -2,7 +2,7 @@
 import {useLiveRefresh} from "@/hooks/useLiveRefresh";
 import {fetchFresh} from "@/lib/fetch-fresh";
 
-import Link from "next/link";
+import Link from "@/components/auth/PermissionLink";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import FeedbackToast from "@/components/common/FeedbackToast";
 import { displayActionLabel } from "@/lib/display-labels";
