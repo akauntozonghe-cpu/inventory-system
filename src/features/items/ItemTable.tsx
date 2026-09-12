@@ -1,4 +1,5 @@
 "use client";
+import InventoryStatusBadges from "@/components/inventory/InventoryStatusBadges";
 import ProductIdentity from "@/components/inventory/ProductIdentity";
 import StockStateSummary from "@/components/inventory/StockStateSummary";
 import { displayUnit } from "@/lib/unit";
@@ -325,7 +326,7 @@ export default function ItemTable({ items, reload, isAdmin, onEdit, filterKey }:
                       </div>
                     </div>
 
-                    <ProductIdentity item={item}/>{item.inspectionExcluded&&<p className="rounded-xl bg-amber-50 p-2 text-sm">点検対象外：{item.inspectionExclusionReason}</p>}
+                    <InventoryStatusBadges item={item} stocks={item.inventoryInstances}/><ProductIdentity item={item}/>{item.inspectionExcluded&&<p className="rounded-xl bg-amber-50 p-2 text-sm">点検対象外：{item.inspectionExclusionReason}</p>}
                     <StockStateSummary stocks={item.inventoryInstances} defaultUnit={item.defaultUnit} itemId={item.id}/>
                     <dl className="mt-4 grid grid-cols-2 gap-3 text-sm">
                       <div>

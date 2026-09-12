@@ -24,6 +24,10 @@ export type Item = {
     actualQuantity: number | null;
     lotNo: string | null;
     expirationDate: string | null;
+    expirationManagementStatus?: string;
+    expirationAlertDays?: number;
+    createdAt?: string;
+    status?: string;
     unit: string | null;
     stocktakeStatus: string;
     storageLocation: { id: string; name: string } | null;

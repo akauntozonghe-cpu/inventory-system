@@ -1,6 +1,7 @@
 "use client";
 
 import ProductCodeField from "@/components/ProductCodeField";
+import InventoryStatusBadges from "@/components/inventory/InventoryStatusBadges";
 import ProductIdentity from "@/components/inventory/ProductIdentity";
 import StockStateSummary from "@/components/inventory/StockStateSummary";
 import type {StockListing} from "@/lib/stock-state";
@@ -41,6 +42,8 @@ type InventoryInstance = {
   lotNo: string | null;
   expirationDate: string | null;
   expirationManagementStatus: string;
+  expirationAlertDays?: number;
+  createdAt?: string;
   unit: string | null;
   allocationType: "home" | "flea_market" | "warehouse";
   status: string;
@@ -51,6 +54,8 @@ type InventoryInstance = {
 };
 
 type Item = {
+  createdAt?: string;
+  isArchived?: boolean;
   id: string;
   name: string;
   janCode: string | null;
@@ -620,7 +625,7 @@ export default function ItemDetailPage() {
           <p className="my-2 text-sm">{[item.majorCategory,item.minorCategory].filter(Boolean).join(" ／ ")} · {item.inventoryInstances.length}明細</p>
           {item.inventoryInstances.length>1&&<label className="block font-bold">Lot・保管場所で在庫を選ぶ<select aria-label="Lot・保管場所で在庫を選ぶ" value={focusedInventory} onChange={event=>setFocusedInventory(event.target.value)} className="mt-2 w-full rounded-xl border p-3"><option value="">すべての在庫</option>{item.inventoryInstances.map(row=><option key={row.id} value={row.id}>{row.storageLocation?.name||"場所未設定"} ／ Lot {row.lotNo||"なし"} ／ {row.quantity} {displayUnit(row.unit,item.defaultUnit)} ／ {row.status}</option>)}</select></label>}
           {focusedInventory&&!inventoryInstances.length&&<p role="alert" className="my-3 font-bold text-red-700">指定された在庫が見つかりません。上の選択から最新の在庫を確認してください。</p>}
-          <div className="mt-3 max-h-80 space-y-2 overflow-auto">{inventoryInstances.map(row=><article key={row.id} className="rounded-xl bg-teal-50 p-3"><div className="flex flex-wrap items-center justify-between gap-3"><div><p className="text-lg font-black">{row.storageLocation?.name||"保管場所未設定"} ／ Lot {row.lotNo||"なし"}</p><p className="mt-1">状態：{row.status} ／ 棚卸：{row.stocktakeStatus}</p><p className="mt-1 text-2xl font-black">{row.quantity} {displayUnit(row.unit,item.defaultUnit)}</p></div><button className="rounded-xl border bg-white p-3 font-bold" onClick={()=>{setFocusedInventory(row.id);requestAnimationFrame(()=>document.getElementById("inventory-"+row.id)?.scrollIntoView({behavior:"smooth",block:"start"}));}}>この在庫の明細へ</button></div></article>)}</div>
+          <div className="mt-3 max-h-80 space-y-2 overflow-auto">{inventoryInstances.map(row=><article key={row.id} className="rounded-xl bg-teal-50 p-3"><div className="flex flex-wrap items-center justify-between gap-3"><div><p className="text-lg font-black">{row.storageLocation?.name||"保管場所未設定"} ／ Lot {row.lotNo||"なし"}</p><InventoryStatusBadges item={{isArchived:item.isArchived}} stocks={[row]}/><p className="mt-1">状態：{row.status} ／ 棚卸：{row.stocktakeStatus}</p><p className="mt-1 text-2xl font-black">{row.quantity} {displayUnit(row.unit,item.defaultUnit)}</p></div><button className="rounded-xl border bg-white p-3 font-bold" onClick={()=>{setFocusedInventory(row.id);requestAnimationFrame(()=>document.getElementById("inventory-"+row.id)?.scrollIntoView({behavior:"smooth",block:"start"}));}}>この在庫の明細へ</button></div></article>)}</div>
           <StockStateSummary stocks={inventoryInstances} defaultUnit={item.defaultUnit} itemId={item.id} inventoryId={focusedInventory||undefined}/>
         </section>
         <FeedbackToast
@@ -737,7 +742,7 @@ export default function ItemDetailPage() {
             </section>
           ) : (
             <section className="rounded-3xl bg-white p-5 shadow-sm sm:p-7">
-              <h2 className="text-xl font-black text-slate-950">商品情報</h2><ProductIdentity item={item}/>
+              <h2 className="text-xl font-black text-slate-950">商品情報</h2><InventoryStatusBadges item={item} stocks={inventoryInstances}/><ProductIdentity item={item}/>
 
               <dl className="mt-5 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
 

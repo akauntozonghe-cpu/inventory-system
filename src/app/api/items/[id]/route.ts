@@ -124,6 +124,8 @@ export async function GET(
             minorCategory: true,
             lotNo: true,
             expirationDate: true,
+            expirationManagementStatus: true,
+            expirationAlertDays: true,
             unit: true,
             quantity: true,
             actualQuantity: true,
