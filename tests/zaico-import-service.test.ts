@@ -91,3 +91,5 @@ it("bulk JAN review issues a code from the stored pending row",async()=>{
  expect(await processZaico({systemJanOnly:true,reviews:[{id:"pending",row,mode:"AUTO"}]},"admin")).toMatchObject({created:1});
  expect(db.item.create).toHaveBeenCalledWith(expect.objectContaining({data:expect.objectContaining({janCode:null,systemBarcode:expect.stringMatching(/^20\d{11}$/)})}));
 });
+
+it("adding photo references keeps the original inventory replay key",()=>{expect(importKey({...row,photoRefs:["plate.jpg"]})).toBe(importKey(row));});

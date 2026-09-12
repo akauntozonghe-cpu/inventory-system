@@ -1,6 +1,6 @@
 import { unitValidationMessage } from "./unit";
 
-export type ZaicoRow = { name: string; janCode: string; quantity: string; unit: string; storageLocation: string; majorCategory: string; manufacturer?: string; minorCategory?: string; managementCode?: string; managementGroupCode?: string; lotNo?: string; expirationDate?: string };
+export type ZaicoRow = { name: string; janCode: string; quantity: string; unit: string; storageLocation: string; majorCategory: string; manufacturer?: string; minorCategory?: string; managementCode?: string; managementGroupCode?: string; lotNo?: string; expirationDate?: string; photoRefs?: string[] };
 export type ImportCandidate = { id: string; name: string; janCode: string | null; isArchived: boolean; managementCode?: string | null };
 export type ImportDecision = { status: "CREATE" | "LINK" | "PENDING"; reason: string; itemId?: string; candidates: ImportCandidate[] };
 export const MAX_ZAICO_ROWS = 1000;
@@ -10,6 +10,7 @@ export function normalizeZaicoRow(value: unknown): ZaicoRow {
   const row = value && typeof value === "object" ? value as Record<string, unknown> : {};
   const extra: Partial<ZaicoRow> = {};
   for (const key of ["manufacturer", "minorCategory", "managementCode", "managementGroupCode", "lotNo", "expirationDate"] as const) if (string(row[key])) extra[key] = string(row[key]);
+  if(Array.isArray(row.photoRefs)){const refs=[...new Set(row.photoRefs.filter((value):value is string=>typeof value==="string").map(value=>value.trim()).filter(Boolean))];if(refs.length)extra.photoRefs=refs;}
   return { name: string(row.name), janCode: string(row.janCode), quantity: string(row.quantity), unit: string(row.unit) || "個", storageLocation: string(row.storageLocation), majorCategory: string(row.majorCategory), ...extra };
 }
 
@@ -17,7 +18,7 @@ export function normalizeZaicoRow(value: unknown): ZaicoRow {
 export function mapZaicoRows(rows: Record<string, unknown>[]): ZaicoRow[] {
   return rows.map(row => {
     const pick = (...names: string[]) => names.map(name => row[name]).find(value => string(value) !== "") ?? "";
-    return normalizeZaicoRow({ name: pick("商品名", "品名", "物品名"), janCode: pick("JAN", "JANコード", "QRコード・バーコードの値"), quantity: pick("数量", "個数"), unit: pick("単位", "個数単位"), storageLocation: pick("保管場所"), majorCategory: pick("大分類", "カテゴリ"), minorCategory: pick("小分類"), manufacturer: pick("メーカー", "会社名"), managementCode: pick("管理コード"), managementGroupCode: pick("管理区分"), lotNo: pick("ロット", "Lot.No・製造番号"), expirationDate: pick("期限", "賞味期限", "消費期限") });
+    return normalizeZaicoRow({ photoRefs:["写真","画像","写真ファイル名","画像ファイル名","写真URL","画像URL",...Array.from({length:5},(_,i)=>"写真"+(i+1))].flatMap(key=>String(row[key]??"").split(/[\n;]/)).map(value=>value.trim()).filter(Boolean), name: pick("商品名", "品名", "物品名"), janCode: pick("JAN", "JANコード", "QRコード・バーコードの値"), quantity: pick("数量", "個数"), unit: pick("単位", "個数単位"), storageLocation: pick("保管場所"), majorCategory: pick("大分類", "カテゴリ"), minorCategory: pick("小分類"), manufacturer: pick("メーカー", "会社名"), managementCode: pick("管理コード"), managementGroupCode: pick("管理区分"), lotNo: pick("ロット", "Lot.No・製造番号"), expirationDate: pick("期限", "賞味期限", "消費期限") });
   });
 }
 
@@ -36,6 +37,7 @@ export function importDate(value: string) {
 }
 
 export function rowProblem(row: ZaicoRow) {
+  if ((row.photoRefs?.length??0)>5 || row.photoRefs?.some(ref=>ref.length>2000)) return "写真は5枚まで、写真の参照先は2000文字以内にしてください。";
   if (!row.name || row.name.length > 200) return "商品名は1〜200文字で入力してください。";
   if (!/^\d+$/.test(row.quantity) || !Number.isSafeInteger(Number(row.quantity)) || Number(row.quantity) > 2147483647) return "数量は0〜2147483647の整数で入力してください。";
   if (row.storageLocation.length > 100 || row.majorCategory.length > 100 || row.janCode.length > 100) return "保管場所・カテゴリ・バーコードは100文字以内で入力してください。";

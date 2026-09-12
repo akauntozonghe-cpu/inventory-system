@@ -24,6 +24,9 @@ export async function POST(request:NextRequest,{params}:Params){
     const result=await prisma.$transaction(async tx=>{
       const items=await tx.$queryRaw<{id:string}[]>`SELECT "id" FROM "Item" WHERE "id" = ${id} FOR UPDATE`;
       if(!items.length)throw new Error("NOT_FOUND");
+      const existing=await tx.itemPhoto.findMany({where:{itemId:id},select:{id:true,data:true,createdAt:true}});
+      const duplicate=existing.find(saved=>Buffer.from(saved.data).equals(Buffer.from(photo.data)));
+      if(duplicate)return {id:duplicate.id,createdAt:duplicate.createdAt};
       if(await tx.itemPhoto.count({where:{itemId:id}})>=MAX_PHOTOS)throw new Error("PHOTO_LIMIT");
       const saved=await tx.itemPhoto.create({data:{itemId:id,...photo},select:{id:true,createdAt:true}});
       await tx.adminActionLog.create({data:{adminUserId:auth.user!.id,action:"ITEM_PHOTO_ADD",route:"/api/items/"+id+"/photos",detail:{itemId:id,photoId:saved.id}}});

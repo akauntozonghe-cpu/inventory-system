@@ -329,7 +329,7 @@ export default function ItemTable({ items, reload, isAdmin, onEdit, filterKey }:
                       </div>
                     </div>
 
-                    <>{item.photos?.[0]&&<Image unoptimized width={120} height={100} src={"/api/items/"+item.id+"/photos/"+item.photos[0].id+"?thumbnail=1"} alt={item.name+"の写真"} className="mb-2 h-24 w-28 rounded-lg bg-slate-50 object-contain"/>}</><InventoryStatusBadges item={item} stocks={item.inventoryInstances}/><ProductIdentity item={item}/>{item.inspectionExcluded&&<p className="rounded-xl bg-amber-50 p-2 text-sm">点検対象外：{item.inspectionExclusionReason}</p>}
+                    <>{item.photos?.[0]&&<Image unoptimized width={120} height={100} src={"/api/items/"+item.id+"/photos/"+item.photos[0].id+"?thumbnail=1"} alt={item.name+"の写真"} className="mb-1 h-16 w-20 rounded-lg bg-slate-50 object-contain"/>}</><InventoryStatusBadges item={item} stocks={item.inventoryInstances}/><ProductIdentity item={item}/>{item.inspectionExcluded&&<p className="rounded-xl bg-amber-50 p-2 text-sm">点検対象外：{item.inspectionExclusionReason}</p>}
                     <StockStateSummary stocks={item.inventoryInstances} defaultUnit={item.defaultUnit} itemId={item.id}/>
                     <dl className="mt-4 grid grid-cols-2 gap-3 text-sm">
                       <div>

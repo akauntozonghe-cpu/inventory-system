@@ -1078,7 +1078,7 @@ export default function StocktakePage() {
                       type="button"
                       disabled={!canOperate}
                       onClick={() => selectItem(item)}
-                      className="block w-full rounded-3xl bg-white p-5 text-left shadow-sm transition hover:ring-2 hover:ring-indigo-400 disabled:cursor-default disabled:hover:ring-0 sm:p-6"
+                      className="block w-full rounded-2xl bg-white p-3 text-left shadow-sm transition hover:ring-2 hover:ring-indigo-400 disabled:cursor-default disabled:hover:ring-0 sm:p-4"
                     >
                       {photoView&&<StocktakePhoto item={item.item}/>}
                       <div className="flex items-start justify-between gap-4">

@@ -45,3 +45,9 @@ it("reads generic and legacy columns without dropping lot or expiry",()=>{
 it("does not duplicate an existing item with the same invalid barcode",()=>{
   expect(decideZaicoRow({...row,janCode:"bad"},[{id:"existing",name:"商品",janCode:"bad",isArchived:false}]).status).toBe("PENDING");
 });
+
+it("maps image file names and URLs without inventing associations",()=>{
+const result=mapZaicoRows([{商品名:"皿",数量:"6",写真1:"plate.jpg",写真2:"plate-back.jpg",写真URL:"https://example.com/image.png"}])[0];
+expect(result.photoRefs).toEqual(["https://example.com/image.png","plate.jpg","plate-back.jpg"]);
+expect(mapZaicoRows([{物品名:"皿",数量:"6",在庫ID:"123"}])[0].photoRefs).toBeUndefined();
+});

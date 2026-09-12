@@ -5,7 +5,7 @@ import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { decideZaicoRow, importDate, normalizeZaicoRow, rowProblem, validJan, type ZaicoRow, type ImportCandidate } from "./zaico-import";
 
-export const importKey = (row: ZaicoRow) => createHash("sha256").update(JSON.stringify(normalizeZaicoRow(row))).digest("hex");
+export const importKey = (row: ZaicoRow) => { const normalized=normalizeZaicoRow(row); delete normalized.photoRefs; return createHash("sha256").update(JSON.stringify(normalized)).digest("hex"); };
 export type ReviewInput = { id: string; row: ZaicoRow; mode: "AUTO" | "NEW_NO_JAN" | "LINK" | "SKIP"; itemId?: string };
 const selection = { id: true, name: true, janCode: true, isArchived: true, managementCode: true } as const;
 
@@ -34,7 +34,7 @@ export async function processZaico(input: { rows?: ZaicoRow[]; reviews?: ReviewI
         await tx.$executeRaw`SELECT pg_advisory_xact_lock(9120260911::bigint)`;
         const items = await tx.item.findMany({ select: selection });
         const newStocks: { id: string; locationId: string | null; category: string; quantity: number }[] = [];
-        const results: { id: string; status: string; reason: string }[] = [];
+        const results: { id: string; status: string; reason: string; itemId?: string | null }[] = [];
         const entries = input.reviews ?? (input.rows ?? []).map(row => ({ row, mode: "AUTO" as const, id: "" }));
         for (const entry of entries) {
           let row = normalizeZaicoRow(entry.row);
@@ -43,7 +43,7 @@ export async function processZaico(input: { rows?: ZaicoRow[]; reviews?: ReviewI
             : await tx.zaicoImportRecord.findUnique({ where: { key: importKey(row) } });
           if (entry.id && !prior) throw new Error("IMPORT_REVIEW_NOT_FOUND");
           if (prior && (!entry.id || prior.status !== "PENDING")) {
-            results.push({ id: prior.id, status: "SKIPPED", reason: "この内容は保存済みです。" });
+            results.push({ id: prior.id, itemId: prior.itemId, status: "SKIPPED", reason: "この内容は保存済みです。" });
             continue;
           }
           if (input.systemJanOnly && prior) row = normalizeZaicoRow(prior.row);
@@ -75,7 +75,7 @@ export async function processZaico(input: { rows?: ZaicoRow[]; reviews?: ReviewI
           const reason = status === "SKIPPED" ? "選択した行を取り込み対象から除外しました。" : status === "CREATED" ? (validJan(row.janCode) ? "新規在庫として登録しました。" : "システムJANを付けて登録しました。") + "棚卸で現物を確認してください。" : decision.reason;
           const data = { row: row as unknown as Prisma.InputJsonValue, status, reason, itemId, inventoryId, reviewedByUserId: userId };
           const record = prior ? await tx.zaicoImportRecord.update({ where: { id: prior.id }, data }) : await tx.zaicoImportRecord.create({ data: { ...data, key: importKey(row), originalRow: row as unknown as Prisma.InputJsonValue } });
-          results.push({ id: record.id, status, reason });
+          results.push({ id: record.id, status, reason, itemId });
         }
         if (newStocks.length) {
           const sessions = await tx.stocktakeSession.findMany({ where: { status: { in: ["IN_PROGRESS", "PAUSED"] } }, select: { id: true, status: true, scopeType: true, scopeValue: true } });

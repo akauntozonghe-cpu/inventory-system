@@ -538,7 +538,7 @@ export default function ItemDetailPage() {
 
   if (loading) {
     return (
-      <main className="min-h-screen bg-slate-100 p-4 sm:p-8">
+      <main className="min-h-screen bg-slate-100 p-4 sm:p-5">
         <div className="mx-auto max-w-6xl rounded-3xl bg-white p-10 text-center text-slate-500 shadow-sm">
           商品情報を読み込んでいます…
         </div>
@@ -548,7 +548,7 @@ export default function ItemDetailPage() {
 
   if (!item) {
     return (
-      <main className="min-h-screen bg-slate-100 p-4 sm:p-8">
+      <main className="min-h-screen bg-slate-100 p-4 sm:p-5">
         <div className="mx-auto max-w-3xl rounded-3xl border border-red-200 bg-red-50 p-6 text-red-800 shadow-sm">
           <p className="font-black">
             {error || "商品情報を取得できませんでした。"}
@@ -563,7 +563,7 @@ export default function ItemDetailPage() {
   const inventoryInstances = (item.inventoryInstances ?? []).filter(row=>!focusedInventory||row.id===focusedInventory);
 
   return (
-    <main className="min-h-screen bg-slate-100 p-4 pb-24 sm:p-8">
+    <main className="min-h-screen bg-slate-100 p-4 pb-24 sm:p-5">
       <p role="status" className="mx-auto mb-3 max-w-6xl text-sm font-bold">{syncFailed ? "同期できていません。表示は前回取得時点です。" : "在庫情報を自動更新中（通信時間＋約1秒）。編集中の入力は保持します。"}</p>
       <div className="mx-auto max-w-6xl">
         <header className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
@@ -623,7 +623,7 @@ export default function ItemDetailPage() {
         />
 
 
-        <div className="space-y-6">
+        <div className="space-y-4">
           {editingItem && itemForm ? (
             <section className="rounded-3xl bg-white p-5 shadow-sm sm:p-7">
               <h2 className="text-xl font-black text-slate-950">

@@ -1,5 +1,6 @@
 "use client";
 
+import {uploadImportedPhoto} from "@/lib/photo-import-client";
 import Link from "@/components/auth/PermissionLink";
 import { useEffect, useState } from "react";
 import * as XLSX from "xlsx";
@@ -19,6 +20,8 @@ async function api(body?: unknown, cursor?: string) {
 }
 
 export default function ZaicoImportPanel() {
+  const [photoFiles,setPhotoFiles]=useState<File[]>([]);
+  const [photoErrors,setPhotoErrors]=useState<string[]>([]);
   const [rows, setRows] = useState<ZaicoRow[]>([]), [preview, setPreview] = useState<Preview[]>([]);
   const [pending, setPending] = useState<Pending[]>([]), [recent, setRecent] = useState<Recent[]>([]), [count, setCount] = useState(0);
   const [historyCursor, setHistoryCursor] = useState<string | null>(null);
@@ -55,13 +58,26 @@ export default function ZaicoImportPanel() {
     finally { setBusy(false); }
   }
   async function save(review: boolean) {
-    setBusy(true); setError(""); setNotice("");
+    setBusy(true); setError(""); setNotice("");setPhotoErrors([]);
     try {
       const selected = pending.filter(row => row.selected).map(({ id, row, mode, itemId }) => ({ id, row, mode, itemId }));
       const total = review ? selected.length : rows.length;
       const data = { created: 0, linked: 0, pending: 0, skipped: 0 };
       for (let offset = 0; offset < total; offset += 25) {
         const result = await api(review ? { action: "REVIEW", reviews: selected.slice(offset, offset + 25) } : { action: "IMPORT", rows: rows.slice(offset, offset + 25) });
+        const batch=review?selected.slice(offset,offset+25).map(entry=>entry.row):rows.slice(offset,offset+25);
+        for(let index=0;index<batch.length;index++){
+          const itemId=result.results?.[index]?.itemId;
+          if(!itemId)continue;
+          for(const ref of batch[index].photoRefs??[]){
+            try {
+              let file:Blob;
+              if(/^https:\/\//i.test(ref)){const url=new URL(ref);if(url.username||url.password)throw new Error("認証情報を含むURLは使えません。");const response=await fetch(url,{credentials:"omit",signal:AbortSignal.timeout(15000)});if(!response.ok)throw new Error("写真URLを読み込めませんでした。");file=await response.blob();}
+              else {const matches=photoFiles.filter(file=>file.name===ref);if(matches.length!==1)throw new Error("同名の写真ファイルを1つ選んでください。");file=matches[0];}
+              await uploadImportedPhoto(itemId,file);
+            }catch(e){setPhotoErrors(values=>[...values,batch[index].name+"："+(e instanceof Error?e.message:"写真を追加できませんでした。")]);}
+          }
+        }
         for (const key of ["created", "linked", "pending", "skipped"] as const) data[key] += result[key];
         setNotice("保存中：" + Math.min(offset + 25, total) + " / " + total + "件。途中で止まっても保存済みの内容は残ります。");
       }
@@ -95,10 +111,12 @@ export default function ZaicoImportPanel() {
       <p className="mt-2 text-sm text-slate-600">JANが一致する商品は紐付け、新しい商品は通常の在庫に登録します。JANが空欄・不正な商品にはシステムJANを付けます。数量不備や重複候補は確認待ちに残ります。</p>
       <p className="mt-2 text-sm text-slate-600">既存商品への数量加算・上書きはしません。移行元の数量は履歴に残し、実際の数は棚卸で確定します。zaicoのCSVと従来の管理表にも対応しています。</p>
       <label className="mt-4 block font-bold">CSV・Excelファイル<input aria-label="取り込みファイル" type="file" accept=".csv,.xlsx,.xls" disabled={busy} className={inputClass} onChange={e => { const file = e.target.files?.[0]; if (file) void read(file); e.target.value = ""; }} /></label>
+      <label className="mt-3 block text-sm font-bold">写真も取り込む（任意）<input type="file" multiple accept="image/*" disabled={busy} className={inputClass} onChange={event=>setPhotoFiles(Array.from(event.target.files??[]))}/></label><p className="mt-1 text-xs text-slate-500">CSVの「写真」または「写真1」〜「写真5」に画像のファイル名を指定し、画像をまとめて選びます。公開画像URLは「写真URL」に指定できます。写真の追加だけなら同じCSVを再度取り込めます。在庫は二重登録しません。</p>
       <p className="mt-2 text-xs text-slate-500">1回1,000行まで。商品名・JAN・数量・単位・保管場所・カテゴリ（大分類）を取り込みます。メーカー・小分類・ロット・期限にも対応。空欄の項目は未設定になります。新規在庫は対象範囲に合う作業中・中断中の棚卸にも追加されます。</p>
     </div>
     {busy && <p role="status">処理しています…</p>}
     {error && <p role="alert" className="rounded-xl bg-red-50 p-4 text-red-800">{error}</p>}
+    {photoErrors.length>0&&<div role="alert" className="rounded-xl bg-amber-50 p-3 text-sm"><p className="font-bold">在庫の保存は完了しましたが、追加できない写真があります。同じCSVと写真で再試行できます。</p><ul>{photoErrors.map((message,index)=><li key={index}>{message}</li>)}</ul></div>}
     {notice && <p role="status" className="rounded-xl bg-emerald-50 p-4 text-emerald-800">{notice}</p>}
     {preview.length > 0 && <div className="rounded-2xl border bg-white p-5">
       <h2 className="text-xl font-bold">取り込み前の確認：{fileName}</h2>
