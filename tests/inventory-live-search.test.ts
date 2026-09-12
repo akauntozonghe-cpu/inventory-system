@@ -99,3 +99,15 @@ describe("live stocktake search", () => {
     expect(db.stocktakeTarget.createMany).not.toHaveBeenCalled();
   });
 });
+
+it("returns dish photos with separate quantities and locations for each stock row",async()=>{
+  const plate={...item,name:"白い平皿 20cm",majorCategory:"食器",minorCategory:"皿",defaultUnit:"枚",photos:[{id:"plate-photo"}]};
+  const stocks=[{...inventory,id:"upper",quantity:6,item:plate,storageLocation:{id:"a",name:"上段"}},{...inventory,id:"lower",quantity:2,item:plate,storageLocation:{id:"b",name:"下段"}}];
+  db.stocktakeSession.findUnique.mockResolvedValue({id:"session",operatorUserId:"worker",status:"IN_PROGRESS",scopeType:"ALL",scopeValue:null});
+  db.stocktakeTarget.findMany.mockResolvedValue(stocks.map(stock=>({inventoryInstanceId:stock.id,expectedQuantity:stock.quantity,inventoryInstance:stock})));
+  db.stocktakeRecord.findMany.mockResolvedValue([]);
+  const response=await GET(new NextRequest("http://localhost/api/inventory/search?sessionId=session&majorCategory=食器&minorCategory=皿&filter=ALL"));
+  const rows=await response.json();expect(rows).toHaveLength(2);
+  expect(rows[0]).toMatchObject({id:"upper",currentQuantity:6,unit:"枚",storageLocation:{name:"上段"},item:{photos:[{id:"plate-photo"}]}});
+  expect(rows[1]).toMatchObject({id:"lower",currentQuantity:2,storageLocation:{name:"下段"}});
+});

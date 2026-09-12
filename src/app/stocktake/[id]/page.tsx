@@ -1,4 +1,5 @@
 "use client";
+import StocktakePhoto from "@/components/stocktake/StocktakePhoto";
 import ProductIdentity from "@/components/inventory/ProductIdentity";
 import { useStocktakePresence } from "@/hooks/useStocktakePresence";
 import { fetchFresh } from "@/lib/fetch-fresh";
@@ -40,6 +41,7 @@ type InventoryItem = {
     name: string;
   } | null;
   item: {
+    photos?: {id:string}[];
     id: string;
     name: string;
     janCode: string | null;
@@ -708,13 +710,16 @@ export default function StocktakePage() {
     }
   };
 
+  const [photoView,setPhotoView]=useState(false);
+
   const handleCategoryDetected = useCallback((category: string) => {
     setScanLocation(null);
     setMinorCategory(null);
     setMajorCategory(category);
+    setPhotoView(true);
     setKeyword("");
     setFilter("UNRECORDED");
-    setMessage(`大分類「${category}」に絞り込みました。`);
+    setMessage(`大分類「${category}」の写真から現物を選び、数量を入力してください。`);
     setError("");
   }, []);
 
@@ -722,6 +727,7 @@ export default function StocktakePage() {
     setScanLocation(null);
     setMajorCategory(parentName || null);
     setMinorCategory(category);
+    setPhotoView(true);
     setKeyword("");
     setFilter("UNRECORDED");
     setMessage(`小分類QRで絞り込みました：${parentName ? `${parentName} ／ ` : ""}${category}`);
@@ -1035,7 +1041,8 @@ export default function StocktakePage() {
               )}
             </section>
 
-            <section className="relative space-y-3" aria-busy={searching}>
+            <div className="flex flex-wrap items-center justify-between gap-3"><p className="text-sm font-bold">{photoView?"写真と現物を見比べて選択してください":"棚卸する商品を選択してください"}</p><button type="button" aria-pressed={photoView} onClick={()=>setPhotoView(value=>!value)} className="min-h-11 rounded-xl border bg-white px-4 py-2 font-bold">{photoView?"文字の一覧に切り替える":"写真で選ぶ"}</button></div>
+            <section className={photoView?"relative grid gap-3 sm:grid-cols-2":"relative space-y-3"} aria-busy={searching}>
               {searching && items.length > 0 && (
                 <div
                   role="status"
@@ -1073,6 +1080,7 @@ export default function StocktakePage() {
                       onClick={() => selectItem(item)}
                       className="block w-full rounded-3xl bg-white p-5 text-left shadow-sm transition hover:ring-2 hover:ring-indigo-400 disabled:cursor-default disabled:hover:ring-0 sm:p-6"
                     >
+                      {photoView&&<StocktakePhoto item={item.item}/>}
                       <div className="flex items-start justify-between gap-4">
                         <div className="min-w-0">
                           <h2 className="break-words text-xl font-black text-slate-950 sm:text-2xl">

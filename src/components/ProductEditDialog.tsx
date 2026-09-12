@@ -58,6 +58,7 @@ export default function ProductEditDialog({ itemId, onClose, onSaved }: { itemId
       finally { setSaving(false); }
     }}>
       <fieldset disabled={saving} className="space-y-4">
+        <details className="rounded-xl bg-slate-50 p-3 text-sm"><summary className="cursor-pointer font-bold">食器を登録するとき</summary><p className="mt-2">大分類は「食器」、小分類は「皿」「茶碗」「コップ」など。名前に色・柄・サイズを入れ、同じ種類は枚数で管理します。保管場所が違う場合は在庫を分けてください。写真は追加した時点で保存されます。</p></details>
         <label className="block font-bold">商品名<input required maxLength={200} value={product.name} onChange={(event) => change("name", event.target.value)} className="mt-1 w-full rounded-lg border p-3"/></label>
         <ProductPhotos itemId={itemId} canEdit={user?.role==="ADMIN"||admin.active}/><ProductCodeField janCode={product.janCode} systemBarcode={product.systemBarcode} onChange={codes=>setProduct({...product,...codes})}/>
         <label className="block font-bold">メーカー<input maxLength={200} value={product.manufacturer} onChange={(event) => change("manufacturer", event.target.value)} className="mt-1 w-full rounded-lg border p-3"/></label>

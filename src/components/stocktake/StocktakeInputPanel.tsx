@@ -1,4 +1,5 @@
 "use client";
+import StocktakePhoto from "./StocktakePhoto";
 import ProductIdentity from "@/components/inventory/ProductIdentity";
 import { parseStocktakeQuantity, stepStocktakeQuantity } from "@/lib/stocktake-quantity";
 import { displayUnit } from "@/lib/unit";
@@ -14,6 +15,7 @@ export type StocktakeSelectedItem = {
   expirationDate: string | null;
   unit: string | null;
   item: {
+    photos?: {id:string}[];
     id: string;
     name: string;
     janCode: string | null;
@@ -126,7 +128,8 @@ export default function StocktakeInputPanel({
 
   return (
     <section className="rounded-3xl bg-white p-5 shadow-sm sm:p-6">
-      {onEditProduct && <button type="button" disabled={saving} onClick={onEditProduct} className="mb-3 rounded-xl border border-blue-300 p-3 font-bold text-blue-700">商品情報を編集する</button>}
+      {selected.item.photos?.length ? <StocktakePhoto item={selected.item} large/> : null}
+      {onEditProduct && <button type="button" disabled={saving} onClick={onEditProduct} className="mb-3 rounded-xl border border-blue-300 p-3 font-bold text-blue-700">商品情報・写真を編集する</button>}
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">

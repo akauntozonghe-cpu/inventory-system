@@ -222,6 +222,8 @@ export async function proxy(request: NextRequest) {
     }
   }
 
+  // Stocktake-only users also need the product photos shown in their work list.
+  const stocktakePhoto = method === "GET" && /^\/api\/items\/[^/]+\/photos(?:\/[^/]+)?$/.test(pathname) && liveUser.featurePermissions.includes("STOCKTAKE");
   const feature = requiredFeatures(
     pathname,
     method,
@@ -230,6 +232,7 @@ export async function proxy(request: NextRequest) {
   if (
     liveUser.role !== "ADMIN" &&
     feature &&
+    !stocktakePhoto &&
     !liveUser.featurePermissions.includes(feature as never)
   ) {
     if (pathname.startsWith("/api/")) {

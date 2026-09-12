@@ -275,6 +275,7 @@ export async function GET(request: NextRequest) {
                 majorCategory: true,
                 minorCategory: true,
                 defaultUnit: true,
+                photos: {select:{id:true},orderBy:[{createdAt:"asc"},{id:"asc"}],take:1},
               },
             },
             storageLocation: {
@@ -346,6 +347,7 @@ export async function GET(request: NextRequest) {
 
           item: {
             id: inventory.item.id,
+            photos: inventory.item.photos,
             name: inventory.item.name,
             janCode: inventory.item.janCode,
             systemBarcode: inventory.item.systemBarcode,

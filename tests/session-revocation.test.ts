@@ -23,3 +23,11 @@ function worker(elevated=true){state.user.role="WORKER";state.elevation=elevated
 it("allows authenticated page recovery without granting user administration",async()=>{worker();expect((await proxy(new NextRequest("http://localhost/api/admin/system-check/reports?route=/marketplace"))).status).toBe(200);expect((await proxy(new NextRequest("http://localhost/api/users"))).status).toBe(403);});
 it("does not expose recovery to an unauthenticated worker",async()=>{worker(false);expect((await proxy(new NextRequest("http://localhost/api/admin/system-check"))).status).toBe(403);});
 it("does not grant recovery access after the sponsor loses administrator status",async()=>{worker();state.find.mockResolvedValue({isActive:true,role:"WORKER",mustChangePassword:false,featurePermissions:[]});expect((await proxy(new NextRequest("http://localhost/api/admin/system-check"))).status).toBe(403);});
+
+it("allows stocktake-only workers to read photos without exposing the catalog",async()=>{
+  state.user.role="WORKER";state.find.mockResolvedValue({isActive:true,role:"WORKER",mustChangePassword:false,featurePermissions:["STOCKTAKE"]});
+  expect((await proxy(new NextRequest("http://localhost/api/items/item/photos/photo?thumbnail=1"))).status).toBe(200);
+  expect((await proxy(new NextRequest("http://localhost/api/items/item"))).status).toBe(403);
+  state.find.mockResolvedValue({isActive:true,role:"WORKER",mustChangePassword:false,featurePermissions:[]});
+  expect((await proxy(new NextRequest("http://localhost/api/items/item/photos/photo"))).status).toBe(403);
+});
