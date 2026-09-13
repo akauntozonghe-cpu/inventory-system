@@ -128,9 +128,8 @@ export default function StocktakeInputPanel({
 
   return (
     <section className="rounded-3xl bg-white p-5 shadow-sm sm:p-6">
-      {selected.item.photos?.length ? <StocktakePhoto item={selected.item} large/> : null}
       {onEditProduct && <button type="button" disabled={saving} onClick={onEditProduct} className="mb-3 rounded-xl border border-blue-300 p-3 font-bold text-blue-700">商品情報・写真を編集する</button>}
-      <div className="flex items-start justify-between gap-3">
+      <div className="flex items-start gap-3">{selected.item.photos?.length ? <div className="w-20 shrink-0"><StocktakePhoto item={selected.item}/></div> : null}<div className="flex min-w-0 flex-1 items-start justify-between gap-3">
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
             <p className="text-sm font-black text-blue-600">{continuous ? "連続スキャン・棚卸入力" : "棚卸入力"}</p>
@@ -159,7 +158,7 @@ export default function StocktakeInputPanel({
         >
           戻る
         </button>
-      </div>
+      </div></div>
 
       <button
         type="button"

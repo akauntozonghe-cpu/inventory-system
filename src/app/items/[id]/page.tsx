@@ -724,9 +724,9 @@ export default function ItemDetailPage() {
             </section>
           ) : (
             <section className="rounded-3xl bg-white p-5 shadow-sm sm:p-7">
-              <ProductPhotos itemId={item.id} canEdit={isAdmin}/><h2 className="text-xl font-black text-slate-950">商品情報</h2><InventoryStatusBadges item={item} stocks={inventoryInstances}/><ProductIdentity item={item}/>
+              <div className="grid grid-cols-[100px_minmax(0,1fr)] items-start gap-3"><ProductPhotos itemId={item.id} canEdit={isAdmin} compact/><div className="min-w-0"><h2 className="text-xl font-black text-slate-950">商品情報</h2><InventoryStatusBadges item={item} stocks={inventoryInstances}/><ProductIdentity item={item}/>
 
-              <dl className="mt-5 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
+              <dl className="mt-3 grid grid-cols-2 gap-3 lg:grid-cols-3">
 
 
 
@@ -756,7 +756,7 @@ export default function ItemDetailPage() {
                     {text(item.defaultUnit)}
                   </dd>
                 </div>
-              </dl>
+              </dl></div></div>
             </section>
           )}
 
