@@ -11,7 +11,8 @@ import { usePagedItems } from "@/hooks/usePagedItems";
 import Modal from "@/components/common/Modal";
 import Link from "@/components/auth/PermissionLink";
 import { useEffect, useMemo, useState } from "react";
-import LabelPrintDialog from "@/components/LabelPrintDialog";
+import dynamic from "next/dynamic";
+const LabelPrintDialog=dynamic(()=>import("@/components/LabelPrintDialog"),{ssr:false});
 
 import type { Item } from "./types";
 
@@ -20,7 +21,6 @@ type Props = {
   isAdmin: boolean;
   filterKey: string;
   reload: () => void | Promise<void>;
-  onEdit: (item: Item) => void;
 };
 
 const bulkLabels={ARCHIVE:"廃止",RESTORE:"復元",EXCLUDE_INSPECTION:"点検対象外に設定",INCLUDE_INSPECTION:"点検対象へ戻す"};
@@ -57,7 +57,7 @@ async function readJson(response: Response): Promise<unknown> {
   }
 }
 
-export default function ItemTable({ items, reload, isAdmin, onEdit, filterKey }: Props) {
+export default function ItemTable({ items, reload, isAdmin, filterKey }: Props) {
   const {can} = useAppAccess();
   const pagination = usePagedItems(items, filterKey);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
@@ -183,7 +183,7 @@ export default function ItemTable({ items, reload, isAdmin, onEdit, filterKey }:
     }
   };
 
-  const printSelected = () => setPrintIds((selectedItems.length?selectedItems:items).map(item=>item.id));
+  const printSelected = () => setPrintIds(selectedItems.map(item=>item.id));
 
   if (items.length === 0) {
     return (
@@ -216,7 +216,7 @@ export default function ItemTable({ items, reload, isAdmin, onEdit, filterKey }:
 
         <div className="rounded-2xl bg-white p-4 shadow-sm">
           <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-            {isAdmin ? (
+            {(isAdmin || can("LABEL_PRINT")) ? (
               <label className="flex items-center gap-3 font-bold text-slate-700">
                 <input
                   type="checkbox"
@@ -236,12 +236,10 @@ export default function ItemTable({ items, reload, isAdmin, onEdit, filterKey }:
               {can("LABEL_PRINT") && <button
                 type="button"
                 onClick={printSelected}
-                disabled={items.length === 0}
+                disabled={selectedItems.length === 0}
                 className="rounded-xl bg-slate-800 px-4 py-3 font-bold text-white transition hover:bg-slate-950 disabled:cursor-not-allowed disabled:bg-slate-300"
               >
-                {selectedItems.length > 0
-                  ? `選択した${selectedItems.length}件を印刷`
-                  : `検索結果の${items.length}件を印刷`}
+                {`選択した${selectedItems.length}件を印刷`}
               </button>}
 
               {isAdmin && (
@@ -295,19 +293,19 @@ export default function ItemTable({ items, reload, isAdmin, onEdit, filterKey }:
             return (
               <article
                 key={item.id}
-                className={`rounded-2xl bg-white p-5 shadow-sm ring-1 ${
+                className={`relative rounded-2xl bg-white p-4 shadow-sm ring-1 transition hover:ring-blue-400 focus-within:ring-2 focus-within:ring-blue-600 ${
                   item.isArchived
                     ? "ring-amber-300"
                     : "ring-slate-200"
                 }`}
               >
                 <div className="flex gap-3">
-                  {isAdmin && (
+                  {(isAdmin || can("LABEL_PRINT")) && (
                     <input
                       type="checkbox"
                       checked={selectedIdSet.has(item.id)}
                       onChange={() => toggleItem(item.id)}
-                      className="mt-1 h-5 w-5 shrink-0"
+                      className="relative z-10 mt-1 h-5 w-5 shrink-0 cursor-pointer"
                       aria-label={`${item.name}を選択`}
                     />
                   )}
@@ -315,7 +313,7 @@ export default function ItemTable({ items, reload, isAdmin, onEdit, filterKey }:
                   <div className="min-w-0 flex-1">
                     <div className="flex flex-wrap items-start justify-between gap-2">
                       <h2 className="break-words text-lg font-black text-slate-900">
-                        {item.name}
+                        <Link href={`/items/${item.id}`} prefetch={false} className="after:absolute after:inset-0 after:rounded-2xl focus:outline-none" aria-label={`${item.name}の在庫詳細を開く`}>{item.name}</Link>
                       </h2>
 
                       <div className="flex gap-2">
@@ -330,7 +328,7 @@ export default function ItemTable({ items, reload, isAdmin, onEdit, filterKey }:
                     </div>
 
                     <div className="flex items-start gap-3">{item.photos?.[0]&&<Image unoptimized width={120} height={100} src={"/api/items/"+item.id+"/photos/"+item.photos[0].id+"?thumbnail=1"} alt={item.name+"の写真"} className="h-16 w-20 shrink-0 rounded-lg bg-slate-50 object-contain"/>}<div className="min-w-0 flex-1"><InventoryStatusBadges item={item} stocks={item.inventoryInstances}/><ProductIdentity item={item}/></div></div>{item.inspectionExcluded&&<p className="rounded-xl bg-amber-50 p-2 text-sm">点検対象外：{item.inspectionExclusionReason}</p>}
-                    <StockStateSummary stocks={item.inventoryInstances} defaultUnit={item.defaultUnit} itemId={item.id}/>
+                    <StockStateSummary showLink={false} stocks={item.inventoryInstances} defaultUnit={item.defaultUnit} itemId={item.id}/>
                     <dl className="mt-4 grid grid-cols-2 gap-3 text-sm">
                       <div>
                         <dt className="font-bold text-slate-500">保管場所</dt>
@@ -373,15 +371,6 @@ export default function ItemTable({ items, reload, isAdmin, onEdit, filterKey }:
                       </p>
                     )}
 
-                    <div className="mt-5 flex flex-wrap gap-2">
-                      {isAdmin && <button type="button" onClick={() => onEdit(item)} className="min-h-11 rounded-xl bg-blue-700 px-4 py-2 font-bold text-white">商品情報を編集</button>}
-                      {can("LABEL_PRINT") && <button type="button" onClick={()=>setPrintIds([item.id])} className="rounded-xl border px-4 py-2 font-bold">この商品のJANを印刷</button>}<Link
-                        href={`/items/${item.id}`}
-                        className="rounded-xl bg-sky-600 px-4 py-2 font-bold text-white transition hover:bg-sky-700"
-                      >
-                        在庫・ロットの詳細
-                      </Link>
-                    </div>
                   </div>
                 </div>
               </article>

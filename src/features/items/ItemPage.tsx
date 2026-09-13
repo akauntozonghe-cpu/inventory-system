@@ -13,9 +13,9 @@ import {
   useRef,
   useState,
 } from "react";
-import UnifiedScanner from "@/components/stocktake/UnifiedScanner";
+import dynamic from "next/dynamic";
+const UnifiedScanner=dynamic(()=>import("@/components/stocktake/UnifiedScanner"),{ssr:false});
 import FeedbackToast from "@/components/common/FeedbackToast";
-import ProductEditDialog from "@/components/ProductEditDialog";
 import ItemTable from "./ItemTable";
 import type { Item } from "./types";
 import { useRegistrationOptions } from "@/hooks/useRegistrationOptions";
@@ -78,7 +78,6 @@ export default function ItemPage() {
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
 
-  const [editingItem, setEditingItem] = useState<Item | null>(null);
 
   const adminMode = useAdminMode();
   const isAdmin = Boolean(currentUser) && (currentUser?.role === "ADMIN" || adminMode.active);
@@ -242,9 +241,6 @@ export default function ItemPage() {
     setMessage(`大分類「${category}」で絞り込みました。`);
   }, []);
 
-  const startEdit = (item: Item) => {
-    if (isAdmin) setEditingItem(item);
-  };
 
   return (
     <main className="min-h-screen bg-slate-100 p-4 sm:p-8">
@@ -338,11 +334,6 @@ export default function ItemPage() {
           </details>
         )}
 
-        {editingItem && <ProductEditDialog key={editingItem.id} itemId={editingItem.id} onClose={() => setEditingItem(null)} onSaved={() => {
-          setEditingItem(null);
-          setMessage("商品情報を更新しました。");
-          void fetchItems(true).catch(() => setError("商品情報は保存済みですが、一覧を更新できませんでした。再入力は不要です。"));
-        }} />}
 
         <section className="rounded-2xl bg-white p-4 shadow-sm sm:p-5">
           <div className="grid gap-3 lg:grid-cols-[1fr_auto_auto]">
@@ -427,7 +418,6 @@ export default function ItemPage() {
               isAdmin={isAdmin}
               filterKey={JSON.stringify([search, majorCategory, sort, todayOnly, registeredDate, showArchived,stockFilter])}
               reload={async()=>{await fetchItems(true);}}
-              onEdit={startEdit}
             />
           )}
         </section>
@@ -436,7 +426,7 @@ export default function ItemPage() {
       {scannerOpen && <UnifiedScanner
         onClose={() => setScannerOpen(false)}
         onCategory={async name => { handleQrDetected(name); await fetchItems(true); }}
-        onProduct={async code => { const latest=await fetchItems(true);if(!latest?.some(item=>[item.id,item.janCode,item.systemBarcode].includes(code)))throw new Error("SCAN_JAN_NOT_MANAGED：このJAN・商品コードは管理対象の商品に登録されていません。登録済みの商品か確認してください。");setStockFilter("ALL");setSearch(code.normalize("NFKC")); setMajorCategory(""); setTodayOnly(false); setRegisteredDate(""); await fetchItems(true); }}
+        onProduct={async code => { const latest=await fetchItems(true);if(!latest?.some(item=>[item.id,item.janCode,item.systemBarcode].includes(code)))throw new Error("SCAN_JAN_NOT_MANAGED：このJAN・商品コードは管理対象の商品に登録されていません。登録済みの商品か確認してください。");setStockFilter("ALL");setSearch(code.normalize("NFKC")); setMajorCategory(""); setTodayOnly(false); setRegisteredDate(""); }}
       />}
     </main>
   );

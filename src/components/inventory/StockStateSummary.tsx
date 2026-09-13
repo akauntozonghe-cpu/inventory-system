@@ -1,6 +1,6 @@
 import Link from "@/components/auth/PermissionLink";
 import { summarizeStock, type LinkedStock } from "@/lib/stock-state";
-export default function StockStateSummary({stocks,defaultUnit,itemId,inventoryId}:{stocks:LinkedStock[];defaultUnit?:string|null;itemId:string;inventoryId?:string}) {
+export default function StockStateSummary({stocks,defaultUnit,itemId,inventoryId,showLink=true}:{stocks:LinkedStock[];defaultUnit?:string|null;itemId:string;inventoryId?:string;showLink?:boolean}) {
   const rows=summarizeStock(stocks,defaultUnit);
   const linked=stocks.some(row=>row.marketplaceListings?.length||row.allocationType==="flea_market");
   const href="/marketplace?"+new URLSearchParams(inventoryId?{inventoryId}:{itemId});
@@ -13,6 +13,6 @@ export default function StockStateSummary({stocks,defaultUnit,itemId,inventoryId
       {row.unlistedAllocation&&<span>フリマ用の指定あり・出品未登録</span>}
       {row.quantity===0&&<span>登録在庫なし</span>}
     </div>{row.shortage>0&&<p className="font-bold text-red-700">確保数が登録在庫を{row.shortage} {row.unit}超えています。出品と現物を確認してください。</p>}</div>)}
-    {linked&&<><p className="mt-2 text-xs text-slate-600">準備・出品中は登録在庫の内数です。売却済みは在庫から減算済みです。</p><Link href={href} className="mt-2 inline-block min-h-11 rounded-lg border bg-white px-3 py-2 font-bold text-violet-800">この商品のフリマ状況を見る</Link></>}
+    {linked&&<><p className="mt-2 text-xs text-slate-600">準備・出品中は登録在庫の内数です。売却済みは在庫から減算済みです。</p>{showLink&&<Link href={href} className="mt-2 inline-block min-h-11 rounded-lg border bg-white px-3 py-2 font-bold text-violet-800">この商品のフリマ状況を見る</Link>}</>}
   </section>;
 }

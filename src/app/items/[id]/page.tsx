@@ -14,7 +14,8 @@ import Link from "@/components/auth/PermissionLink";
 import { expiryPolicy, expiryPolicyLabels } from "@/lib/expiry-policy";
 import { FormEvent, useCallback, useEffect, useState } from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
-import SystemBarcodeLabel from "@/components/SystemBarcodeLabel";
+import dynamic from "next/dynamic";
+const SystemBarcodeLabel=dynamic(()=>import("@/components/SystemBarcodeLabel"),{ssr:false});
 import FeedbackToast from "@/components/common/FeedbackToast";
 
 import SelectOrCreate from "@/components/SelectOrCreate";
@@ -269,7 +270,8 @@ export default function ItemDetailPage() {
   const itemId = typeof params.id === "string" ? params.id : "";
 
   const [item, setItem] = useState<Item | null>(null);
-  const {user:currentUser} = useAppAccess();
+  const {user:currentUser,can} = useAppAccess();
+  const [showLabels,setShowLabels]=useState(false);
   const [locations, setLocations] = useState<StorageLocation[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -322,7 +324,7 @@ export default function ItemDetailPage() {
     }
   }, [itemId]);
 
-  const options = useRegistrationOptions();
+  const options = useRegistrationOptions(editingItem || editingInventoryId !== null);
   const { minorsFor } = options;
   useEffect(() => { if (options.ready) setLocations(options.storageLocationOptions); }, [options.ready, options.storageLocationOptions]);
   const syncFailed = useLiveRefresh(() => loadItem(true));
@@ -566,7 +568,7 @@ export default function ItemDetailPage() {
     <main className="min-h-screen bg-slate-100 p-4 pb-24 sm:p-5">
       <p role="status" className="mx-auto mb-3 max-w-6xl text-sm font-bold">{syncFailed ? "同期できていません。表示は前回取得時点です。" : "在庫情報を自動更新中（通信時間＋約1秒）。編集中の入力は保持します。"}</p>
       <div className="mx-auto max-w-6xl">
-        <header className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+        <header className="mb-4 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
           <div>
             <p className="text-sm font-black tracking-widest text-blue-600">
               商品詳細
@@ -577,7 +579,7 @@ export default function ItemDetailPage() {
             </h1>
 
             <p className="mt-2 text-sm text-slate-600">
-              商品マスターと、商品ごとの在庫・ロット・保管場所を確認できます。
+              保管場所・数量を確認し、変更するときは編集を開いてください。
             </p>
           </div>
 
@@ -602,7 +604,7 @@ export default function ItemDetailPage() {
           </div>
         </header>
 
-        <section aria-label="対象の在庫" className="mb-5 rounded-2xl border-2 border-teal-300 bg-white p-4">
+        <section aria-label="対象の在庫" className="mb-5 rounded-2xl border border-slate-200 bg-white p-4">
           <h2 className="text-xl font-black">{focusedInventory?"開いている在庫":"この商品の在庫"}</h2>
           <p className="my-2 text-sm">{[item.majorCategory,item.minorCategory].filter(Boolean).join(" ／ ")} · {item.inventoryInstances.length}明細</p>
           {item.inventoryInstances.length>1&&<label className="block font-bold">Lot・保管場所で在庫を選ぶ<select aria-label="Lot・保管場所で在庫を選ぶ" value={focusedInventory} onChange={event=>setFocusedInventory(event.target.value)} className="mt-2 w-full rounded-xl border p-3"><option value="">すべての在庫</option>{item.inventoryInstances.map(row=><option key={row.id} value={row.id}>{row.storageLocation?.name||"場所未設定"} ／ Lot {row.lotNo||"なし"} ／ {row.quantity} {displayUnit(row.unit,item.defaultUnit)} ／ {row.status}</option>)}</select></label>}
@@ -760,12 +762,12 @@ export default function ItemDetailPage() {
             </section>
           )}
 
-          <SystemBarcodeLabel
+          {can("LABEL_PRINT")&&<section className="rounded-xl border bg-white p-3"><button type="button" aria-expanded={showLabels} onClick={()=>setShowLabels(value=>!value)} className="min-h-11 font-bold">JANラベルの表示・印刷 {showLabels?"を閉じる":"を開く"}</button>{showLabels&&<SystemBarcodeLabel
             itemId={item.id}
             itemName={item.name}
             janCode={item.janCode}
             initialSystemJan={item.systemBarcode} onUpdated={()=>loadItem(true)}
-          />
+          />}</section>}
 
           <section className="rounded-3xl bg-white p-5 shadow-sm sm:p-7">
             <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
