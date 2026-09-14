@@ -200,7 +200,7 @@ export default function ItemTable({ items, reload, isAdmin, filterKey }: Props) 
     <>
       {can("LABEL_PRINT")&&printIds&&<LabelPrintDialog labels={items.filter(item=>printIds.includes(item.id)).map(item=>({id:item.id,itemId:item.id,name:item.name,barcode:item.janCode||item.systemBarcode}))} canEdit={isAdmin} onRefresh={reload} onClose={()=>setPrintIds(null)} onComplete={()=>setSelectedIds([])}/>}
       <section className="space-y-4">
-        {(isAdmin || can("LABEL_PRINT")) && <details className="rounded-2xl border bg-white p-3"><summary className="cursor-pointer font-bold">ラベル印刷・複数商品の操作</summary>
+        {(isAdmin || can("LABEL_PRINT")) && <div className="rounded-2xl border bg-white p-3">
 
         {(message || error) && (
           <div
@@ -214,7 +214,7 @@ export default function ItemTable({ items, reload, isAdmin, filterKey }: Props) 
           </div>
         )}
 
-        <div className="rounded-2xl bg-white p-4 shadow-sm">
+        <div>
           <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
             {(isAdmin || can("LABEL_PRINT")) ? (
               <label className="flex items-center gap-3 font-bold text-slate-700">
@@ -242,8 +242,9 @@ export default function ItemTable({ items, reload, isAdmin, filterKey }: Props) 
                 {`選択した${selectedItems.length}件を印刷`}
               </button>}
 
+              {selectedItems.length > 0 && <button onClick={() => setSelectedIds([])} className="rounded-xl border px-3 py-2 font-bold">選択解除</button>}
               {isAdmin && (
-                <>
+                <details className="rounded-xl border p-3"><summary className="cursor-pointer font-bold">管理操作</summary><div className="mt-2 flex flex-wrap gap-2">
                   <button disabled={!selectedItems.length} onClick={()=>openBulkDialog("EXCLUDE_INSPECTION")} className="rounded-xl border p-3 font-bold">点検対象外にする</button><button disabled={!selectedItems.length} onClick={()=>openBulkDialog("INCLUDE_INSPECTION")} className="rounded-xl border p-3 font-bold">点検対象に戻す</button><button
                     type="button"
                     disabled={selectedItems.length === 0}
@@ -261,19 +262,15 @@ export default function ItemTable({ items, reload, isAdmin, filterKey }: Props) 
                   >
                     選択商品を復元
                   </button>
-                </>
+                </div><p className="mt-2 text-sm text-slate-500">廃止しても在庫・棚卸履歴は残ります。</p></details>
               )}
             </div>
           </div>
 
-          {isAdmin && (
-            <p className="mt-3 text-sm text-slate-500">
-              選択中：{selectedItems.length}件。廃止は履歴を残して非表示にする操作で、在庫・棚卸履歴は削除しません。
-            </p>
-          )}
+          <p role="status" className="mt-2 text-sm text-slate-600">選択 {selectedItems.length}件</p>
         </div>
 
-        </details>}
+        </div>}
         <Pagination {...pagination} />
         <div className="grid gap-4 md:grid-cols-2">
           {pagination.visible.map((item) => {
