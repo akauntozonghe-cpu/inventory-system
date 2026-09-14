@@ -50,20 +50,20 @@ export function barcodePrintDocument(items: Array<{ name: string; barcode: strin
   let rowWidth = 0, rowTop = 0;
   for (const label of labels) {
     if (label.labelWidth > pageWidth) throw new Error("このコードは用紙の幅を超えています。コードを確認してください。");
-    if (rowWidth && rowWidth + 2 + label.labelWidth > pageWidth) { rowWidth = 0; rowTop += labelHeight + 2; }
+    if (rowWidth && rowWidth + label.labelWidth > pageWidth) { rowWidth = 0; rowTop += labelHeight; }
     if (rowTop + labelHeight > pageHeight) { pages.push([]); rowTop = 0; rowWidth = 0; }
     pages[pages.length - 1].push(`<article class="label" style="width:${label.labelWidth}mm;height:${labelHeight}mm">${includeName ? `<p>${escapeLabelText(label.name)}</p>` : ""}${label.svg}</article>`);
-    rowWidth += (rowWidth ? 2 : 0) + label.labelWidth;
+    rowWidth += label.labelWidth;
     if (layout === "LABEL") { rowWidth = pageWidth; }
   }
   return `<!doctype html><html lang="ja"><head><meta charset="utf-8"><title>商品バーコードラベル</title><style>
   @page { size:${layout === "A4" ? "A4 portrait" : `${pageWidth}mm ${pageHeight}mm`}; margin:${layout === "A4" ? "8mm" : "0"}; }
   *{box-sizing:border-box}body{margin:0;background:white;color:black;font-family:Arial,sans-serif}
-  .sheet{display:flex;flex-wrap:wrap;align-content:flex-start;gap:2mm;width:${pageWidth}mm;break-after:page}.sheet:last-child{break-after:auto}
+  .sheet{display:flex;flex-wrap:wrap;align-content:flex-start;gap:0;width:${pageWidth}mm;break-after:page}.sheet:last-child{break-after:auto}
   .label{flex:none;padding:1mm;break-inside:avoid;outline:0.1mm dashed #aaa;overflow:hidden}
   .label p{margin:0 0 .4mm;height:2.6mm;line-height:2.6mm;font-size:6.5pt;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   svg{display:block;margin:0 auto;max-width:none;flex:none}
-  .instructions{padding:12px;font-size:14px}.instructions button{margin:8px;padding:8px}
-  @media print{.instructions{display:none}body{print-color-adjust:exact;-webkit-print-color-adjust:exact}}
-  </style></head><body><div class="instructions">印刷倍率は「100%／実際のサイズ」、余白・ヘッダー・フッターは印刷画面に合わせてください。「用紙に合わせる」で縮小しないでください。まず1枚を印刷して読み取りを確認してください。<button onclick="window.print()">印刷する</button></div>${pages.map((page) => `<main class="sheet">${page.join("")}</main>`).join("")}</body></html>`;
+  .instructions{padding:12px;font-size:14px;background:#f1f5f9;position:sticky;top:0}.sheet{margin:8mm auto;background:white}@media screen{body{background:#ddd}.sheet{min-height:${pageHeight}mm;box-shadow:0 1px 8px #999}}.instructions button{margin:8px;padding:8px}
+  @media print{.instructions{display:none}.sheet{margin:0;box-shadow:none}body{print-color-adjust:exact;-webkit-print-color-adjust:exact}}
+  </style></head><body><div class="instructions"><strong>${items.length}枚 ／ ${pages.length}ページ</strong><br>印刷倍率は「100%／実際のサイズ」、ヘッダーとフッター（日付・URL）はオフにしてください。「用紙に合わせる」で縮小しないでください。まず1枚を印刷して読み取りを確認してください。<button onclick="window.print()">印刷する</button></div>${pages.map((page) => `<main class="sheet">${page.join("")}</main>`).join("")}</body></html>`;
 }

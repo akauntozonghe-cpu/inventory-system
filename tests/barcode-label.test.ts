@@ -46,6 +46,12 @@ describe("product barcode labels", () => {
     expect(html.match(/class="sheet"/g)).toHaveLength(2);
     expect(html).toContain('size:32mm 26mm');
   });
+  it("packs 120 compact labels per A4 and moves the 121st onto a new page", () => {
+    const html = barcodePrintDocument(Array.from({ length: 121 }, () => ({name:"皿",barcode:"4901234567894"})), "A4", 0.8, false, "COMPACT");
+    expect(html.match(/class="sheet"/g)).toHaveLength(2);
+    expect(html.split('<main class="sheet">')[1].match(/class="label"/g)).toHaveLength(120);
+    expect(html).toContain('width="29.832mm" height="11.464mm"');
+  });
   it("keeps legacy SYS labels wide enough instead of crushing CODE128", () => {
     const label = barcodeLabel("SYS-AB12-CD3456");
     expect(label.labelWidth).toBeGreaterThan(36);

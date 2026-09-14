@@ -94,8 +94,8 @@ const inventoryMenus: MenuItem[] = [
   {
     href: "/admin/activity",
     icon: "📅",
-    title: "作業カレンダー",
-    description: "日付ごとの商品登録、棚卸、在庫変更、管理操作を確認し、その日の登録分を印刷します。",
+    title: "作業ジャーナル",
+    description: "日付・商品・担当者で作業履歴を探し、コンパクトな日報を印刷します。",
     color: "bg-rose-600",
   },
   {
