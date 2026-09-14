@@ -3,6 +3,8 @@ import { useLiveRefresh } from "@/hooks/useLiveRefresh";
 import { fetchFresh } from "@/lib/fetch-fresh";
 import Link from "@/components/auth/PermissionLink";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { flushSync } from "react-dom";
+import Modal from "@/components/common/Modal";
 import FeedbackToast from "@/components/common/FeedbackToast";
 import { journalRows, journalTime, type Activity } from "@/lib/activity-journal";
 import { dateKeyInJapan } from "@/lib/expiry-management";
@@ -25,6 +27,7 @@ export default function ActivityCalendarPage() {
   const today = dateKeyInJapan();
   const [selectedDate, setSelectedDate] = useState(today);
   const [month, setMonth] = useState(today.slice(0, 7));
+  const [printConfirmOpen, setPrintConfirmOpen] = useState(false);
   const [showCalendar, setShowCalendar] = useState(false);
   const [activity, setActivity] = useState<Activity | null>(null);
   const [loading, setLoading] = useState(true);
@@ -81,7 +84,7 @@ export default function ActivityCalendarPage() {
           <button onClick={() => selectDate(today)} className="rounded-lg border px-3 py-2 font-bold">今日</button>
           <button aria-expanded={showCalendar} onClick={() => setShowCalendar(value => !value)} className="rounded-lg border px-3 py-2">カレンダー</button>
         </div><div className="flex flex-wrap items-center gap-2">
-          <button disabled={!ready} onClick={() => window.print()} className="rounded-lg bg-blue-700 px-3 py-2 font-bold text-white disabled:opacity-40">この日の全件を印刷</button>
+          <button disabled={!ready} onClick={() => setPrintConfirmOpen(true)} className="rounded-lg bg-blue-700 px-3 py-2 font-bold text-white disabled:opacity-40">この日の全件を印刷</button>
           <button disabled={loading} onClick={() => void load(selectedDate)} className="rounded-lg border px-3 py-2 disabled:opacity-40">更新</button>
         </div></div>
         {showCalendar && <div className="mt-3 max-w-sm rounded-xl border p-3"><input aria-label="カレンダーの月" type="month" value={month} onChange={event => { if (event.target.value) setMonth(event.target.value); }} className="w-full rounded-lg border p-2"/><div className="mt-2 grid grid-cols-7 gap-1 text-center">{["日","月","火","水","木","金","土"].map(day => <span key={day} className="text-xs">{day}</span>)}{days.map((date, index) => date ? <button key={date} aria-label={date} aria-pressed={selectedDate === date} onClick={() => selectDate(date)} className={"rounded-lg py-2 text-sm " + (date === selectedDate ? "bg-blue-700 text-white" : "bg-slate-100")}><span>{Number(date.slice(-2))}</span>{monthCounts[date] > 0 && <small className="block text-[10px]">{monthCounts[date]}件</small>}</button> : <span key={index}/>)}</div></div>}
@@ -93,6 +96,22 @@ export default function ActivityCalendarPage() {
         {ready && <div className="journal-list overflow-hidden rounded-xl border border-slate-200"><div className="list-head" aria-hidden="true"><span>時刻</span><span>作業</span><span>商品・作業内容</span><span>担当者</span></div>{shown.length ? shown.map(row => <article key={row.id} className="entry"><time className="entry-time">{journalTime(row.at)}</time><span className="entry-kind" data-kind={row.kind}>{row.kind}</span><div className="entry-content min-w-0">{row.href ? <Link href={row.href} className="entry-subject">{row.subject}</Link> : <strong className="entry-subject">{row.subject}</strong>}{row.detail && <p className="entry-detail">{row.kind === "商品登録" ? "JAN：" : ""}{row.detail}</p>}</div><span className="entry-operator">{row.operator === "—" ? "" : row.operator}</span></article>) : <p className="py-6 text-center text-slate-500">{rows.length ? "条件に一致する作業はありません。" : "この日の作業はありません。"}</p>}</div>}
       </section>
     </div>
+    {printConfirmOpen && <Modal titleId="journal-print-confirm-title" onClose={() => setPrintConfirmOpen(false)} className="print:hidden">
+      <h2 id="journal-print-confirm-title" className="text-xl font-bold">ジャーナルの印刷</h2>
+      <p className="mt-2 text-sm text-slate-600">日付と対象を確認してから印刷へ進んでください。</p>
+      <dl className="my-4 grid grid-cols-[5rem_1fr] gap-x-3 gap-y-2 rounded-xl bg-slate-50 p-4 text-sm">
+        <dt className="text-slate-600">作業日</dt><dd className="font-bold">{selectedDate}</dd>
+        <dt className="text-slate-600">対象</dt><dd className="font-bold">{ready ? "この日の全 " + rows.length + "件" : "取得中・確認できません"}</dd>
+        <dt className="text-slate-600">用紙</dt><dd>A4・縦／本文10ポイント</dd>
+      </dl>
+      {ready && activity && <p className="mb-3 text-sm leading-relaxed text-slate-700">商品登録 {activity.summary.registeredItems}件 ／ 棚卸入力 {activity.summary.stocktakeRecords}件 ／ 在庫変更 {activity.summary.inventoryEvents}件 ／ 管理操作 {activity.summary.adminActions}件</p>}
+      <p className="text-sm leading-relaxed text-slate-600">検索・絞り込みにかかわらず、その日の全件を印刷します。カレンダーと操作ボタンは印刷しません。</p>
+      {!ready && <p role="alert" className="mt-3 text-sm text-red-700">履歴の取得が完了してから印刷できます。</p>}
+      <div className="mt-5 flex flex-wrap justify-end gap-2">
+        <button onClick={() => setPrintConfirmOpen(false)} className="rounded-lg border px-4 py-3 font-bold">戻る</button>
+        <button disabled={!ready} onClick={() => { if (!ready) return; flushSync(() => setPrintConfirmOpen(false)); window.print(); }} className="rounded-lg bg-blue-700 px-4 py-3 font-bold text-white disabled:opacity-40">印刷設定へ進む</button>
+      </div>
+    </Modal>}
     <section className="journal-print hidden" aria-label="印刷用ジャーナル">
       <h1>作業ジャーナル ／ {selectedDate}</h1>
       {ready && activity ? <><p className="totals">全 {rows.length}件 ／ 商品登録 {activity.summary.registeredItems}・棚卸入力 {activity.summary.stocktakeRecords}・在庫変更 {activity.summary.inventoryEvents}・管理操作 {activity.summary.adminActions}（時刻：日本時間）</p>{rows.length ? <table><thead><tr><th className="time">時刻</th><th className="kind">作業</th><th>商品・内容</th><th className="operator">担当者</th></tr></thead><tbody>{rows.map(row => <tr key={row.id}><td>{journalTime(row.at)}</td><td>{row.kind}</td><td><strong>{row.subject}</strong>{row.detail && <div className="detail">{row.kind === "商品登録" ? "JAN：" : ""}{row.detail}</div>}</td><td>{row.operator}</td></tr>)}</tbody></table> : <p>この日の作業はありません。</p>}</> : <p>履歴の取得が完了していません。画面に戻って更新し、取得後に印刷してください。</p>}
