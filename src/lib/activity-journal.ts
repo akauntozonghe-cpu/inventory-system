@@ -2,18 +2,41 @@ import { displayActionLabel } from "./display-labels";
 export type Activity = {
   date: string;
   summary: { registeredItems: number; stocktakeRecords: number; inventoryEvents: number; adminActions: number };
-  items: Array<{ id: string; name: string; janCode: string | null; systemBarcode: string | null; createdAt: string }>;
+  items: Array<{ id: string; name: string; janCode: string | null; systemBarcode: string | null; createdAt: string; manufacturer?: string | null; majorCategory?: string | null; minorCategory?: string | null; defaultUnit?: string | null }>;
   records: Array<{ id: string; countedQuantity: number; updatedAt: string; session: { id: string; title: string; operator: string | null }; inventoryInstance: { item: { name: string } } }>;
-  inventoryEvents: Array<{ id: string; eventType: string; quantityChange: number; quantityAfter: number; reason: string | null; createdAt: string; performedBy: { displayName: string } | null; inventoryInstance: { item: { name: string } } }>;
-  adminActions: Array<{ id: string; action: string; route: string | null; createdAt: string; adminUser: { displayName: string } }>;
+  inventoryEvents: Array<{ id: string; eventType: string; quantityChange: number; quantityAfter: number; reason: string | null; memo?: string | null; quantityBefore?: number; detail?: unknown; createdAt: string; performedBy: { displayName: string } | null; inventoryInstance: { item: { name: string } } }>;
+  adminActions: Array<{ id: string; action: string; route: string | null; detail?: unknown; createdAt: string; adminUser: { displayName: string } }>;
 };
-export type JournalRow = { id: string; at: string; kind: string; subject: string; detail: string; operator: string; href: string | null };
+export type JournalRow = { id: string; at: string; kind: string; subject: string; detail: string; operator: string; href: string | null; fields: JournalField[]; note?: string };
+export type JournalField = { label: string; value: string; before?: string };
+const fieldNames: Record<string,string> = { name:"商品名", itemName:"商品名", janCode:"JAN", systemBarcode:"システムJAN", manufacturer:"メーカー", majorCategory:"大分類", minorCategory:"小分類", defaultUnit:"標準単位", unit:"単位", managementCode:"管理コード", managementGroupCode:"グループコード", quantity:"数量", actualQuantity:"実数", quantityBefore:"変更前の数量", quantityAfter:"変更後の数量", quantityChange:"増減", lotNo:"Lot", expirationDate:"期限", expirationManagementStatus:"期限管理", expirationAlertDays:"通知日数", storageLocationName:"保管場所", storageLocationId:"保管場所ID", allocationType:"用途", status:"状態", stocktakeStatus:"棚卸状態", reason:"理由", memo:"メモ", note:"メモ", displayName:"利用者名", role:"権限", isActive:"有効", isArchived:"廃止", archiveReason:"廃止理由", title:"名称", operator:"担当者", countedQuantity:"棚卸の実数", action:"操作", fileName:"ファイル名", originalName:"ファイル名", size:"容量", count:"件数" };
+const values:Record<string,string>={home:"自宅用",flea_market:"フリマ用",warehouse:"倉庫保管",ADMIN:"管理者",WORKER:"作業者",ACTIVE:"有効",ARCHIVED:"廃止",MANAGED:"期限管理対象",UNSET:"未設定",NO_EXPIRY:"期限管理不要"};
+function object(value:unknown):Record<string,unknown>{return value && typeof value === "object" && !Array.isArray(value)?value as Record<string,unknown>:{};}
+function display(value:unknown,key:string){if(value===undefined)return "未記録";if(value===null||value==="")return "未設定";if(typeof value==="boolean")return value?"はい":"いいえ";const text=String(value);return ["allocationType","role","status","expirationManagementStatus"].includes(key)?values[text]??text:text;}
+function scalar(value:unknown){return value===null || ["string","number","boolean"].includes(typeof value);}
+export function journalFields(value:unknown):JournalField[]{
+  const data=object(value), before=object(data.before), after=object(data.after);
+  const fields:JournalField[]=[];
+  for(const [key,label] of Object.entries(fieldNames)){
+    if(Object.hasOwn(before,key)||Object.hasOwn(after,key)){
+      const old=before[key], next=after[key];
+      if((scalar(old)||old===undefined)&&(scalar(next)||next===undefined)&&JSON.stringify(old)!==JSON.stringify(next)) fields.push({label,before:display(old,key),value:display(next,key)});
+    }else if(Object.hasOwn(data,key)&&scalar(data[key])) fields.push({label,value:display(data[key],key)});
+  }
+  for(const key of ["item","inventory"]){for(const field of journalFieldsFlat(data[key]))fields.push({...field,label:(key==="inventory"?"在庫・":"商品・")+field.label});}
+  return fields;
+}
+function journalFieldsFlat(value:unknown):JournalField[]{const data=object(value);return Object.entries(fieldNames).flatMap(([key,label])=>Object.hasOwn(data,key)&&scalar(data[key])?[{label,value:display(data[key],key)}]:[]);}
 export function journalRows(activity: Activity): JournalRow[] {
   return [
-    ...activity.items.map(item => ({ id: "i-" + item.id, at: item.createdAt, kind: "商品登録", subject: item.name, detail: item.janCode || item.systemBarcode || "コードなし", operator: "—", href: "/items/" + item.id })),
-    ...activity.records.map(record => ({ id: "r-" + record.id, at: record.updatedAt, kind: "棚卸入力", subject: record.inventoryInstance.item.name, detail: "実数 " + record.countedQuantity + " ／ " + record.session.title, operator: record.session.operator || "未設定", href: "/stocktake/" + record.session.id })),
-    ...activity.inventoryEvents.map(event => ({ id: "e-" + event.id, at: event.createdAt, kind: "在庫変更", subject: event.inventoryInstance.item.name, detail: displayActionLabel(event.eventType) + " ／ 増減 " + (event.quantityChange >= 0 ? "+" : "") + event.quantityChange + " → " + event.quantityAfter + (event.reason ? " ／ " + event.reason : ""), operator: event.performedBy?.displayName || "システム", href: null })),
-    ...activity.adminActions.map(entry => ({ id: "a-" + entry.id, at: entry.createdAt, kind: "管理操作", subject: displayActionLabel(entry.action), detail: "", operator: entry.adminUser.displayName, href: null })),
+    ...activity.items.map(item => {
+      const registration=activity.adminActions.find(entry=>entry.action==="ITEM_REGISTER"&&object(entry.detail).itemId===item.id);
+      const saved=object(registration?.detail);
+      return { id:"i-"+item.id,at:item.createdAt,kind:"商品登録",subject:typeof saved.itemName==="string"?saved.itemName:item.name,detail:registration ? String(saved.janCode || saved.systemBarcode || "コードなし") : item.janCode||item.systemBarcode||"コードなし",operator:registration?.adminUser.displayName||"—",href:"/items/"+encodeURIComponent(item.id),fields:journalFields(registration?.detail??item),note:registration?"保存されている登録時の内容です。古い記録では一部の項目が未記録です。":"登録時の詳細記録がないため、現在の商品情報を表示しています。登録当時の内容とは異なる場合があります。"};
+    }),
+    ...activity.records.map(record => ({ id: "r-" + record.id, at: record.updatedAt, kind: "棚卸入力", subject: record.inventoryInstance.item.name, detail: "実数 " + record.countedQuantity + " ／ " + record.session.title, operator: record.session.operator || "未設定", href: "/stocktake/" + encodeURIComponent(record.session.id),fields:journalFields({countedQuantity:record.countedQuantity,title:record.session.title,operator:record.session.operator}),note:"保存されている棚卸入力です。" })),
+    ...activity.inventoryEvents.map(event => ({ id: "e-" + event.id, at: event.createdAt, kind: "在庫変更", subject: typeof object(event.detail).itemName==="string"?String(object(event.detail).itemName):event.inventoryInstance.item.name, detail: displayActionLabel(event.eventType) + " ／ 増減 " + (event.quantityChange >= 0 ? "+" : "") + event.quantityChange + " → " + event.quantityAfter + (event.reason ? " ／ " + event.reason : ""), operator: event.performedBy?.displayName || "システム", href: null,fields:journalFields({...object(event.detail),quantityBefore:event.quantityBefore,quantityAfter:event.quantityAfter,quantityChange:event.quantityChange,reason:event.reason,memo:event.memo}) })),
+    ...activity.adminActions.map(entry => {const data=object(entry.detail),after=object(data.after),before=object(data.before);const name=data.itemName??after.name??before.name;const itemId=data.itemId??(entry.action==="ITEM_UPDATE"?(after.id??before.id):undefined);const fields=journalFields(data);return { id: "a-" + entry.id, at: entry.createdAt, kind: "管理操作", subject: displayActionLabel(entry.action)+(typeof name==="string"?" ／ "+name:""), detail:fields.filter(field=>field.before!==undefined).map(field=>field.label+"："+field.before+" → "+field.value).slice(0,2).join(" ／ "), operator: entry.adminUser.displayName, href: typeof itemId==="string"?"/items/"+encodeURIComponent(itemId):null,fields,note:fields.length?"保存されている操作内容です。変更のある項目は変更前と変更後を表示します。":"この操作には表示できる詳細が保存されていません。"}; }),
   ].sort((a, b) => a.at.localeCompare(b.at) || a.id.localeCompare(b.id));
 }
 export function journalTime(value: string) {

@@ -78,6 +78,7 @@ export async function GET(request: NextRequest) {
           name: true,
           janCode: true,
           systemBarcode: true,
+          manufacturer: true, majorCategory: true, minorCategory: true, defaultUnit: true,
           createdAt: true,
         },
       }),
@@ -98,6 +99,7 @@ export async function GET(request: NextRequest) {
         select: {
           id: true,
           eventType: true,
+          quantityBefore: true, memo: true, detail: true,
           quantityChange: true,
           quantityAfter: true,
           reason: true,

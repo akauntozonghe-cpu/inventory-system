@@ -445,6 +445,8 @@ export async function POST(request: NextRequest) {
               systemBarcode: item.systemBarcode,
               quantity: inventory.quantity,
               storageLocationId: inventory.storageLocationId,
+              item: { name: item.name, janCode: item.janCode, systemBarcode: item.systemBarcode, manufacturer: item.manufacturer, majorCategory: item.majorCategory, minorCategory: item.minorCategory, defaultUnit: item.defaultUnit },
+              inventory: { quantity: inventory.quantity, unit: inventory.unit, storageLocationName: inventory.storageLocation?.name ?? null, lotNo: inventory.lotNo, expirationDate: inventory.expirationDate, allocationType: inventory.allocationType },
             }),
           },
         });

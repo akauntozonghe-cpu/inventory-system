@@ -1,5 +1,6 @@
 "use client";
 
+import Modal from "@/components/common/Modal";
 import ProductCodeField from "@/components/ProductCodeField";
 import InventoryStatusBadges from "@/components/inventory/InventoryStatusBadges";
 import { useAppAccess } from "@/components/auth/AppAccessProvider";
@@ -12,7 +13,7 @@ import { fetchFresh } from "@/lib/fetch-fresh";
 
 import Link from "@/components/auth/PermissionLink";
 import { expiryPolicy, expiryPolicyLabels } from "@/lib/expiry-policy";
-import { FormEvent, useCallback, useEffect, useState } from "react";
+import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import dynamic from "next/dynamic";
 const SystemBarcodeLabel=dynamic(()=>import("@/components/SystemBarcodeLabel"),{ssr:false});
@@ -57,6 +58,7 @@ type InventoryInstance = {
 };
 
 type Item = {
+  updatedAt?: string;
   createdAt?: string;
   isArchived?: boolean;
   id: string;
@@ -71,6 +73,7 @@ type Item = {
 };
 
 type ItemForm = {
+  expectedUpdatedAt?: string;
   name: string;
   janCode: string;
   systemBarcode: string;
@@ -215,6 +218,7 @@ function normalizeUser(data: unknown): CurrentUser | null {
 
 function itemToForm(item: Item): ItemForm {
   return {
+    expectedUpdatedAt: item.updatedAt,
     name: item.name,
     janCode: item.janCode ?? "",
     systemBarcode: item.systemBarcode ?? "",
@@ -278,6 +282,7 @@ export default function ItemDetailPage() {
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
 
+  const originalItemForm = useRef("");
   const [editingItem, setEditingItem] = useState(false);
   const [itemForm, setItemForm] = useState<ItemForm | null>(null);
 
@@ -382,11 +387,14 @@ export default function ItemDetailPage() {
 
     setNotice("");
     setError("");
+    originalItemForm.current = JSON.stringify(itemToForm(item));
     setItemForm(itemToForm(item));
     setEditingItem(true);
   };
 
   const cancelItemEdit = () => {
+    if (saving) return;
+    if (itemForm && JSON.stringify(itemForm) !== originalItemForm.current && !window.confirm("未保存の変更があります。変更を破棄して閉じますか？")) return;
     setEditingItem(false);
     setItemForm(null);
   };
@@ -584,16 +592,6 @@ export default function ItemDetailPage() {
           </div>
 
           <div className="flex flex-wrap gap-2">
-            {isAdmin && !editingItem && (
-              <button
-                type="button"
-                onClick={startItemEdit}
-                className="rounded-xl bg-blue-600 px-4 py-3 font-bold text-white hover:bg-blue-700"
-              >
-                商品情報を編集
-              </button>
-            )}
-
             <button
               type="button"
               onClick={() => router.push("/items")}
@@ -627,12 +625,13 @@ export default function ItemDetailPage() {
 
         <div className="space-y-4">
           {editingItem && itemForm ? (
-            <section className="rounded-3xl bg-white p-5 shadow-sm sm:p-7">
-              <h2 className="text-xl font-black text-slate-950">
+            <Modal titleId="item-edit-title" busy={saving} onClose={cancelItemEdit}>
+              <h2 id="item-edit-title" className="text-xl font-black text-slate-950">
                 商品情報を編集
               </h2>
 
-              <form className="mt-5 space-y-5" onSubmit={saveItem}>
+              {error && <p role="alert" className="mt-3 text-sm text-red-700">{error}</p>}
+              <form className="mt-5" onSubmit={saveItem}><fieldset disabled={saving} className="space-y-5">
                 <div className="grid gap-4 sm:grid-cols-2">
                   <label className="block sm:col-span-2">
                     <span className="font-bold text-slate-700">商品名</span>
@@ -722,11 +721,11 @@ export default function ItemDetailPage() {
                     {saving ? "保存中…" : "商品情報を保存"}
                   </button>
                 </div>
-              </form>
-            </section>
+              </fieldset></form>
+            </Modal>
           ) : (
             <section className="rounded-3xl bg-white p-5 shadow-sm sm:p-7">
-              <div className="grid grid-cols-[100px_minmax(0,1fr)] items-start gap-3"><ProductPhotos itemId={item.id} canEdit={isAdmin} compact/><div className="min-w-0"><h2 className="text-xl font-black text-slate-950">商品情報</h2><InventoryStatusBadges item={item} stocks={inventoryInstances}/><ProductIdentity item={item}/>
+              <div className="grid grid-cols-[100px_minmax(0,1fr)] items-start gap-3"><ProductPhotos itemId={item.id} canEdit={isAdmin} compact/><div className="min-w-0"><div className="flex flex-wrap items-center justify-between gap-2"><h2 className="text-xl font-black text-slate-950">商品情報</h2>{isAdmin&&<button onClick={startItemEdit} className="rounded-lg bg-blue-700 px-3 py-2 font-bold text-white">商品情報を編集</button>}</div><InventoryStatusBadges item={item} stocks={inventoryInstances}/><ProductIdentity item={item}/>
 
               <dl className="mt-3 grid grid-cols-2 gap-3 lg:grid-cols-3">
 
