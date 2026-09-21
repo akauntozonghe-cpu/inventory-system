@@ -314,6 +314,7 @@ model StocktakeTarget {
 }
 
 model StocktakeRecord {
+  operationAccess Json?
   id String @id @default(cuid())
 
   sessionId String

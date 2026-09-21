@@ -17,6 +17,8 @@ export default function AppAccessProvider({children}:{children:React.ReactNode})
     catch(error){if(request===sequence.current){setUser(null);setReady(true);}throw error;}
   },[publicPage]);
   useEffect(()=>{void refresh().catch(()=>{});},[refresh,pathname]);
+  useEffect(()=>{const changed=()=>void refresh().catch(()=>{});window.addEventListener("inventory:admin-changed",changed);return()=>window.removeEventListener("inventory:admin-changed",changed);},[refresh]);
+  useEffect(()=>{if(!user?.adminExpiresAt)return;const timer=setTimeout(()=>{setUser(previous=>previous?{...previous,role:previous.baseRole??"WORKER",adminExpiresAt:0}:null);void refresh().catch(()=>{});},Math.max(0,user.adminExpiresAt-Date.now()));return()=>clearTimeout(timer);},[user?.adminExpiresAt,refresh]);
   useLiveRefresh(refresh);
   return <Context.Provider value={{user,ready,refresh}}>{children}</Context.Provider>;
 }

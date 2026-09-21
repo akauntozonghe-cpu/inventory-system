@@ -19,6 +19,8 @@ const ADMIN_ELEVATION_SECONDS = 60 * 10;
 export type UserRole = "ADMIN" | "WORKER";
 
 export type LoggedInUser = {
+  baseRole?: UserRole;
+  adminExpiresAt?: number;
   id: string;
   username: string;
   displayName: string;
@@ -140,8 +142,16 @@ export function verifySessionToken(token?: string): LoggedInUser | null {
   return user;
 }
 
+export function effectiveSessionUser(sessionToken?: string, elevationToken?: string) {
+  const user = verifySessionToken(sessionToken);
+  if (!user) return null;
+  const elevation = verifyAdminElevationToken(elevationToken);
+  if (user.role !== "ADMIN" && elevation?.authenticatedByUserId === user.id) return {...user,baseRole:user.role,role:"ADMIN" as const,adminExpiresAt:elevation.expiresAt};
+  return user;
+}
+
 export function getLoggedInUser(request: NextRequest) {
-  return verifySessionToken(request.cookies.get(AUTH_COOKIE)?.value);
+  return effectiveSessionUser(request.cookies.get(AUTH_COOKIE)?.value,request.cookies.get(ADMIN_ELEVATION_COOKIE)?.value);
 }
 
 /** 旧コードとの互換用 */

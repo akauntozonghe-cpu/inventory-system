@@ -1,0 +1,11 @@
+import {afterEach,beforeEach,expect,it,vi} from "vitest";
+import {createSessionToken,createAdminElevationToken,effectiveSessionUser,verifySessionToken} from "../src/lib/auth";
+import {operationAccess} from "../src/lib/operation-access";
+import {canVisit,canUseFeature} from "../src/lib/app-access";
+const secret=process.env.AUTH_SECRET;
+beforeEach(()=>{process.env.AUTH_SECRET="temporary-admin-equivalence-test-secret";vi.useFakeTimers();vi.setSystemTime(new Date("2026-09-21T00:00:00Z"));});
+afterEach(()=>{vi.useRealTimers();if(secret===undefined)delete process.env.AUTH_SECRET;else process.env.AUTH_SECRET=secret;});
+const session=(role:"ADMIN"|"WORKER"="WORKER")=>createSessionToken({id:"worker",username:"worker",displayName:"利用者",role,mustChangePassword:false,featurePermissions:[]});
+it("provides full admin access while retaining login identity and distinct journal authority",()=>{const token=session(),elevation=createAdminElevationToken({adminUserId:"admin",adminDisplayName:"管理者",authenticatedByUserId:"worker"});const user=effectiveSessionUser(token,elevation)!;expect(user).toMatchObject({id:"worker",role:"ADMIN",baseRole:"WORKER"});expect(verifySessionToken(token)?.role).toBe("WORKER");const access={...user,featurePermissions:[]};expect(canVisit(access,"/admin/users")).toBe(true);expect(canVisit(access,"/admin/activity")).toBe(true);expect(canUseFeature(access,"LABEL_PRINT")).toBe(true);expect(operationAccess(token,elevation).mode).toBe("TEMPORARY_ADMIN");});
+it("returns to normal permissions on expiry or logout without changing the account",()=>{const token=session(),elevation=createAdminElevationToken({adminUserId:"admin",authenticatedByUserId:"worker"});vi.advanceTimersByTime(600001);expect(effectiveSessionUser(token,elevation)?.role).toBe("WORKER");expect(effectiveSessionUser(undefined,elevation)).toBeNull();});
+it("rejects forged or other-user grants and distinguishes direct admin login",()=>{const token=session(),other=createAdminElevationToken({adminUserId:"admin",authenticatedByUserId:"other"});expect(effectiveSessionUser(token,other)?.role).toBe("WORKER");expect(effectiveSessionUser(token,"forged")?.role).toBe("WORKER");expect(operationAccess(session("ADMIN"),other).mode).toBe("STANDARD_ADMIN");});

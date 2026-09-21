@@ -31,7 +31,9 @@ export async function GET(request: NextRequest) {
     id: user.id,
     username: user.username,
     displayName: user.displayName,
-    role: liveUser.role,
+    role: user.adminExpiresAt ? "ADMIN" : liveUser.role,
+    baseRole: liveUser.role,
+    adminExpiresAt: user.adminExpiresAt ?? 0,
     mustChangePassword: user.mustChangePassword,
     featurePermissions: liveUser.featurePermissions,
   });

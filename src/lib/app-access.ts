@@ -1,5 +1,5 @@
 import { requiredFeatures, type FeatureKey } from "./feature-permissions";
-export type AppUserAccess = { id: string; displayName: string; role: string; featurePermissions: string[] };
+export type AppUserAccess = { baseRole?: string; adminExpiresAt?: number; id: string; displayName: string; role: string; featurePermissions: string[] };
 export function canUseFeature(user: AppUserAccess | null, feature: FeatureKey) {
   if (!user) return false;
   const features = (feature === "ITEM_EDIT" || feature === "INVENTORY_EDIT") ? ["CATALOG",feature] : feature === "MARKETPLACE_SETTINGS" ? ["MARKETPLACE", feature] : feature === "STOCKTAKE_START" ? ["STOCKTAKE", feature] : [feature];

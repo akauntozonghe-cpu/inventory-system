@@ -168,6 +168,7 @@ export async function proxy(request: NextRequest) {
     }
   }
 
+  const effectiveAdmin = liveUser.role === "ADMIN" || elevation?.authenticatedByUserId === user.id;
   const operationSetting = await prisma.systemOperationSetting.findUnique({
     where: { id: "system" },
     select: { mode: true, message: true },
@@ -208,15 +209,15 @@ export async function proxy(request: NextRequest) {
       pathname.startsWith("/api/auth/logout") ||
       pathname.startsWith("/api/auth/me");
 
-    if (pathname.startsWith("/api/") && !(sessionApi || (liveUser.role === "ADMIN" && adminRecoveryApi))) {
+    if (pathname.startsWith("/api/") && !(sessionApi || (effectiveAdmin && adminRecoveryApi))) {
       return NextResponse.json(
         { code: "SYSTEM_MAINTENANCE_503", message: operationSetting.message || "現在メンテナンス中のため、通常機能を停止しています。" },
         { status: 503, headers: { "Retry-After": "60" } }
       );
     }
-    if (!pathname.startsWith("/api/") && !(liveUser.role === "ADMIN" && adminRecoveryPage)) {
+    if (!pathname.startsWith("/api/") && !(effectiveAdmin && adminRecoveryPage)) {
       const maintenanceUrl = request.nextUrl.clone();
-      maintenanceUrl.pathname = liveUser.role === "ADMIN" ? "/admin/maintenance-recovery" : "/maintenance";
+      maintenanceUrl.pathname = effectiveAdmin ? "/admin/maintenance-recovery" : "/maintenance";
       maintenanceUrl.search = "";
       return NextResponse.redirect(maintenanceUrl);
     }
@@ -230,7 +231,7 @@ export async function proxy(request: NextRequest) {
     request.nextUrl.searchParams.has("sessionId")
   ).find(key=>!liveUser.featurePermissions.includes(key as never));
   if (
-    liveUser.role !== "ADMIN" &&
+    !effectiveAdmin &&
     feature &&
     !stocktakePhoto &&
     !liveUser.featurePermissions.includes(feature as never)
@@ -275,12 +276,10 @@ export async function proxy(request: NextRequest) {
     return NextResponse.redirect(passwordUrl);
   }
 
-  // 管理者メニュー・ユーザー管理・エラーレポートは、
-  // 管理者アカウントだけが直接開ける。
+  // 有効な一時管理者認証は、管理者ログインと同じ操作を許可する。
   if (
     isSystemAdminRoute(pathname) &&
-    liveUser.role !== "ADMIN" &&
-    !((pathname === "/api/admin/system-check" || pathname.startsWith("/api/admin/system-check/")) && hasAdminAccess(request))
+    !effectiveAdmin
   ) {
     if (pathname.startsWith("/api/")) {
       return NextResponse.json(

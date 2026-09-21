@@ -6,15 +6,12 @@ import RecoveryWizard from "@/components/RecoveryWizard";
 import PageStocktakeActions from "./PageStocktakeActions";
 import {readRecoveryReturn, type RecoveryReturn} from "@/lib/recovery-return";
 import { fetchFresh } from "@/lib/fetch-fresh";
-import { useAppAccess } from "./AppAccessProvider";
- type Intent = "page" | "recovery";
+type Intent = "page" | "recovery";
 const Context = createContext({active:false,isAdmin:false,open:()=>{}});
 export const useAdminMode = () => useContext(Context);
 const publicPaths = new Set(["/login","/setup","/install","/offline"]);
 export default function PageAdminMode({children}:{children:ReactNode}) {
   const pathname=usePathname();
-  const {can}=useAppAccess();
-  const assigned=[can("ITEM_EDIT")?"商品編集":"",can("INVENTORY_EDIT")?"在庫編集":""].filter(Boolean).join("・");
   const [expiresAt,setExpiresAt]=useState(0),[role,setRole]=useState("");
   const [authOpen,setAuthOpen]=useState(false),[view,setView]=useState<Intent|null>(null),[error,setError]=useState("");
   const [lastFailure,setLastFailure]=useState<{code:string;message:string}|null>(null);
@@ -29,20 +26,20 @@ export default function PageAdminMode({children}:{children:ReactNode}) {
     if(publicPaths.has(pathname))return;
     let cancelled=false;
     const check=async()=>{try{const response=await fetchFresh("/admin/re-auth");const value=response.ok?await response.json():null;if(!cancelled){setRole(value?.role||"");setExpiresAt(value?.expiresAt>Date.now()?value.expiresAt:0);}}catch{if(!cancelled){setRole("");setExpiresAt(0);}}};
-    void check();window.addEventListener("focus",check);
+    void check();window.addEventListener("focus",check);window.addEventListener("inventory:admin-changed",check);
     let count=0,last=0,target:Element|null=null;
     const click=(event:MouseEvent)=>{const title=(event.target as Element)?.closest?.("[data-admin-recovery-title], h1");if(!title)return;const now=Date.now();count=target===title&&now-last<900?count+1:1;last=now;target=title;if(count===3){count=0;setRecoveryContext(null);const source=title.closest("[data-error-code]");if(source)setLastFailure({code:source.getAttribute("data-error-code")||"UNKNOWN",message:source.getAttribute("data-error-message")||""});showRef.current(title.hasAttribute("data-admin-recovery-title")?"recovery":"page");}};
     const failure=(event:Event)=>{const value=(event as CustomEvent).detail;if(value?.code&&value?.message)setLastFailure(value);};
     document.addEventListener("click",click);window.addEventListener("inventory:recovery-failed",failure);
-    return()=>{cancelled=true;window.removeEventListener("focus",check);document.removeEventListener("click",click);window.removeEventListener("inventory:recovery-failed",failure);};
+    return()=>{cancelled=true;window.removeEventListener("focus",check);window.removeEventListener("inventory:admin-changed",check);document.removeEventListener("click",click);window.removeEventListener("inventory:recovery-failed",failure);};
   },[pathname]);
-  useEffect(()=>{if(!expiresAt||isAdmin)return;const timer=setTimeout(()=>{setExpiresAt(0);setView(null);},Math.max(0,expiresAt-Date.now()));return()=>clearTimeout(timer);},[expiresAt,isAdmin]);
-  const exit=async()=>{try{const response=await fetchFresh("/admin/re-auth",{method:"DELETE"});if(!response.ok)throw new Error();setExpiresAt(0);setView(null);}catch{setError("ADMIN_EXIT_FAILED：一時的な操作許可を終了できませんでした。");}};
+  useEffect(()=>{if(!expiresAt||isAdmin)return;const timer=setTimeout(()=>{setExpiresAt(0);setView(null);window.dispatchEvent(new Event("inventory:admin-changed"));},Math.max(0,expiresAt-Date.now()));return()=>clearTimeout(timer);},[expiresAt,isAdmin]);
+  const exit=async()=>{try{const response=await fetchFresh("/admin/re-auth",{method:"DELETE"});if(!response.ok)throw new Error();setExpiresAt(0);setView(null);window.dispatchEvent(new Event("inventory:admin-changed"));}catch{setError("ADMIN_EXIT_FAILED：一時的な操作許可を終了できませんでした。");}};
   const stocktake=pathname.match(/^\/stocktake\/([^/]+)(?:\/result)?$/);
   const stocktakeId=stocktake&&!['start','history'].includes(stocktake[1])?stocktake[1]:null;
   const catalog=pathname.startsWith("/items");
-  return <Context.Provider value={{active,isAdmin,open:()=>show("page")}}><div className="print:hidden">{!publicPaths.has(pathname)&&role&&<div role="status" className={`flex flex-wrap items-center justify-between gap-2 px-4 py-2 text-xs ${isAdmin?"bg-slate-100 text-slate-700":active?"bg-amber-100 text-amber-950":"bg-slate-50 text-slate-600"}`}><span>{isAdmin?"権限：通常の管理者":active?"権限：一時管理者（"+new Date(expiresAt).toLocaleTimeString("ja-JP",{hour:"2-digit",minute:"2-digit"})+"まで）":"権限：通常の利用権限"+(assigned?"（"+assigned+"可）":"")}</span>{!isAdmin&&!active&&<button onClick={()=>show("page")} className="rounded border px-2 py-1 font-bold">一時的な許可を受ける</button>}{!isAdmin&&active&&<button onClick={()=>void exit()} className="rounded border px-2 py-1 font-bold">一時権限を終了</button>}</div>}</div>{children}
-    <AdminModeDialog open={authOpen} sessionId={stocktakeId||""} purpose="管理者の確認により、保護された操作を10分間許可します。通常の利用権限は変更しません。" onClose={()=>setAuthOpen(false)} onAuthenticated={()=>{setExpiresAt(Date.now()+600000);setAuthOpen(false);setView(intent.current);}}/>
+  return <Context.Provider value={{active,isAdmin,open:()=>show("page")}}>{children}
+    <AdminModeDialog open={authOpen} sessionId={stocktakeId||""} purpose="管理者の確認により、管理者と同じ操作を10分間許可します。ジャーナルには一時管理者として記録します。" onClose={()=>setAuthOpen(false)} onAuthenticated={()=>{setExpiresAt(Date.now()+600000);window.dispatchEvent(new Event("inventory:admin-changed"));setAuthOpen(false);setView(intent.current);}}/>
     {view&&active&&<div className="fixed inset-0 z-[300] overflow-auto bg-slate-950/60 p-4"><section role="dialog" aria-modal="true" aria-labelledby="page-admin-title" className="mx-auto my-5 w-full max-w-3xl rounded-2xl bg-white p-5 text-slate-950"><header className="mb-4 flex items-start justify-between gap-3"><h2 id="page-admin-title" className="text-xl font-black">{view==="recovery"?"診断・復旧":"このページの操作"}</h2><button className="rounded-xl border px-3 py-2" onClick={()=>setView(null)}>閉じる</button></header>{error&&<p role="alert">{error}</p>}
       {view==="recovery"?<>{lastFailure&&<p className="mb-3 rounded-xl bg-red-50 p-3">{lastFailure.code}：{lastFailure.message}</p>}<RecoveryWizard contextRoute={recoveryContext?.route??pathname} initialReportId={recoveryContext?.reportId} errorCode={lastFailure?.code} onReturnToWork={()=>setView(null)}/></>:<div className="grid gap-3">
         {pathname==="/marketplace"&&<button className="rounded-xl bg-violet-700 p-3 font-bold text-white" onClick={()=>{setView(null);window.dispatchEvent(new Event("inventory:marketplace-admin"));}}>このページの出品を取消・差戻し</button>}

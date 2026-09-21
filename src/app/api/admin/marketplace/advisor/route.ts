@@ -31,7 +31,7 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   const auth = requireLogin(request); if (auth.response || !auth.user) return auth.response;
   const body = await request.json().catch(() => null) as Record<string, unknown> | null; const action = stringValue(body?.action, 50);
-  if(["SAVE_RECOMMENDATION_SETTING","SAVE_SHIPPING_RATE","UPDATE_CHANNEL","SAVE_CHANNEL_FEE"].includes(action)){const user=await prisma.appUser.findUnique({where:{id:auth.user.id},select:{role:true,featurePermissions:true}});if(user?.role!=="ADMIN"&&!user?.featurePermissions.includes("MARKETPLACE_SETTINGS" as never))return NextResponse.json({code:"MARKETPLACE_SETTINGS_DISABLED",message:"販売設定の変更は許可されていません。"},{status:403});}
+  if(["SAVE_RECOMMENDATION_SETTING","SAVE_SHIPPING_RATE","UPDATE_CHANNEL","SAVE_CHANNEL_FEE"].includes(action)){const user=await prisma.appUser.findUnique({where:{id:auth.user.id},select:{role:true,featurePermissions:true}});if(auth.user.role!=="ADMIN"&&user?.role!=="ADMIN"&&!user?.featurePermissions.includes("MARKETPLACE_SETTINGS" as never))return NextResponse.json({code:"MARKETPLACE_SETTINGS_DISABLED",message:"販売設定の変更は許可されていません。"},{status:403});}
   if (action === "SAVE_RECOMMENDATION_SETTING") {
     const goal=numberValue(body?.targetProfitRateBps,0,9000);
     if(goal===null)return NextResponse.json({message:"目標利益率は0〜90%で指定してください。"},{status:400});

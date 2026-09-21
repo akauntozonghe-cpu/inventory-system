@@ -4,7 +4,7 @@ export type Activity = {
   date: string;
   summary: { registeredItems: number; stocktakeRecords: number; inventoryEvents: number; adminActions: number };
   items: Array<{ id: string; name: string; janCode: string | null; systemBarcode: string | null; createdAt: string; manufacturer?: string | null; majorCategory?: string | null; minorCategory?: string | null; defaultUnit?: string | null }>;
-  records: Array<{ id: string; countedQuantity: number; updatedAt: string; session: { id: string; title: string; operator: string | null }; inventoryInstance: { item: { name: string } } }>;
+  records: Array<{ operationAccess?: unknown; id: string; countedQuantity: number; updatedAt: string; session: { id: string; title: string; operator: string | null }; inventoryInstance: { item: { name: string } } }>;
   inventoryEvents: Array<{ id: string; eventType: string; quantityChange: number; quantityAfter: number; reason: string | null; memo?: string | null; quantityBefore?: number; detail?: unknown; createdAt: string; performedBy: { displayName: string } | null; inventoryInstance: { item: { name: string } } }>;
   adminActions: Array<{ id: string; action: string; route: string | null; detail?: unknown; createdAt: string; adminUser: { displayName: string } }>;
 };
@@ -38,7 +38,7 @@ function journalFieldsFlat(value:unknown):JournalField[]{const data=object(value
 export function journalAccess(value:unknown):{label:string;fields:JournalField[];actorName?:string}{
   const data=object(value), explicit=object(data.authorization);
   const access=typeof explicit.mode==="string"?explicit:object(data.access), mode=access.mode;
-  const labels:Record<string,string>={ASSIGNED_PERMISSION:"付与された編集権限",STANDARD_ADMIN:"通常の管理者",TEMPORARY_ADMIN:"一時権限有効中",STANDARD_USER:"通常の利用権限"};
+  const labels:Record<string,string>={ASSIGNED_PERMISSION:"付与された編集権限",STANDARD_ADMIN:"管理者が実行",TEMPORARY_ADMIN:"一時管理者が実行",STANDARD_USER:"通常の利用権限"};
   const label=typeof mode==="string"&&labels[mode]?labels[mode]:"権限状態：未記録";
   const fields:JournalField[]=[{label:"操作時の権限",value:label}];
   if(typeof access.actorName==="string")fields.push({label:"実際の操作者",value:access.actorName});
@@ -47,7 +47,7 @@ export function journalAccess(value:unknown):{label:string;fields:JournalField[]
     if(typeof access.authorizedByName==="string")fields.push({label:"許可した管理者",value:access.authorizedByName});
     else if(typeof access.authorizedById==="string")fields.push({label:"許可者ID",value:access.authorizedById});
     if(typeof access.expiresAt==="number"&&Number.isFinite(access.expiresAt))fields.push({label:"一時権限の期限",value:new Date(access.expiresAt).toLocaleString("ja-JP",{timeZone:"Asia/Tokyo"})});
-    fields.push({label:"権限の意味",value:access.usedForEdit?"一時管理者の許可で編集した操作です。":"一時権限が有効だったことを示します。この操作自体に管理者権限が必要だったとは限りません。"});
+    fields.push({label:"権限の意味",value:access.usedForEdit?"一時管理者の許可で編集した操作です。":"管理者認証中の操作です。通常の管理者ログインとは区別して記録しています。"});
   }
   return {label,fields,...(typeof access.actorName==="string"?{actorName:access.actorName}:{})};
 }
@@ -58,8 +58,8 @@ export function journalRows(activity: Activity): JournalRow[] {
       const saved=object(registration?.detail);const access=journalAccess(registration?.detail);
       return { id:"i-"+item.id,at:item.createdAt,kind:"商品登録",subject:typeof saved.itemName==="string"?saved.itemName:item.name,detail:registration ? String(saved.janCode || saved.systemBarcode || "コードなし") : item.janCode||item.systemBarcode||"コードなし",operator:access.actorName||registration?.adminUser.displayName||"—",accessLabel:access.label,href:"/items/"+encodeURIComponent(item.id),fields:[...access.fields,...journalFields(registration?.detail??item)],note:registration?"保存されている登録時の内容です。古い記録では一部の項目が未記録です。":"登録時の詳細記録がないため、現在の商品情報を表示しています。登録当時の内容とは異なる場合があります。"};
     }),
-    ...activity.records.map(record => ({ id: "r-" + record.id, at: record.updatedAt, kind: "棚卸入力", subject: record.inventoryInstance.item.name, detail: "実数 " + record.countedQuantity + " ／ " + record.session.title, operator: record.session.operator || "未設定", href: "/stocktake/" + encodeURIComponent(record.session.id),fields:journalFields({countedQuantity:record.countedQuantity,title:record.session.title,operator:record.session.operator}),note:"保存されている棚卸入力です。" })),
-    ...activity.inventoryEvents.map(event => ({ id: "e-" + event.id, at: event.createdAt, kind: "在庫変更", subject: typeof object(event.detail).itemName==="string"?String(object(event.detail).itemName):event.inventoryInstance.item.name, detail: displayActionLabel(event.eventType) + " ／ 増減 " + (event.quantityChange >= 0 ? "+" : "") + event.quantityChange + " → " + event.quantityAfter + (event.reason ? " ／ " + event.reason : ""), operator: event.performedBy?.displayName || "システム", href: null,fields:journalFields({...object(event.detail),quantityBefore:event.quantityBefore,quantityAfter:event.quantityAfter,quantityChange:event.quantityChange,reason:event.reason,memo:event.memo}) })),
+    ...activity.records.map(record => {const access=journalAccess({access:record.operationAccess});return ({ id: "r-" + record.id, at: record.updatedAt, kind: "棚卸入力", subject: record.inventoryInstance.item.name, detail: "実数 " + record.countedQuantity + " ／ " + record.session.title, operator: access.actorName || record.session.operator || "未設定",accessLabel:access.label, href: "/stocktake/" + encodeURIComponent(record.session.id),fields:[...access.fields,...journalFields({countedQuantity:record.countedQuantity,title:record.session.title,operator:record.session.operator})],note:"保存されている棚卸入力です。" });}),
+    ...activity.inventoryEvents.map(event => {const access=journalAccess(event.detail);return ({ id: "e-" + event.id, at: event.createdAt, kind: "在庫変更", subject: typeof object(event.detail).itemName==="string"?String(object(event.detail).itemName):event.inventoryInstance.item.name, detail: displayActionLabel(event.eventType) + " ／ 増減 " + (event.quantityChange >= 0 ? "+" : "") + event.quantityChange + " → " + event.quantityAfter + (event.reason ? " ／ " + event.reason : ""), operator: access.actorName || event.performedBy?.displayName || "システム",accessLabel:access.label, href: null,fields:[...access.fields,...journalFields({...object(event.detail),quantityBefore:event.quantityBefore,quantityAfter:event.quantityAfter,quantityChange:event.quantityChange,reason:event.reason,memo:event.memo})] });}),
     ...activity.adminActions.filter(entry => !(entry.action === "ITEM_REGISTER" && activity.items.some(item => item.id === object(entry.detail).itemId))).map(entry => {const access=journalAccess(entry.detail);const data=object(entry.detail),after=object(data.after),before=object(data.before);const name=data.itemName??after.name??before.name;const itemId=data.itemId??(entry.action==="ITEM_UPDATE"?(after.id??before.id):undefined);const fields=journalFields(data);return { id: "a-" + entry.id, at: entry.createdAt, kind: "変更・承認", subject: displayActionLabel(entry.action)+(typeof name==="string"?" ／ "+name:""), detail:fields.filter(field=>field.before!==undefined).map(field=>field.label+"："+field.before+" → "+field.value).slice(0,2).join(" ／ "), operator: access.actorName ?? entry.adminUser.displayName, accessLabel: access.label, href: typeof itemId==="string"?"/items/"+encodeURIComponent(itemId):null,fields:[...access.fields,...fields],note:fields.length?"保存されている操作内容です。変更のある項目は変更前と変更後を表示します。":"この操作には表示できる詳細が保存されていません。"}; }),
   ].sort((a, b) => a.at.localeCompare(b.at) || a.id.localeCompare(b.id));
 }

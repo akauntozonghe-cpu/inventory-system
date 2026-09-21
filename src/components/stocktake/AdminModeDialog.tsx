@@ -112,6 +112,7 @@ export default function AdminModeDialog({
         throw new Error("管理者認証の結果を確認できませんでした。");
       }
 
+      window.dispatchEvent(new Event("inventory:admin-changed"));
       onAuthenticated({
         id: data.admin.id,
         username: data.admin.username,

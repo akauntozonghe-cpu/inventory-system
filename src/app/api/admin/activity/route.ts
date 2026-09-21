@@ -88,6 +88,7 @@ export async function GET(request: NextRequest) {
         select: {
           id: true,
           countedQuantity: true,
+          operationAccess: true,
           updatedAt: true,
           session: { select: { id: true, title: true, operator: true } },
           inventoryInstance: { select: { item: { select: { id: true, name: true } } } },

@@ -33,9 +33,10 @@ describe("activity journal", () => {
   it("never infers historical privileges from an actor's current role",()=>{
     expect(journalAccess({}).label).toBe("権限状態：未記録");
     const value=journalAccess({access:{mode:"TEMPORARY_ADMIN",actorName:"作業者",authorizedByName:"承認者",expiresAt:Date.UTC(2026,8,21)}});
-    expect(value.label).toBe("一時権限有効中");expect(value.actorName).toBe("作業者");expect(value.fields).toContainEqual({label:"許可した管理者",value:"承認者"});
-    expect(value.fields.some(field=>field.value.includes("必要だったとは限りません"))).toBe(true);
+    expect(value.label).toBe("一時管理者が実行");expect(value.actorName).toBe("作業者");expect(value.fields).toContainEqual({label:"許可した管理者",value:"承認者"});
+    expect(value.fields.some(field=>field.value.includes("区別して記録"))).toBe(true);
   });
+  it("shows saved authority for stocktake and inventory event rows",()=>{const saved={...activity,records:activity.records.map(row=>({...row,operationAccess:{mode:"TEMPORARY_ADMIN",actorName:"入力者",authorizedByName:"管理者"}})),inventoryEvents:activity.inventoryEvents.map(row=>({...row,detail:{access:{mode:"STANDARD_ADMIN",actorName:"管理者"}}}))};const rows=journalRows(saved);expect(rows.find(row=>row.kind==="棚卸入力")).toMatchObject({operator:"入力者",accessLabel:"一時管理者が実行"});expect(rows.find(row=>row.kind==="在庫変更")?.accessLabel).toBe("管理者が実行");});
   it("uses Japanese time regardless of the viewing device timezone", () => {
     expect(journalTime("2026-09-13T15:05:00Z")).toBe("00:05");
   });

@@ -42,7 +42,7 @@ export async function PATCH(request: NextRequest) {
         if (permitted[action] !== code)
             throw new Error("TARGET_INPUT_INVALID");
         const sessionId = await scope(body.runId, code);
-        const actor = auth.user.role === "ADMIN" ? auth.user.id : getAdminElevation(request)?.adminUserId;
+        const actor = (auth.user.baseRole ?? auth.user.role) === "ADMIN" ? auth.user.id : getAdminElevation(request)?.adminUserId;
         if (!actor)
             throw new Error("TARGET_INPUT_INVALID");
         await prisma.$transaction(async (tx) => {

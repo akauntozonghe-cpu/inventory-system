@@ -1,3 +1,4 @@
+import { currentOperationAccess } from "@/lib/operation-access";
 import { parseStocktakeQuantity } from "@/lib/stocktake-quantity";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
@@ -124,6 +125,7 @@ export async function POST(request: NextRequest) {
           expectedQuantity = inventory.quantity;
           await transaction.stocktakeTarget.update({ where: { sessionId_inventoryInstanceId: { sessionId, inventoryInstanceId } }, data: { expectedQuantity } });
         }
+        const operationAccess = await currentOperationAccess();
         const record = await transaction.stocktakeRecord.upsert({
           where: {
             sessionId_inventoryInstanceId: {
@@ -132,10 +134,12 @@ export async function POST(request: NextRequest) {
             },
           },
           update: {
+            operationAccess,
             countedQuantity,
             memo,
           },
           create: {
+            operationAccess,
             sessionId,
             inventoryInstanceId,
             countedQuantity,

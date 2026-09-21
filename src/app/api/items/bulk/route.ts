@@ -22,7 +22,7 @@ export async function POST(request:NextRequest){
    }
    const data=action==="ARCHIVE"?{isArchived:true,archivedAt:new Date(),archiveReason:reason}:action==="RESTORE"?{isArchived:false,archivedAt:null,archiveReason:null}:action==="EXCLUDE_INSPECTION"?{inspectionExcluded:true,inspectionExclusionReason:reason}:{inspectionExcluded:false,inspectionExclusionReason:null};
    const updated=await tx.item.updateMany({where:{id:{in:ids}},data});
-   const actor=auth.user!.role==="ADMIN"?auth.user!.id:getAdminElevation(request)?.adminUserId;
+   const actor=(auth.user!.baseRole??auth.user!.role)==="ADMIN"?auth.user!.id:getAdminElevation(request)?.adminUserId;
    if(!actor)throw new Error("ADMIN_REQUIRED");
    await tx.adminActionLog.create({data:{adminUserId:actor,action:"ITEM_BULK_"+action,route:"/items",detail:{reason,before:items,after:data,requestedBy:auth.user!.id}}});
    return updated.count;

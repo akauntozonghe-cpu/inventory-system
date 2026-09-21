@@ -20,7 +20,7 @@ it("revokes elevation when the approving administrator is disabled", async () =>
 });
 
 function worker(elevated=true){state.user.role="WORKER";state.elevation=elevated?{adminUserId:"sponsor",authenticatedByUserId:"u"}:null;state.find.mockImplementation(async({where})=>({isActive:true,role:where.id==="u"?"WORKER":"ADMIN",mustChangePassword:false,featurePermissions:[]}));}
-it("allows authenticated page recovery without granting user administration",async()=>{worker();expect((await proxy(new NextRequest("http://localhost/api/admin/system-check/reports?route=/marketplace"))).status).toBe(200);expect((await proxy(new NextRequest("http://localhost/api/users"))).status).toBe(403);});
+it("allows temporary administrators the same management and catalog routes",async()=>{worker();expect((await proxy(new NextRequest("http://localhost/api/admin/system-check/reports?route=/marketplace"))).status).toBe(200);expect((await proxy(new NextRequest("http://localhost/api/users"))).status).toBe(200);expect((await proxy(new NextRequest("http://localhost/items"))).status).toBe(200);});
 it("does not expose recovery to an unauthenticated worker",async()=>{worker(false);expect((await proxy(new NextRequest("http://localhost/api/admin/system-check"))).status).toBe(403);});
 it("does not grant recovery access after the sponsor loses administrator status",async()=>{worker();state.find.mockResolvedValue({isActive:true,role:"WORKER",mustChangePassword:false,featurePermissions:[]});expect((await proxy(new NextRequest("http://localhost/api/admin/system-check"))).status).toBe(403);});
 

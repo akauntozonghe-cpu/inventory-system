@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { BitArray, MultiFormatOneDReader } from "@zxing/library";
 import sharp from "sharp";
+import {generateSystemJan} from "../src/lib/system-jan";
+import {parseScan} from "../src/lib/scan-payload";
 import { barcodeLabel, barcodePrintDocument } from "../src/lib/barcode-label";
 
 describe("product barcode labels", () => {
@@ -20,14 +22,16 @@ describe("product barcode labels", () => {
     expect(label.moduleWidth).toBeGreaterThanOrEqual(0.264);
     expect(label.bits.length).toBe(95);
   });
-  it.each(["4901234567894", "96385074"])("decodes the actual printed SVG at 300dpi: %s", async (code) => {
+  it.each(["4901234567894", "96385074", generateSystemJan()])("decodes the actual printed SVG at 300dpi: %s", async (code) => {
     const label = barcodeLabel(code);
     const { data, info } = await sharp(Buffer.from(label.svg), { density: 300 }).flatten({ background: "white" }).greyscale().raw().toBuffer({ resolveWithObject: true });
     const row = new BitArray(info.width);
     const y = Math.floor(info.height / 3);
     for (let x = 0; x < info.width; x++) if (data[(y * info.width + x) * info.channels] < 128) row.set(x);
     const reader = new MultiFormatOneDReader();
-    expect(reader.decodeRow(y, row, new Map()).getText()).toBe(code);
+    const decoded=reader.decodeRow(y, row, new Map()).getText();
+    expect(decoded).toBe(code);
+    expect(parseScan(decoded)).toEqual({type:"ITEM",code});
   }, 20000);
   it("rejects invalid checksums without printing an old or substituted barcode", () => {
     expect(() => barcodeLabel("4901234567890")).toThrow("検査数字");

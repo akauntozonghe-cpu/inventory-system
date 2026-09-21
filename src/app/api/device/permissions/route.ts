@@ -12,7 +12,7 @@ export async function POST(request:NextRequest){
   const body=await request.json().catch(()=>null);
   if(typeof body?.cameraRequired!=="boolean")return NextResponse.json({code:"PERMISSION_INPUT_INVALID",message:"カメラの必須設定を確認してください。"},{status:400});
   try{
-    const adminUserId=auth.user.role==="ADMIN"?auth.user.id:getAdminElevation(request)?.adminUserId;
+    const adminUserId=(auth.user.baseRole??auth.user.role)==="ADMIN"?auth.user.id:getAdminElevation(request)?.adminUserId;
     if(!adminUserId)return NextResponse.json({code:"ADMIN_REQUIRED",message:"管理者認証をやり直してください。"},{status:403});
     const token=body.cameraRequired?"":createCameraExemption(adminUserId);
     await prisma.adminActionLog.create({data:{adminUserId,action:"DEVICE_CAMERA_REQUIREMENT",route:"/notifications",detail:{cameraRequired:body.cameraRequired,scope:"CURRENT_BROWSER",requestedBy:auth.user.id}}});

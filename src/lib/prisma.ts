@@ -25,4 +25,9 @@ export const prisma = base.$extends({name:"operation-access-audit",query:{adminA
   const detail=args.data.detail;
   args.data.detail={...(detail&&typeof detail==="object"&&!Array.isArray(detail)?detail:{}),access};
   return query(args);
+}},inventoryEvent:{async create({args,query}){
+  const access=await currentOperationAccess();
+  const detail=args.data.detail;
+  args.data.detail={...(detail&&typeof detail==="object"&&!Array.isArray(detail)?detail:{}),access};
+  return query(args);
 }}}}) as unknown as PrismaClient;

@@ -96,7 +96,7 @@ export async function POST(request: NextRequest) {
       detail: {
         authenticatedBy: currentUser.id,
         authenticatedByName: currentUser.displayName,
-        reason: currentUser.role === "ADMIN" ? "通常の管理者アカウントで再認証" : "10分間の一時管理者権限を有効化",
+        reason: (currentUser.baseRole ?? currentUser.role) === "ADMIN" ? "通常の管理者アカウントで再認証" : "10分間の一時管理者権限を有効化",
         authorizedByName: adminUser.displayName,
         grantedUntil: new Date(Date.now()+600000).toISOString(),
       },
@@ -140,6 +140,6 @@ export async function GET(request: NextRequest) {
   const user = getLoggedInUser(request);
   if (!user) return NextResponse.json({message:"ログインが必要です。"},{status:401});
   const elevation = getAdminElevation(request);
-  return NextResponse.json({role:user.role,expiresAt:elevation?.authenticatedByUserId === user.id ? elevation.expiresAt : 0},{headers:{"Cache-Control":"no-store"}});
+  return NextResponse.json({role:user.baseRole ?? user.role,expiresAt:elevation?.authenticatedByUserId === user.id ? elevation.expiresAt : 0},{headers:{"Cache-Control":"no-store"}});
 }
 export async function DELETE() { const response=NextResponse.json({success:true});response.cookies.delete(ADMIN_ELEVATION_COOKIE);return response; }
