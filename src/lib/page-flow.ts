@@ -8,10 +8,6 @@ export function pageParent(path: string): { href: string; label: string } {
   return { href: "/", label: "ホームへ戻る" };
 }
 export const publicPage = (path: string) => ["/login","/setup","/install","/offline","/maintenance"].includes(path);
-export function needsEntryRedirect(path: string, navigationType: string, referrer: string, origin: string) {
-  if (path.startsWith("/notifications/") || publicPage(path) || ["/","/notifications","/account/password"].includes(path) || navigationType !== "navigate") return false;
-  try { return !referrer || new URL(referrer).origin !== origin; } catch { return true; }
-}
 
 export function pageTitle(path:string){if(path.startsWith("/notifications"))return "通知";if(path.startsWith("/items")||path==="/inventory"||path==="/inventory-search")return "商品・在庫";if(path.startsWith("/stocktake"))return "棚卸";if(path.startsWith("/marketplace")||path.startsWith("/admin/marketplace"))return "フリマ";if(path.startsWith("/admin"))return "管理者設定";if(path==="/expiry")return "期限管理";if(path==="/add")return "商品登録";return "Inventory OS";}
 

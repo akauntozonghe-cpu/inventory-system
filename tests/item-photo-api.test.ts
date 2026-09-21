@@ -1,3 +1,4 @@
+vi.mock("@/lib/edit-access",()=>({requireEditAccess:(...args:unknown[])=>mocks.admin(...args)}));
 import {beforeEach,expect,it,vi} from "vitest";
 import {NextRequest,NextResponse} from "next/server";
 const mocks=vi.hoisted(()=>({admin:vi.fn(),login:vi.fn(),prepare:vi.fn(),db:{$transaction:vi.fn(),$queryRaw:vi.fn(),itemPhoto:{findMany:vi.fn(),count:vi.fn(),create:vi.fn(),findFirst:vi.fn(),deleteMany:vi.fn()},adminActionLog:{create:vi.fn()}}}));

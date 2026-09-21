@@ -29,6 +29,7 @@ export type LoggedInUser = {
 };
 
 export type AdminElevation = {
+  adminDisplayName?: string;
   adminUserId: string;
   authenticatedByUserId: string;
   expiresAt: number;
@@ -153,6 +154,7 @@ export function isAdmin(user: LoggedInUser | null) {
 }
 
 export function createAdminElevationToken(input: {
+  adminDisplayName?: string;
   adminUserId: string;
   authenticatedByUserId: string;
 }) {

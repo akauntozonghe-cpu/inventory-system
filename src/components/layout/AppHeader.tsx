@@ -1,5 +1,6 @@
 "use client";
 import { useAppAccess } from "@/components/auth/AppAccessProvider";
+import {requestBack} from "@/lib/navigation-history";
 import {pageTitle} from "@/lib/page-flow";
 import RecoveryReturnButton from "@/components/auth/RecoveryReturn";
 import Link from "@/components/auth/PermissionLink";
@@ -38,7 +39,7 @@ export default function AppHeader({parent}:{parent:{href:string;label:string}}) 
   };
   return <header className="sticky top-0 z-[60] border-b border-slate-200 bg-white/95 text-slate-950 shadow-sm backdrop-blur print:hidden">
     <div className="mx-auto flex h-14 max-w-7xl items-center justify-between gap-2 px-3 sm:px-5">
-      <div className="flex min-w-0 items-center gap-2">{pathname!=="/"&&<Link href={parent.href} aria-label={parent.label} title={parent.label} className="grid h-11 w-11 shrink-0 place-items-center rounded-xl border border-slate-200 hover:bg-slate-100"><ArrowLeft size={21}/></Link>}<span className="truncate font-black tracking-tight">{pageTitle(pathname)}</span></div>
+      <div className="flex min-w-0 items-center gap-2">{pathname!=="/"&&<button type="button" onClick={()=>requestBack(parent.href)} aria-label="前の画面へ戻る" title="前の画面へ戻る" className="grid h-11 w-11 shrink-0 place-items-center rounded-xl border border-slate-200 hover:bg-slate-100"><ArrowLeft size={21}/></button>}<span className="truncate font-black tracking-tight">{pageTitle(pathname)}</span></div>
       <div className="flex items-center gap-2"><Link href="/notifications" aria-label={unread?`通知：未読${unread}件`:"通知"} title="通知一覧を開く" className="relative grid h-11 w-11 place-items-center rounded-xl hover:bg-slate-100"><Bell size={23}/>{unread>0&&<span className="absolute right-0 top-0 rounded-full bg-red-600 px-1.5 text-[11px] font-bold text-white">{unread>99?"99+":unread}</span>}</Link><button type="button" aria-label="メニューを開く" aria-expanded={open} aria-controls="app-menu" onClick={()=>setOpen(true)} className="grid h-11 w-11 place-items-center rounded-xl bg-slate-900 text-white"><Menu size={23}/></button></div>
     </div>
     <RecoveryReturnButton/>

@@ -1,6 +1,8 @@
 export const FEATURE_KEYS = [
   "STOCKTAKE",
   "CATALOG",
+  "ITEM_EDIT",
+  "INVENTORY_EDIT",
   "STOCKTAKE_HISTORY",
   "ITEM_REGISTER",
   "STOCKTAKE_START",
@@ -14,6 +16,8 @@ export const FEATURE_KEYS = [
 export type FeatureKey = (typeof FEATURE_KEYS)[number];
 
 export const FEATURE_LABELS: Record<FeatureKey, { title: string; description: string }> = {
+  ITEM_EDIT:{title:"商品情報の編集",description:"商品名・JAN・分類・メーカー・写真の変更。商品・在庫検索も有効になります。"},
+  INVENTORY_EDIT:{title:"在庫明細の編集",description:"数量・保管場所・Lot・期限の変更。商品・在庫検索も有効になります。廃止・一括操作は含みません。"},
   STOCKTAKE_START:{title:"新しい棚卸の作成",description:"新しい棚卸を開始（既存棚卸の続きとは別に設定）"},
   MARKETPLACE:{title:"フリマ作業",description:"在庫から出品、販売・発送を記録"},
   MARKETPLACE_SETTINGS:{title:"フリマの販売設定",description:"販売先・配送方法・料金の設定変更"},
@@ -35,7 +39,9 @@ export const DEFAULT_WORKER_FEATURES: FeatureKey[] = [
 
 export function normalizeFeaturePermissions(value: unknown): FeatureKey[] {
   if (!Array.isArray(value)) return [];
-  return FEATURE_KEYS.filter((key) => value.includes(key));
+  const selected = FEATURE_KEYS.filter((key) => value.includes(key));
+  if (selected.some(key => key === "ITEM_EDIT" || key === "INVENTORY_EDIT") && !selected.includes("CATALOG")) selected.push("CATALOG");
+  return FEATURE_KEYS.filter(key => selected.includes(key));
 }
 
 export function requiredFeature(
@@ -69,3 +75,15 @@ export function requiredFeature(
 }
 
 export function requiredFeatures(pathname:string,method:string,hasSession=false):FeatureKey[]{const feature=requiredFeature(pathname,method,hasSession);return feature==="STOCKTAKE_START"?["STOCKTAKE",feature]:feature==="MARKETPLACE_SETTINGS"?["MARKETPLACE",feature]:feature?[feature]:[];}
+
+export type EditFeature = "ITEM_EDIT" | "INVENTORY_EDIT";
+export function editFeatureForRoute(path:string,method:string):EditFeature|null {
+  if(method==="PUT" && /^\/api\/items\/[^/]+$/.test(path) && !["/api/items/bulk","/api/items/system-barcode","/api/items/register","/api/items/search"].includes(path))return "ITEM_EDIT";
+  if((method==="POST" && /^\/api\/items\/[^/]+\/photos$/.test(path)) || (method==="DELETE" && /^\/api\/items\/[^/]+\/photos\/[^/]+$/.test(path)))return "ITEM_EDIT";
+  if(method==="PATCH" && /^\/api\/inventory\/[^/]+$/.test(path) && !["/api/inventory/update","/api/inventory/search"].includes(path))return "INVENTORY_EDIT";
+  return null;
+}
+export function toggleFeaturePermission(current:FeatureKey[],feature:FeatureKey):FeatureKey[]{
+  if(current.includes(feature))return current.filter(key=>key!==feature && !(feature==="CATALOG" && (key==="ITEM_EDIT"||key==="INVENTORY_EDIT")));
+  return normalizeFeaturePermissions([...current,feature]);
+}

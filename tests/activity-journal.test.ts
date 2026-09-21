@@ -1,10 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { journalRows, journalTime, journalFields, type Activity } from "../src/lib/activity-journal";
+import { journalRows, journalTime, journalFields, journalAccess, type Activity } from "../src/lib/activity-journal";
 describe("activity journal", () => {
   const activity: Activity = {date:"2026-09-14", summary:{registeredItems:1,stocktakeRecords:1,inventoryEvents:1,adminActions:1},items:[{id:"1",name:"白い皿",janCode:null,systemBarcode:"2000000000008",createdAt:"2026-09-14T01:00:00Z"}],records:[{id:"1",countedQuantity:0,updatedAt:"2026-09-14T00:00:00Z",session:{id:"s",title:"食器の棚卸",operator:"田中"},inventoryInstance:{item:{name:"茶碗"}}}],inventoryEvents:[{id:"1",eventType:"ADJUSTMENT",quantityChange:-2,quantityAfter:0,reason:"破損",createdAt:"2026-09-14T02:00:00Z",performedBy:null,inventoryInstance:{item:{name:"茶碗"}}}],adminActions:[{id:"1",action:"LOGIN",route:null,createdAt:"2026-09-14T03:00:00Z",adminUser:{displayName:"管理者"}}]};
   it("keeps all operation types in chronological order without losing zero counts or adjustment reasons", () => {
     const rows=journalRows(activity);
-    expect(rows.map(row=>row.kind)).toEqual(["棚卸入力","商品登録","在庫変更","管理操作"]);
+    expect(rows.map(row=>row.kind)).toEqual(["棚卸入力","商品登録","在庫変更","変更・承認"]);
     expect(new Set(rows.map(row=>row.id)).size).toBe(4);
     expect(rows[0].detail).toContain("実数 0");
     expect(rows[1].detail).toBe("2000000000008");
@@ -29,6 +29,12 @@ describe("activity journal", () => {
     expect(row.fields).toContainEqual({label:"在庫・数量",value:"8"});
     expect(row.fields).toContainEqual({label:"在庫・保管場所",value:"食器棚"});
     expect(journalRows(activity).find(row=>row.kind==="商品登録")?.note).toContain("現在の商品情報");
+  });
+  it("never infers historical privileges from an actor's current role",()=>{
+    expect(journalAccess({}).label).toBe("権限状態：未記録");
+    const value=journalAccess({access:{mode:"TEMPORARY_ADMIN",actorName:"作業者",authorizedByName:"承認者",expiresAt:Date.UTC(2026,8,21)}});
+    expect(value.label).toBe("一時権限有効中");expect(value.actorName).toBe("作業者");expect(value.fields).toContainEqual({label:"許可した管理者",value:"承認者"});
+    expect(value.fields.some(field=>field.value.includes("必要だったとは限りません"))).toBe(true);
   });
   it("uses Japanese time regardless of the viewing device timezone", () => {
     expect(journalTime("2026-09-13T15:05:00Z")).toBe("00:05");

@@ -645,6 +645,8 @@ enum SystemCheckItemStatus {
 }
 
 enum FeaturePermission {
+  ITEM_EDIT
+  INVENTORY_EDIT
   STOCKTAKE
   INVENTORY_SEARCH
   ITEM_VIEW

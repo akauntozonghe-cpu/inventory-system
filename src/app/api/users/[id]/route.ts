@@ -52,7 +52,7 @@ export async function PATCH(
         id: true,
         role: true,
         isActive: true,
-        featurePermissions:true,
+        featurePermissions:true, displayName:true,
       },
     });
 
@@ -110,7 +110,7 @@ export async function PATCH(
       },
     });
 
-      await tx.adminActionLog.create({data:{adminUserId:currentUser.id,action:"USER_PERMISSION_UPDATE",route:"/admin/users",detail:{userId:id,before:targetUser.featurePermissions,after:changed.featurePermissions,isActive:changed.isActive}}});
+      await tx.adminActionLog.create({data:{adminUserId:currentUser.id,action:"USER_PERMISSION_UPDATE",route:"/admin/users",detail:{userId:id,displayName:targetUser.displayName,before:{featurePermissions:targetUser.featurePermissions,isActive:targetUser.isActive},after:{featurePermissions:changed.featurePermissions,isActive:changed.isActive},grantType:"通常の利用権限（解除するまで継続）"}}});
       return changed;
     });
     return NextResponse.json(user);

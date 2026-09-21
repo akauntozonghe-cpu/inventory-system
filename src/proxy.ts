@@ -8,7 +8,7 @@ import {
   verifySessionToken,
 } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { requiredFeatures } from "@/lib/feature-permissions";
+import { editFeatureForRoute, requiredFeatures } from "@/lib/feature-permissions";
 
 function isMutation(method: string) {
   return ["POST", "PUT", "PATCH", "DELETE"].includes(method);
@@ -304,7 +304,8 @@ export async function proxy(request: NextRequest) {
   // 管理者本人、または棚卸画面で一時管理者認証済みの場合だけ許可。
   if (
     isAdminOnlyMutation(pathname, method) &&
-    !hasAdminAccess(request)
+    !hasAdminAccess(request) &&
+    !(editFeatureForRoute(pathname,method) && liveUser.featurePermissions.includes(editFeatureForRoute(pathname,method) as never) && liveUser.featurePermissions.includes("CATALOG"))
   ) {
     return NextResponse.json(
       {

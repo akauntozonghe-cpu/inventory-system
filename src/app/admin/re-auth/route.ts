@@ -96,7 +96,9 @@ export async function POST(request: NextRequest) {
       detail: {
         authenticatedBy: currentUser.id,
         authenticatedByName: currentUser.displayName,
-        reason: "共通の管理者モードを有効化",
+        reason: currentUser.role === "ADMIN" ? "通常の管理者アカウントで再認証" : "10分間の一時管理者権限を有効化",
+        authorizedByName: adminUser.displayName,
+        grantedUntil: new Date(Date.now()+600000).toISOString(),
       },
     });
 
@@ -114,6 +116,7 @@ export async function POST(request: NextRequest) {
       ADMIN_ELEVATION_COOKIE,
       createAdminElevationToken({
         adminUserId: adminUser.id,
+        adminDisplayName: adminUser.displayName,
         authenticatedByUserId: currentUser.id,
       }),
       adminElevationCookieOptions

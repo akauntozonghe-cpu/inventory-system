@@ -1,3 +1,4 @@
+import { requireEditAccess } from "@/lib/edit-access";
 import { NextRequest, NextResponse } from "next/server";
 import {
   AllocationType,
@@ -5,7 +6,7 @@ import {
   Prisma,
 } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
-import { requireAdmin, requireLogin } from "@/lib/auth";
+import { requireLogin } from "@/lib/auth";
 import { createAdminActionLog } from "@/lib/error-report";
 import { normalizeExpirationDate } from "@/lib/expiry-management";
 
@@ -132,7 +133,7 @@ export async function PATCH(
   request: NextRequest,
   context: RouteContext
 ) {
-  const authorization = requireAdmin(request);
+  const authorization = await requireEditAccess(request,"INVENTORY_EDIT");
 
   if (authorization.response) {
     return authorization.response;
@@ -443,6 +444,7 @@ export async function PATCH(
         reason,
         memo: emptyToNull(body.memo),
         inventoryInstanceId: id,
+        authorization: authorization.authorization,
         itemName: existing.item.name,
         before,
         after: {

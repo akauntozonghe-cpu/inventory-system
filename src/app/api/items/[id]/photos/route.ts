@@ -1,5 +1,6 @@
+import { requireEditAccess } from "@/lib/edit-access";
 import { NextRequest, NextResponse } from "next/server";
-import { requireAdmin, requireLogin } from "@/lib/auth";
+import { requireLogin } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { MAX_PHOTOS, MAX_PHOTO_BYTES, prepareItemPhoto } from "@/lib/item-photo";
 type Params={params:Promise<{id:string}>};
@@ -10,7 +11,7 @@ export async function GET(request:NextRequest,{params}:Params){
   return NextResponse.json({photos},{headers:{"Cache-Control":"no-store"}});
 }
 export async function POST(request:NextRequest,{params}:Params){
-  const auth=requireAdmin(request);if(auth.response)return auth.response;
+  const auth=await requireEditAccess(request,"ITEM_EDIT");if(auth.response)return auth.response;
   const {id}=await params;
   if(Number(request.headers.get("content-length"))>MAX_PHOTO_BYTES)return NextResponse.json({message:"写真は4MB以内にしてください。"},{status:413});
   const reader=request.body?.getReader();if(!reader)return NextResponse.json({message:"写真を選んでください。"},{status:400});
@@ -29,7 +30,7 @@ export async function POST(request:NextRequest,{params}:Params){
       if(duplicate)return {id:duplicate.id,createdAt:duplicate.createdAt};
       if(await tx.itemPhoto.count({where:{itemId:id}})>=MAX_PHOTOS)throw new Error("PHOTO_LIMIT");
       const saved=await tx.itemPhoto.create({data:{itemId:id,...photo},select:{id:true,createdAt:true}});
-      await tx.adminActionLog.create({data:{adminUserId:auth.user!.id,action:"ITEM_PHOTO_ADD",route:"/api/items/"+id+"/photos",detail:{itemId:id,photoId:saved.id}}});
+      await tx.adminActionLog.create({data:{adminUserId:auth.user!.id,action:"ITEM_PHOTO_ADD",route:"/api/items/"+id+"/photos",detail:{authorization:auth.authorization,itemId:id,photoId:saved.id}}});
       return saved;
     });
     return NextResponse.json({photo:result},{status:201});

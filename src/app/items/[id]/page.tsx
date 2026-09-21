@@ -1,5 +1,6 @@
 "use client";
 
+import { requestBack } from "@/lib/navigation-history";
 import Modal from "@/components/common/Modal";
 import ProductCodeField from "@/components/ProductCodeField";
 import InventoryStatusBadges from "@/components/inventory/InventoryStatusBadges";
@@ -14,7 +15,7 @@ import { fetchFresh } from "@/lib/fetch-fresh";
 import Link from "@/components/auth/PermissionLink";
 import { expiryPolicy, expiryPolicyLabels } from "@/lib/expiry-policy";
 import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
-import { useParams, useRouter, useSearchParams } from "next/navigation";
+import { useParams, useSearchParams } from "next/navigation";
 import dynamic from "next/dynamic";
 const SystemBarcodeLabel=dynamic(()=>import("@/components/SystemBarcodeLabel"),{ssr:false});
 import FeedbackToast from "@/components/common/FeedbackToast";
@@ -24,11 +25,6 @@ import { useRegistrationOptions } from "@/hooks/useRegistrationOptions";
 import { displayUnit } from "@/lib/unit";
 import { useLiveRefresh } from "@/hooks/useLiveRefresh";
 
-type CurrentUser = {
-  id: string;
-  displayName: string;
-  role: "ADMIN" | "WORKER";
-};
 
 type StorageLocation = {
   id: string;
@@ -187,34 +183,6 @@ function normalizeItem(data: unknown): Item {
   };
 }
 
-function normalizeUser(data: unknown): CurrentUser | null {
-  if (!data || typeof data !== "object") {
-    return null;
-  }
-
-  const payload = data as Record<string, unknown>;
-  const candidate =
-    "user" in payload && payload.user !== null ? payload.user : payload;
-
-  if (
-    !candidate ||
-    typeof candidate !== "object" ||
-    !("id" in candidate) ||
-    !("displayName" in candidate) ||
-    !("role" in candidate) ||
-    typeof candidate.id !== "string" ||
-    typeof candidate.displayName !== "string" ||
-    (candidate.role !== "ADMIN" && candidate.role !== "WORKER")
-  ) {
-    return null;
-  }
-
-  return {
-    id: candidate.id,
-    displayName: candidate.displayName,
-    role: candidate.role,
-  };
-}
 
 function itemToForm(item: Item): ItemForm {
   return {
@@ -269,12 +237,11 @@ export default function ItemDetailPage() {
   const searchParams=useSearchParams();
   const [focusedInventory,setFocusedInventory]=useState("");
   useEffect(()=>{setFocusedInventory(searchParams.get("inventoryId")??"");},[searchParams]);
-  const router = useRouter();
 
   const itemId = typeof params.id === "string" ? params.id : "";
 
   const [item, setItem] = useState<Item | null>(null);
-  const {user:currentUser,can} = useAppAccess();
+  const {can} = useAppAccess();
   const [showLabels,setShowLabels]=useState(false);
   const [locations, setLocations] = useState<StorageLocation[]>([]);
   const [loading, setLoading] = useState(true);
@@ -293,7 +260,8 @@ export default function ItemDetailPage() {
     useState<InventoryForm | null>(null);
 
   const adminMode = useAdminMode();
-  const isAdmin = Boolean(currentUser) && (currentUser?.role === "ADMIN" || adminMode.active);
+  const canEditItem = can("ITEM_EDIT") || adminMode.active;
+  const canEditInventory = can("INVENTORY_EDIT") || adminMode.active;
 
   const loadItem = useCallback(async (silent = false) => {
     if (!itemId) {
@@ -340,7 +308,7 @@ export default function ItemDetailPage() {
 
 
   useEffect(() => {
-    if (!isAdmin) {
+    if (!canEditInventory) {
       setLocations([]);
       return;
     }
@@ -378,7 +346,7 @@ export default function ItemDetailPage() {
     };
 
     void loadLocations();
-  }, [isAdmin]);
+  }, [canEditInventory]);
 
   const startItemEdit = () => {
     if (!item) {
@@ -395,6 +363,7 @@ export default function ItemDetailPage() {
   const cancelItemEdit = () => {
     if (saving) return;
     if (itemForm && JSON.stringify(itemForm) !== originalItemForm.current && !window.confirm("未保存の変更があります。変更を破棄して閉じますか？")) return;
+    window.dispatchEvent(new CustomEvent("inventory:draft",{detail:{dirty:false}}));
     setEditingItem(false);
     setItemForm(null);
   };
@@ -407,6 +376,7 @@ export default function ItemDetailPage() {
   };
 
   const cancelInventoryEdit = () => {
+    window.dispatchEvent(new CustomEvent("inventory:draft",{detail:{dirty:false}}));
     setEditingInventoryId(null);
     setInventoryForm(null);
   };
@@ -449,7 +419,8 @@ export default function ItemDetailPage() {
         );
       }
 
-      setEditingItem(false);
+      window.dispatchEvent(new CustomEvent("inventory:draft",{detail:{dirty:false}}));
+    setEditingItem(false);
       setItemForm(null);
       setNotice(
         "商品情報を更新しました。変更理由は管理者操作ログに記録されています。"
@@ -528,7 +499,8 @@ export default function ItemDetailPage() {
         );
       }
 
-      setEditingInventoryId(null);
+      window.dispatchEvent(new CustomEvent("inventory:draft",{detail:{dirty:false}}));
+    setEditingInventoryId(null);
       setInventoryForm(null);
       setNotice(
         "在庫情報を更新しました。変更内容は在庫履歴と管理者操作ログに記録されています。"
@@ -594,10 +566,10 @@ export default function ItemDetailPage() {
           <div className="flex flex-wrap gap-2">
             <button
               type="button"
-              onClick={() => router.push("/items")}
+              onClick={() => requestBack("/items")}
               className="rounded-xl bg-white px-4 py-3 font-bold text-slate-700 shadow-sm hover:bg-slate-50"
             >
-              商品一覧へ戻る
+              前の画面へ戻る
             </button>
           </div>
         </header>
@@ -725,7 +697,7 @@ export default function ItemDetailPage() {
             </Modal>
           ) : (
             <section className="rounded-3xl bg-white p-5 shadow-sm sm:p-7">
-              <div className="grid grid-cols-[100px_minmax(0,1fr)] items-start gap-3"><ProductPhotos itemId={item.id} canEdit={isAdmin} compact/><div className="min-w-0"><div className="flex flex-wrap items-center justify-between gap-2"><h2 className="text-xl font-black text-slate-950">商品情報</h2>{isAdmin&&<button onClick={startItemEdit} className="rounded-lg bg-blue-700 px-3 py-2 font-bold text-white">商品情報を編集</button>}</div><InventoryStatusBadges item={item} stocks={inventoryInstances}/><ProductIdentity item={item}/>
+              <div className="grid grid-cols-[100px_minmax(0,1fr)] items-start gap-3"><ProductPhotos itemId={item.id} canEdit={canEditItem} compact/><div className="min-w-0"><div className="flex flex-wrap items-center justify-between gap-2"><h2 className="text-xl font-black text-slate-950">商品情報</h2>{canEditItem&&<button onClick={startItemEdit} className="rounded-lg bg-blue-700 px-3 py-2 font-bold text-white">商品情報を編集</button>}</div><InventoryStatusBadges item={item} stocks={inventoryInstances}/><ProductIdentity item={item}/>
 
               <dl className="mt-3 grid grid-cols-2 gap-3 lg:grid-cols-3">
 
@@ -1116,7 +1088,7 @@ export default function ItemDetailPage() {
                               </p>
                             )}
 
-                            {isAdmin && (
+                            {canEditInventory && (
                               <button
                                 type="button"
                                 onClick={() => startInventoryEdit(inventory)}

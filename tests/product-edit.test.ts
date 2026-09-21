@@ -1,3 +1,4 @@
+vi.mock("@/lib/edit-access", () => ({requireEditAccess: async()=>({user:{id:"admin"},response:null,authorization:{mode:"STANDARD_ADMIN"}})}));
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
 const db = vi.hoisted(() => ({ item: { findUnique: vi.fn(), findFirst: vi.fn(), update: vi.fn() }, inventoryInstance: { updateMany: vi.fn() }, classification: { upsert: vi.fn() }, $transaction: vi.fn() }));

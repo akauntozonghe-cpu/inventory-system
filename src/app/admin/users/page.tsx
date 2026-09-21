@@ -7,6 +7,7 @@ import { useRouter } from "next/navigation";
 import FeedbackToast from "@/components/common/FeedbackToast";
 import {
   DEFAULT_WORKER_FEATURES,
+  toggleFeaturePermission,
   FEATURE_KEYS,
   FEATURE_LABELS,
   type FeatureKey,
@@ -117,9 +118,8 @@ export default function UserManagementPage() {
   const [statusTarget, setStatusTarget] = useState<User | null>(null);
 
   const updatePermissions = async (user: User, feature: FeatureKey) => {
-    const nextPermissions = user.featurePermissions.includes(feature)
-      ? user.featurePermissions.filter((value) => value !== feature)
-      : [...user.featurePermissions, feature];
+    const nextPermissions = toggleFeaturePermission(user.featurePermissions,feature);
+    if((feature==="ITEM_EDIT"||feature==="INVENTORY_EDIT")&&!window.confirm(user.displayName+"さんの「"+FEATURE_LABELS[feature].title+"」を"+(nextPermissions.includes(feature)?"許可":"解除")+"します。これは一時権限ではなく、解除するまで継続する設定です。変更しますか？"))return;
 
     setActionUserId(user.id);
     setError("");
@@ -663,7 +663,7 @@ export default function UserManagementPage() {
                         </div>
                       </div>
                       <details className="mt-4 border-t border-slate-200 pt-4">
-                        <summary className="cursor-pointer py-2 text-sm font-black text-slate-900">利用できる機能・使用許可（{user.role==="ADMIN"?"すべて":user.featurePermissions.filter(feature=>FEATURE_KEYS.includes(feature)).length+"項目"}）</summary><p className="mt-1 text-xs text-slate-600">変更は保存後の操作から反映されます。新規棚卸には「棚卸作業」、販売設定には「フリマ作業」も必要です。</p>
+                        <summary className="cursor-pointer py-2 text-sm font-black text-slate-900">利用できる機能・使用許可（{user.role==="ADMIN"?"すべて":user.featurePermissions.filter(feature=>FEATURE_KEYS.includes(feature)).length+"項目"}）</summary><p className="mt-1 text-xs text-slate-600">この設定は通常の利用権限です。一時管理者（10分間）とは別に、解除するまで継続します。編集権限の解除は次の保存操作から反映されます。新規棚卸には「棚卸作業」、販売設定には「フリマ作業」も必要です。</p>
                         {user.role === "ADMIN" ? (
                           <p className="mt-2 text-sm font-bold text-violet-700">
                             すべての機能を利用できます。

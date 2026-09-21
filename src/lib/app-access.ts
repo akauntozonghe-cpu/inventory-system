@@ -2,7 +2,7 @@ import { requiredFeatures, type FeatureKey } from "./feature-permissions";
 export type AppUserAccess = { id: string; displayName: string; role: string; featurePermissions: string[] };
 export function canUseFeature(user: AppUserAccess | null, feature: FeatureKey) {
   if (!user) return false;
-  const features = feature === "MARKETPLACE_SETTINGS" ? ["MARKETPLACE", feature] : feature === "STOCKTAKE_START" ? ["STOCKTAKE", feature] : [feature];
+  const features = (feature === "ITEM_EDIT" || feature === "INVENTORY_EDIT") ? ["CATALOG",feature] : feature === "MARKETPLACE_SETTINGS" ? ["MARKETPLACE", feature] : feature === "STOCKTAKE_START" ? ["STOCKTAKE", feature] : [feature];
   return user.role === "ADMIN" || features.every(key => user.featurePermissions.includes(key));
 }
 export function canVisit(user: AppUserAccess | null, href: string) {

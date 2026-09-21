@@ -1,3 +1,4 @@
+import { requireEditAccess } from "@/lib/edit-access";
 import {marketplaceStockSelect} from "@/lib/stock-state";
 import { syncItemLinks } from "@/lib/item-links";
 import { unitValidationMessage } from "@/lib/unit";
@@ -177,7 +178,7 @@ export async function PUT(
   request: NextRequest,
   { params }: Params
 ) {
-  const auth = requireAdmin(request);
+  const auth = await requireEditAccess(request,"ITEM_EDIT");
 
   if (auth.response) {
     return auth.response;
@@ -380,6 +381,7 @@ export async function PUT(
       route: `/api/items/${id}`,
       detail: {
         reason,
+        authorization: auth.authorization,
         before: itemSnapshot(before),
         after: itemSnapshot(updated),
       },

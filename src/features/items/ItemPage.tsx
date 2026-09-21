@@ -1,4 +1,5 @@
 "use client";
+import { readItemListQuery, writeItemListQuery } from "@/lib/item-list-query";
 import { useAppAccess } from "@/components/auth/AppAccessProvider";
 import {matchesStockFilter,stockFilterLabels,type StockFilter} from "@/lib/stock-state";
 import { useAdminMode } from "@/components/auth/PageAdminMode";
@@ -64,8 +65,9 @@ async function readJson(response: Response): Promise<unknown> {
 
 export default function ItemPage() {
   const listRequestRef = useRef(0);
+  const [queryReady,setQueryReady]=useState(false);
   const [items, setItems] = useState<Item[]>([]);
-  const {user:currentUser} = useAppAccess();
+  const {user:currentUser,ready:accessReady} = useAppAccess();
   const [stockFilter,setStockFilter]=useState<StockFilter>("ALL");
   const [search, setSearch] = useState("");
   const [majorCategory, setMajorCategory] = useState("");
@@ -118,23 +120,18 @@ export default function ItemPage() {
   const syncFailed = useLiveRefresh(() => fetchItems(true));
 
 
-  useEffect(() => {
-    const date = new URLSearchParams(window.location.search).get("registeredDate") ?? "";
-    if (/^\d{4}-\d{2}-\d{2}$/.test(date)) {
-      setRegisteredDate(date);
-      setSort("createdAsc");
-    }
-  }, []);
+  useEffect(()=>{const restore=()=>{const q=readItemListQuery(location.search);setSearch(q.search);setMajorCategory(q.majorCategory);setSort(q.sort);setTodayOnly(q.todayOnly);setRegisteredDate(q.registeredDate);setShowArchived(q.showArchived);setStockFilter(q.stockFilter);setQueryReady(true);};restore();window.addEventListener("popstate",restore);return()=>window.removeEventListener("popstate",restore);},[]);
+  useEffect(()=>{if(!queryReady)return;const query=writeItemListQuery({search,majorCategory,sort,todayOnly,registeredDate,showArchived,stockFilter},location.search);const url=location.pathname+(query?"?"+query:"")+location.hash;if(url!==location.pathname+location.search+location.hash)history.replaceState(history.state,"",url);},[queryReady,search,majorCategory,sort,todayOnly,registeredDate,showArchived,stockFilter]);
 
   useEffect(() => {
     void fetchItems();
   }, [fetchItems]);
 
   useEffect(() => {
-    if (!isAdmin && showArchived) {
+    if (accessReady && !isAdmin && showArchived) {
       setShowArchived(false);
     }
-  }, [isAdmin, showArchived]);
+  }, [accessReady, isAdmin, showArchived]);
 
   const registrationOptions = useRegistrationOptions();
   const categories = useMemo(() => {

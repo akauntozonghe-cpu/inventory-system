@@ -1,0 +1,10 @@
+import {afterAll,beforeAll,expect,it,vi} from "vitest";
+import {createSessionToken,createAdminElevationToken} from "../src/lib/auth";
+import {operationAccess} from "../src/lib/operation-access";
+const secret=process.env.AUTH_SECRET;
+beforeAll(()=>{process.env.AUTH_SECRET="operation-access-test-only-secret-1234567890";vi.useFakeTimers();vi.setSystemTime(new Date("2026-09-21T00:00:00Z"));});
+afterAll(()=>{vi.useRealTimers();if(secret===undefined)delete process.env.AUTH_SECRET;else process.env.AUTH_SECRET=secret;});
+const session=(role:"ADMIN"|"WORKER"="WORKER",id="worker")=>createSessionToken({id,username:id,displayName:id,role,mustChangePassword:false});
+it("separates normal administrator and ordinary user sessions",()=>{expect(operationAccess(session("ADMIN")).mode).toBe("STANDARD_ADMIN");expect(operationAccess(session()).mode).toBe("STANDARD_USER");expect(operationAccess("invalid").mode).toBe("UNKNOWN");});
+it("binds temporary authority to the logged-in actor and preserves the approving administrator",()=>{const token=createAdminElevationToken({adminUserId:"admin",adminDisplayName:"承認者",authenticatedByUserId:"worker"});expect(operationAccess(session(),token)).toMatchObject({mode:"TEMPORARY_ADMIN",actorId:"worker",authorizedById:"admin",authorizedByName:"承認者"});expect(operationAccess(session("WORKER","other"),token).mode).toBe("STANDARD_USER");expect(operationAccess(session("ADMIN"),token).mode).toBe("STANDARD_ADMIN");});
+it("does not report an expired temporary grant as active",()=>{const user=session(),token=createAdminElevationToken({adminUserId:"admin",authenticatedByUserId:"worker"});vi.advanceTimersByTime(600001);expect(operationAccess(user,token).mode).toBe("STANDARD_USER");});

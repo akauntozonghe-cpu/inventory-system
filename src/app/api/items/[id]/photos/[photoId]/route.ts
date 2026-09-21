@@ -1,5 +1,6 @@
+import { requireEditAccess } from "@/lib/edit-access";
 import { NextRequest, NextResponse } from "next/server";
-import { requireAdmin, requireLogin } from "@/lib/auth";
+import { requireLogin } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 type Params={params:Promise<{id:string;photoId:string}>};
 export async function GET(request:NextRequest,{params}:Params){
@@ -12,11 +13,11 @@ export async function GET(request:NextRequest,{params}:Params){
   return new NextResponse(new Uint8Array(bytes),{headers:{"Content-Type":"image/webp","Cache-Control":"private, no-store","X-Content-Type-Options":"nosniff"}});
 }
 export async function DELETE(request:NextRequest,{params}:Params){
-  const auth=requireAdmin(request);if(auth.response)return auth.response;
+  const auth=await requireEditAccess(request,"ITEM_EDIT");if(auth.response)return auth.response;
   const {id,photoId}=await params;
   await prisma.$transaction(async tx=>{
     const deleted=await tx.itemPhoto.deleteMany({where:{id:photoId,itemId:id}});
-    if(deleted.count)await tx.adminActionLog.create({data:{adminUserId:auth.user!.id,action:"ITEM_PHOTO_DELETE",route:"/api/items/"+id+"/photos",detail:{itemId:id,photoId}}});
+    if(deleted.count)await tx.adminActionLog.create({data:{adminUserId:auth.user!.id,action:"ITEM_PHOTO_DELETE",route:"/api/items/"+id+"/photos",detail:{authorization:auth.authorization,itemId:id,photoId}}});
   });
   return NextResponse.json({success:true});
 }
