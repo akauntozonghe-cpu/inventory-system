@@ -1,3 +1,4 @@
+import { inventoryCategoryWhere } from "@/lib/inventory-category";
 import {activeInventoryWhere} from "@/lib/product-scope";
 import { randomUUID } from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
@@ -120,36 +121,14 @@ export async function POST(request: NextRequest) {
       selectedScopeType === "MAJOR_CATEGORY" &&
       selectedScopeValue
     ) {
-      inventoryWhere.OR = [
-        {
-          majorCategory: selectedScopeValue,
-        },
-        {
-          item: {
-            is: {
-              majorCategory: selectedScopeValue,
-            },
-          },
-        },
-      ];
+      inventoryWhere.AND = [inventoryCategoryWhere("majorCategory", selectedScopeValue)];
     }
 
     if (
       selectedScopeType === "MINOR_CATEGORY" &&
       selectedScopeValue
     ) {
-      inventoryWhere.OR = [
-        {
-          minorCategory: selectedScopeValue,
-        },
-        {
-          item: {
-            is: {
-              minorCategory: selectedScopeValue,
-            },
-          },
-        },
-      ];
+      inventoryWhere.AND = [inventoryCategoryWhere("minorCategory", selectedScopeValue)];
     }
 
     const inventories =

@@ -23,6 +23,8 @@ export type Item = {
     allocationType?: string;
     marketplaceListings?: StockListing[];
     actualQuantity: number | null;
+    majorCategory?: string | null;
+    minorCategory?: string | null;
     lotNo: string | null;
     expirationDate: string | null;
     expirationManagementStatus?: string;

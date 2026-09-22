@@ -138,7 +138,7 @@ export default function ItemPage() {
     return Array.from(
       new Set(
         [...registrationOptions.majorCategories, ...items
-          .map((item) => item.majorCategory?.trim() ?? "")
+          .flatMap((item) => [item.majorCategory ?? "", ...item.inventoryInstances.map(stock => stock.majorCategory ?? "")])
           .filter((category) => category.length > 0)]
       )
     ).sort((a, b) => a.localeCompare(b, "ja"));
@@ -158,7 +158,7 @@ export default function ItemPage() {
       const category = item.majorCategory?.trim() ?? "";
 
       const matchesCategory =
-        !majorCategory || category === majorCategory;
+        !majorCategory || (item.inventoryInstances.length ? item.inventoryInstances.some(stock => (stock.majorCategory ?? category) === majorCategory) : category === majorCategory);
 
       const searchableText = [
         item.id, item.name,
@@ -173,6 +173,7 @@ export default function ItemPage() {
         item.defaultUnit,
         ...item.inventoryInstances.flatMap((inventory) => [
           inventory.id, inventory.storageLocation?.name,
+          inventory.majorCategory, inventory.minorCategory,
           inventory.lotNo,
           inventory.expirationDate,
           inventory.stocktakeStatus,

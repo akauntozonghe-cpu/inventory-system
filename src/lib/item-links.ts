@@ -4,11 +4,11 @@ type CommonFields = { majorCategory: string | null; minorCategory: string | null
 
 /** Product metadata is shared; quantities and deliberately different lot units are not converted. */
 export async function syncItemLinks(tx: Prisma.TransactionClient, id: string, before: CommonFields, after: CommonFields) {
-  const shared: Partial<Omit<CommonFields, "defaultUnit">> = {};
-  for (const key of ["majorCategory", "minorCategory", "manufacturer"] as const) {
-    if (before[key] !== after[key]) shared[key] = after[key];
-  }
-  if (Object.keys(shared).length) await tx.inventoryInstance.updateMany({ where: { itemId: id }, data: shared });
+  // Stock classification belongs to the stock ID and must survive catalog edits.
+  if (before.manufacturer !== after.manufacturer) await tx.inventoryInstance.updateMany({
+    where: { itemId: id, OR: [{ manufacturer: before.manufacturer }, { manufacturer: null }] },
+    data: { manufacturer: after.manufacturer },
+  });
   if (before.defaultUnit !== after.defaultUnit) await tx.inventoryInstance.updateMany({
     where: { itemId: id, OR: [{ unit: before.defaultUnit }, { unit: null }, { unit: "0" }, { unit: "０" }] },
     data: { unit: after.defaultUnit },

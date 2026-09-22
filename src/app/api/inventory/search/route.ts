@@ -1,3 +1,4 @@
+import { inventoryCategoryWhere } from "@/lib/inventory-category";
 import { NextRequest, NextResponse } from "next/server";
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
@@ -94,7 +95,7 @@ export async function GET(request: NextRequest) {
     const scopeWhere: Prisma.InventoryInstanceWhereInput = session.scopeType === "ALL" ? {}
       : !session.scopeValue ? { id: { in: [] } }
       : session.scopeType === "LOCATION" ? { storageLocation: { is: { name: session.scopeValue } } }
-      : { item: { is: { [session.scopeType === "MAJOR_CATEGORY" ? "majorCategory" : "minorCategory"]: session.scopeValue } } };
+      : inventoryCategoryWhere(session.scopeType === "MAJOR_CATEGORY" ? "majorCategory" : "minorCategory", session.scopeValue);
     const locationId = searchParams.get("storageLocationId")?.trim();
     const inventoryFilters: Prisma.InventoryInstanceWhereInput[] = locationId ? [{ storageLocationId: locationId }] : [];
     const normalizedKeyword = normalizeCode(keyword);
@@ -131,17 +132,8 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    if (majorCategory) {
-      inventoryFilters.push({
-        item: {
-          is: {
-            majorCategory,
-          },
-        },
-      });
-    }
-
-    if (minorCategory) inventoryFilters.push({ item: { is: { minorCategory } } });
+    if (majorCategory) inventoryFilters.push(inventoryCategoryWhere("majorCategory", majorCategory));
+    if (minorCategory) inventoryFilters.push(inventoryCategoryWhere("minorCategory", minorCategory));
 
     if (keyword && !exact) {
       const textCondition = exact
@@ -358,9 +350,9 @@ export async function GET(request: NextRequest) {
               inventory.item.managementGroupCode,
             manufacturer: inventory.manufacturer ?? inventory.item.manufacturer,
             majorCategory:
-              inventory.item.majorCategory,
+              inventory.majorCategory ?? inventory.item.majorCategory,
             minorCategory:
-              inventory.item.minorCategory,
+              inventory.minorCategory ?? inventory.item.minorCategory,
             defaultUnit: inventory.item.defaultUnit,
           },
         };
@@ -412,6 +404,6 @@ function matchesSessionScope(
   if (session.scopeType === "ALL") return true;
   if (!session.scopeValue) return false;
   if (session.scopeType === "LOCATION") return inventory.storageLocation?.name === session.scopeValue;
-  if (session.scopeType === "MAJOR_CATEGORY") return (inventory.item.majorCategory) === session.scopeValue;
-  return (inventory.item.minorCategory) === session.scopeValue;
+  if (session.scopeType === "MAJOR_CATEGORY") return (inventory.majorCategory ?? inventory.item.majorCategory) === session.scopeValue;
+  return (inventory.minorCategory ?? inventory.item.minorCategory) === session.scopeValue;
 }

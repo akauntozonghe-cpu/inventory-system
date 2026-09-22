@@ -1,4 +1,5 @@
 import { requireEditAccess } from "@/lib/edit-access";
+import { ensureClassification } from "@/lib/item-links";
 import { NextRequest, NextResponse } from "next/server";
 import {
   AllocationType,
@@ -51,6 +52,7 @@ const inventoryCoreSelect = {
   minorCategory: true,
   lotNo: true,
   expirationDate: true,
+  expirationManagementStatus: true,
   unit: true,
   quantity: true,
   actualQuantity: true,
@@ -165,6 +167,7 @@ export async function PATCH(
       minorCategory?: string | null;
       lotNo?: string | null;
       expirationDate?: string | null;
+      expirationNotApplicable?: boolean;
       unit?: string | null;
       quantity?: number;
       actualQuantity?: number | null;
@@ -308,12 +311,25 @@ export async function PATCH(
         ? existing.actualQuantity
         : body.actualQuantity;
 
-    const normalizedExpirationDate = body.expirationDate === undefined
-      ? existing.expirationDate
-      : normalizeExpirationDate(body.expirationDate);
+    if (body.expirationNotApplicable !== undefined && typeof body.expirationNotApplicable !== "boolean") {
+      return NextResponse.json({ code: "INVENTORY_EXPIRATION_FLAG_INVALID", message: "期限なしの指定が正しくありません。" }, { status: 400 });
+    }
+    const normalizedExpirationDate = body.expirationNotApplicable === true
+      ? null
+      : body.expirationDate === undefined
+        ? existing.expirationDate
+        : normalizeExpirationDate(body.expirationDate);
     if (normalizedExpirationDate === undefined) {
       return NextResponse.json({ code: "INVENTORY_EXPIRATION_FORMAT_INVALID", message: "使用期限は未入力、YYYY-MM、YYYY-MM-DDのいずれかで入力してください。" }, { status: 400 });
     }
+
+    // Preserve existing review state unless the expiry choice actually changes.
+    const expirationManagementStatus = body.expirationNotApplicable === true
+      ? "NO_EXPIRY"
+      : normalizedExpirationDate !== existing.expirationDate ||
+          (body.expirationNotApplicable === false && existing.expirationManagementStatus === "NO_EXPIRY")
+        ? normalizedExpirationDate ? "ACTIVE" : "UNSET"
+        : existing.expirationManagementStatus;
 
     const updateData: Prisma.InventoryInstanceUpdateInput = {
       storageLocation: storageLocationId
@@ -349,8 +365,8 @@ export async function PATCH(
         body.lotNo === undefined
           ? existing.lotNo
           : emptyToNull(body.lotNo),
-      expirationDate:
-        normalizedExpirationDate,
+      expirationDate: normalizedExpirationDate,
+      expirationManagementStatus,
       unit:
         body.unit === undefined
           ? existing.unit
@@ -382,6 +398,7 @@ export async function PATCH(
       minorCategory: existing.minorCategory,
       lotNo: existing.lotNo,
       expirationDate: existing.expirationDate,
+      expirationManagementStatus: existing.expirationManagementStatus,
       unit: existing.unit,
       allocationType: existing.allocationType,
       status: existing.status,
@@ -389,6 +406,9 @@ export async function PATCH(
     };
 
     const result = await prisma.$transaction(async (transaction) => {
+      await ensureClassification(transaction,
+        body.majorCategory === undefined ? existing.majorCategory : emptyToNull(body.majorCategory),
+        body.minorCategory === undefined ? existing.minorCategory : emptyToNull(body.minorCategory));
       const updated = await transaction.inventoryInstance.update({
         where: {
           id,
@@ -458,6 +478,7 @@ export async function PATCH(
           minorCategory: result.minorCategory,
           lotNo: result.lotNo,
           expirationDate: result.expirationDate,
+          expirationManagementStatus: result.expirationManagementStatus,
           unit: result.unit,
           allocationType: result.allocationType,
           status: result.status,

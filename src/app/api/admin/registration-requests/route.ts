@@ -1,3 +1,5 @@
+import { findCatalogItem } from "@/lib/catalog-registration";
+import { ensureClassification } from "@/lib/item-links";
 import { scheduleDeviceNotifications } from "@/lib/device-push";
 import { randomInt } from "node:crypto";
 import {
@@ -313,57 +315,18 @@ export async function PATCH(request: NextRequest) {
       );
     }
 
-    if (finalJanCode) {
-      const duplicateJan = await prisma.item.findFirst({
-        where: { janCode: finalJanCode },
-        select: {
-          id: true,
-          name: true,
-        },
-      });
-
-      if (duplicateJan) {
-        return NextResponse.json(
-          {
-            code: "REGISTRATION_REQUEST_JAN_DUPLICATE",
-            message: `このJANコードは「${duplicateJan.name}」に登録されています。既存商品を確認してください。`,
-            itemId: duplicateJan.id,
-          },
-          { status: 409 }
-        );
-      }
-    }
-
-    if (registrationRequest.managementCode) {
-      const duplicateManagementCode = await prisma.item.findUnique({
-        where: {
-          managementCode: registrationRequest.managementCode,
-        },
-        select: {
-          id: true,
-          name: true,
-        },
-      });
-
-      if (duplicateManagementCode) {
-        return NextResponse.json(
-          {
-            code: "REGISTRATION_REQUEST_MANAGEMENT_CODE_DUPLICATE",
-            message: `この管理番号は「${duplicateManagementCode.name}」に登録されています。`,
-            itemId: duplicateManagementCode.id,
-          },
-          { status: 409 }
-        );
-      }
-    }
-
     const systemBarcode = generateSystemBarcode
       ? await createUniqueSystemBarcode()
       : null;
 
     const result = await prisma.$transaction(
       async (transaction) => {
-        const item = await transaction.item.create({
+        const claimed = await transaction.itemRegistrationRequest.updateMany({
+          where: { id: registrationRequest.id, status: RegistrationRequestStatus.PENDING },
+          data: { status: RegistrationRequestStatus.APPROVED },
+        });
+        if (claimed.count !== 1) throw new Error("REGISTRATION_REQUEST_ALREADY_REVIEWED");
+        const item = await findCatalogItem(transaction, finalJanCode) ?? await transaction.item.create({
           data: {
             name: registrationRequest.name,
             janCode: finalJanCode,
@@ -378,18 +341,20 @@ export async function PATCH(request: NextRequest) {
           },
         });
 
+        await ensureClassification(transaction, registrationRequest.majorCategory, registrationRequest.minorCategory);
         const inventory = await transaction.inventoryInstance.create({
           data: {
             itemId: item.id,
             storageLocationId:
               registrationRequest.storageLocationId,
-            managementCode: item.managementCode,
-            managementGroupCode: item.managementGroupCode,
-            manufacturer: item.manufacturer,
-            majorCategory: item.majorCategory,
-            minorCategory: item.minorCategory,
+            managementCode: registrationRequest.managementCode,
+            managementGroupCode: registrationRequest.managementGroupCode,
+            manufacturer: registrationRequest.manufacturer,
+            majorCategory: registrationRequest.majorCategory,
+            minorCategory: registrationRequest.minorCategory,
             lotNo: registrationRequest.lotNo,
-            expirationDate: registrationRequest.expirationDate,
+            expirationDate: registrationRequest.expirationNotApplicable ? null : registrationRequest.expirationDate,
+            expirationManagementStatus: registrationRequest.expirationNotApplicable ? "NO_EXPIRY" : "ACTIVE",
             unit: registrationRequest.unit,
             quantity: registrationRequest.quantity,
             actualQuantity: registrationRequest.quantity,
@@ -499,6 +464,9 @@ export async function PATCH(request: NextRequest) {
     });
   } catch (error) {
     console.error("PATCH /api/admin/registration-requests", error);
+    if (error instanceof Error && error.message === "REGISTRATION_REQUEST_ALREADY_REVIEWED") {
+      return NextResponse.json({ code: error.message, message: "この申請はすでに処理されています。画面を更新してください。" }, { status: 409 });
+    }
 
     if (
       error instanceof Error &&

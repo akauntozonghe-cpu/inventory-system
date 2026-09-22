@@ -50,6 +50,8 @@ export class ItemRepository {
             id: true,
             quantity: true,
             actualQuantity: true,
+            majorCategory: true,
+            minorCategory: true,
             lotNo: true,
             expirationDate: true,
             expirationManagementStatus: true,

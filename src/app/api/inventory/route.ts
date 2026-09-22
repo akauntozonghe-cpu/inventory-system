@@ -1,3 +1,4 @@
+import { ensureClassification } from "@/lib/item-links";
 import {activeInventoryWhere} from "@/lib/product-scope";
 import { unitValidationMessage } from "@/lib/unit";
 import { NextRequest, NextResponse } from "next/server";
@@ -102,7 +103,8 @@ export async function POST(request: NextRequest) {
       100
     );
     const lotNo = getOptionalText(body.lotNo, 100);
-    const expirationDate = normalizeExpirationDate(body.expirationDate);
+    const expirationNotApplicable = body.expirationNotApplicable === true;
+    const expirationDate = expirationNotApplicable ? null : normalizeExpirationDate(body.expirationDate);
     const unitError = unitValidationMessage(body.unit);
     if (unitError) return NextResponse.json({ message: unitError }, { status: 400 });
     const unit = getOptionalText(body.unit, 30);
@@ -155,47 +157,10 @@ export async function POST(request: NextRequest) {
           }
         }
 
-        const existing =
-          await transaction.inventoryInstance.findFirst({
-            where: {
-              itemId,
-              storageLocationId,
-              lotNo,
-              expirationDate,
-            },
-          });
-
-        if (existing) {
-          const nextQuantity = existing.quantity + quantity;
-
-          const updated =
-            await transaction.inventoryInstance.update({
-              where: { id: existing.id },
-              data: {
-                quantity: nextQuantity,
-                actualQuantity: nextQuantity,
-                unit: unit ?? existing.unit ?? item.defaultUnit,
-                status: getText(body.status, 100) || "在庫中",
-                allocationType: getAllocationType(
-                  body.allocationType
-                ),
-              },
-              include: {
-                item: true,
-                storageLocation: true,
-              },
-            });
-
-          await transaction.inventoryHistory.create({
-            data: {
-              inventoryInstanceId: updated.id,
-              changeQuantity: quantity,
-              action: "在庫追加",
-            },
-          });
-
-          return updated;
-        }
+        const majorCategory = body.majorCategory === undefined ? item.majorCategory : getOptionalText(body.majorCategory, 100);
+        const minorCategory = body.minorCategory === undefined ? item.minorCategory : getOptionalText(body.minorCategory, 100);
+        if (minorCategory && !majorCategory) throw new Error("小分類を設定する場合は大分類を選択してください。");
+        await ensureClassification(transaction, majorCategory, minorCategory);
 
         const created =
           await transaction.inventoryInstance.create({
@@ -206,10 +171,11 @@ export async function POST(request: NextRequest) {
               managementGroupCode:
                 item.managementGroupCode,
               manufacturer: item.manufacturer,
-              majorCategory: item.majorCategory,
-              minorCategory: item.minorCategory,
+              majorCategory,
+              minorCategory,
               lotNo,
               expirationDate,
+              expirationManagementStatus: expirationNotApplicable ? "NO_EXPIRY" : expirationDate ? "ACTIVE" : "UNSET",
               unit: unit ?? item.defaultUnit,
               quantity,
               actualQuantity: quantity,

@@ -1,3 +1,4 @@
+import { findCatalogItem } from "@/lib/catalog-registration";
 import { ensureClassification } from "@/lib/item-links";
 import { unitValidationMessage } from "@/lib/unit";
 import { randomUUID } from "node:crypto";
@@ -182,34 +183,16 @@ export async function POST(request: NextRequest) {
           throw new Error("REGISTER_ITEM_LOCATION_NOT_FOUND");
         }
 
-        let item = null;
+        let item = await findCatalogItem(transaction, janCode || systemBarcode);
         let itemCreated = false;
         const manufacturer = normalizeOptionalText(body.manufacturer, 200);
         const majorCategory = normalizeOptionalText(body.majorCategory, 100);
         const minorCategory = normalizeOptionalText(body.minorCategory, 100);
-        if (managementCode) {
+        if (minorCategory && !majorCategory) throw new Error("REGISTER_ITEM_CATEGORY_INVALID");
+        if (!item && !janCode && !systemBarcode && managementCode) {
           item = await transaction.item.findUnique({
             where: {
               managementCode,
-            },
-          });
-        }
-
-        if (!item && janCode) {
-          item = await transaction.item.findFirst({
-            where: {
-              janCode,
-            },
-            orderBy: {
-              createdAt: "asc",
-            },
-          });
-        }
-
-        if (!item && systemBarcode) {
-          item = await transaction.item.findUnique({
-            where: {
-              systemBarcode,
             },
           });
         }
@@ -247,14 +230,14 @@ export async function POST(request: NextRequest) {
           itemCreated = true;
         }
 
-        await ensureClassification(transaction, item.majorCategory, item.minorCategory);
+        await ensureClassification(transaction, majorCategory, minorCategory);
 
         const lotNo = normalizeIdentifier(body.lotNo, 100);
-        const expirationDate = normalizeExpirationDate(body.expirationDate);
+        const expirationNotApplicable = body.expirationNotApplicable === true;
+        const expirationDate = expirationNotApplicable ? null : normalizeExpirationDate(body.expirationDate);
         if (expirationDate === undefined) {
           throw new Error("STOCKTAKE_EXPIRATION_FORMAT_INVALID");
         }
-        const expirationNotApplicable = body.expirationNotApplicable === true;
         if (!expirationNotApplicable && expirationDate === null) {
           throw new Error("STOCKTAKE_EXPIRATION_REQUIRED");
         }
@@ -268,6 +251,9 @@ export async function POST(request: NextRequest) {
               storageLocationId,
               lotNo,
               expirationDate,
+              majorCategory,
+              minorCategory,
+              expirationManagementStatus: expirationNotApplicable ? "NO_EXPIRY" : { not: "NO_EXPIRY" },
             },
           });
 
@@ -285,8 +271,8 @@ export async function POST(request: NextRequest) {
                 managementGroupCode:
                   item.managementGroupCode,
                 manufacturer: item.manufacturer,
-                majorCategory: item.majorCategory,
-                minorCategory: item.minorCategory,
+                majorCategory,
+                minorCategory,
                 lotNo,
                 expirationDate,
                 unit,
@@ -429,7 +415,7 @@ export async function POST(request: NextRequest) {
           ? "REGISTER_ITEM_ALREADY_REGISTERED"
           : "REGISTER_ITEM_CREATED_AND_COUNTED",
         message: result.alreadyRegistered
-          ? "同じ商品・保管場所・ロットは登録済みです。既存データを表示します。"
+          ? "同じJAN・分類・保管場所・Lot・期限の在庫明細が登録済みです。既存明細を表示します。"
           : "商品を登録し、棚卸済みとして記録しました。",
         ...result,
       },
@@ -449,6 +435,10 @@ export async function POST(request: NextRequest) {
         "選択した保管場所が見つかりません。",
       STOCKTAKE_EXPIRATION_FORMAT_INVALID:
         "使用期限は未入力、YYYY-MM、YYYY-MM-DDのいずれかで入力してください。",
+      STOCKTAKE_EXPIRATION_REQUIRED:
+        "使用期限を入力するか、期限なしを選択してください。",
+      REGISTER_ITEM_CATEGORY_INVALID:
+        "小分類を設定する場合は大分類を選択してください。",
     };
 
     if (isRetryableDatabaseError(error)) {

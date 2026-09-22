@@ -87,6 +87,7 @@ type InventoryForm = {
   minorCategory: string;
   lotNo: string;
   expirationDate: string;
+  expirationNotApplicable: boolean;
   unit: string;
   quantity: string;
   actualQuantity: string;
@@ -206,6 +207,7 @@ function inventoryToForm(inventory: InventoryInstance): InventoryForm {
     minorCategory: inventory.minorCategory ?? "",
     lotNo: inventory.lotNo ?? "",
     expirationDate: inventory.expirationDate ?? "",
+    expirationNotApplicable: !inventory.expirationDate && inventory.expirationManagementStatus === "NO_EXPIRY",
     unit: inventory.unit ?? "",
     quantity: String(inventory.quantity),
     actualQuantity:
@@ -485,6 +487,12 @@ export default function ItemDetailPage() {
         },
         body: JSON.stringify({
           ...inventoryForm,
+          expirationNotApplicable: inventoryForm.expirationNotApplicable
+            ? true
+            : item?.inventoryInstances.find((entry) => entry.id === inventoryId)?.expirationDate &&
+                item?.inventoryInstances.find((entry) => entry.id === inventoryId)?.expirationManagementStatus === "NO_EXPIRY"
+              ? undefined
+              : false,
           storageLocationId: inventoryForm.storageLocationId || null,
           quantity,
           actualQuantity,
@@ -879,17 +887,23 @@ export default function ItemDetailPage() {
                               />
                             </label>
 
-                            <label className="block">
+                            <div className="block">
                               <span className="font-bold text-slate-700">
                                 使用期限（年月のみ・年月日）
                               </span>
+                              <label className="mt-2 flex items-center gap-2 font-bold">
+                                <input type="checkbox" checked={inventoryForm.expirationNotApplicable} onChange={(event) => setInventoryForm({ ...inventoryForm, expirationNotApplicable: event.target.checked, expirationDate: "" })} className="h-5 w-5" />
+                                期限なし
+                              </label>
+                              {!inventoryForm.expirationNotApplicable && <>
                               <span className="mt-1 block text-sm font-semibold text-slate-600">年月までなら左、日付まであれば右を使用してください。</span>
                               <span className="mt-2 grid gap-2 sm:grid-cols-2">
                                 <span><span className="text-xs font-bold">年月まで</span><input type="month" value={inventoryForm.expirationDate.length === 7 ? inventoryForm.expirationDate : ""} onChange={(event) => setInventoryForm({ ...inventoryForm, expirationDate: event.target.value })} className="mt-1 w-full rounded-xl border border-slate-300 px-4 py-3" /></span>
                                 <span><span className="text-xs font-bold">日付まで</span><input type="date" value={inventoryForm.expirationDate.length === 10 ? inventoryForm.expirationDate : ""} onChange={(event) => setInventoryForm({ ...inventoryForm, expirationDate: event.target.value })} className="mt-1 w-full rounded-xl border border-slate-300 px-4 py-3" /></span>
                               </span>
-                              <span className="mt-2 block text-xs font-bold text-blue-800">保存値：{inventoryForm.expirationDate || "日付未登録（期限管理の設定は別途確認）"}</span>
-                            </label>
+                              </>}
+                              <span className="mt-2 block text-xs font-bold text-blue-800">保存値：{inventoryForm.expirationNotApplicable ? "期限なし" : inventoryForm.expirationDate || "期限未設定"}</span>
+                            </div>
 
                             <label className="block">
                               <span className="font-bold text-slate-700">
@@ -1030,6 +1044,14 @@ export default function ItemDetailPage() {
 
                             <dl className="mt-4 grid gap-3 text-sm sm:grid-cols-2 lg:grid-cols-4">
                               <div>
+                                <dt className="font-bold text-slate-500">この在庫の分類</dt>
+                                <dd className="mt-1 text-slate-800">{[inventory.majorCategory ?? item.majorCategory, inventory.minorCategory ?? item.minorCategory].filter(Boolean).join(" ／ ") || "未設定"}</dd>
+                              </div>
+                              <div>
+                                <dt className="font-bold text-slate-500">在庫システムNo.</dt>
+                                <dd className="mt-1 break-all text-slate-800">{inventory.id}</dd>
+                              </div>
+                              <div>
                                 <dt className="font-bold text-slate-500">
                                   ロット番号
                                 </dt>
@@ -1043,7 +1065,7 @@ export default function ItemDetailPage() {
                                   使用期限
                                 </dt>
                                 <dd className="mt-1 text-slate-800">
-                                  {formatDate(inventory.expirationDate)}<span className="mt-1 block font-bold">期限管理：{expiryPolicyLabels[expiryPolicy(inventory.expirationDate, inventory.expirationManagementStatus)]}</span><Link href={`/expiry?itemId=${item.id}`} className="underline">期限管理を設定</Link>
+                                  {!inventory.expirationDate && inventory.expirationManagementStatus === "NO_EXPIRY" ? "期限なし" : formatDate(inventory.expirationDate)}<span className="mt-1 block font-bold">期限管理：{expiryPolicyLabels[expiryPolicy(inventory.expirationDate, inventory.expirationManagementStatus)]}</span><Link href={`/expiry?itemId=${item.id}`} className="underline">期限管理を設定</Link>
                                 </dd>
                               </div>
 

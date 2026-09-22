@@ -521,8 +521,9 @@ export default function AddPage() {
                   使用期限（年月のみ・年月日の両方に対応）
                 </span>
 
-                <label className="mt-2 flex items-center gap-2 font-bold"><input type="checkbox" checked={noExpiration} onChange={(event) => { setNoExpiration(event.target.checked); change("expirationDate", ""); }} className="h-5 w-5" />この商品に使用期限はない</label>
+                <label className="mt-2 flex items-center gap-2 font-bold"><input type="checkbox" checked={noExpiration} onChange={(event) => { setNoExpiration(event.target.checked); change("expirationDate", ""); }} className="h-5 w-5" />期限なしで登録する</label>
                 {!noExpiration&&<><label className="mt-2 flex items-center gap-2 font-bold"><input type="checkbox" checked={expirationHasDay} onChange={(event) => { setExpirationHasDay(event.target.checked); change("expirationDate", ""); }} className="h-5 w-5" />日付まで記載されている</label><input type={expirationHasDay ? "date" : "month"} value={form.expirationDate} onChange={(event) => change("expirationDate", event.target.value)} className="mt-2 w-full rounded-xl border border-slate-300 px-4 py-3" /></>}
+                <span className="mt-2 block text-sm text-slate-600">同じJANでも、今回のLot・分類・保管場所で別の在庫明細を登録します。</span>
                 <span className="mt-2 block text-sm font-bold text-blue-800">登録内容：{noExpiration?"期限なし":form.expirationDate||"期限を選択してください"}</span>
               </label>
 

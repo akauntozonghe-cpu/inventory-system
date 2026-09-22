@@ -461,7 +461,7 @@ export default function UnregisteredItemDialog({
           <label>
             <span className="text-sm font-bold">使用期限（年月のみ・年月日）</span>
 
-            <label className="mt-2 flex items-center gap-2 text-sm font-bold"><input type="checkbox" checked={noExpiration} onChange={(event) => { setNoExpiration(event.target.checked); update("expirationDate", ""); }} className="h-5 w-5" />この商品に使用期限はない</label>
+            <label className="mt-2 flex items-center gap-2 text-sm font-bold"><input type="checkbox" checked={noExpiration} onChange={(event) => { setNoExpiration(event.target.checked); update("expirationDate", ""); }} className="h-5 w-5" />期限なしで登録する</label>
             {!noExpiration&&<><label className="mt-2 flex items-center gap-2 text-sm font-bold"><input type="checkbox" checked={expirationHasDay} onChange={(event) => { setExpirationHasDay(event.target.checked); update("expirationDate", ""); }} className="h-5 w-5" />日付まで記載されている</label><input type={expirationHasDay ? "date" : "month"} value={form.expirationDate} onChange={(event) => update("expirationDate", event.target.value)} className="mt-2 w-full rounded-xl border border-slate-300 px-4 py-3" /></>}
             <span className="mt-2 block text-xs font-bold text-blue-800">登録値：{form.expirationDate || "未入力（期限データなしエラーになります）"}</span>
           </label>
@@ -494,7 +494,7 @@ export default function UnregisteredItemDialog({
                   </Link>
                 ))}
                 <p className="text-xs font-bold leading-5 text-amber-950">
-                  同じ商品なら新規作成されず、既存商品を「登録済み」として扱います。候補の詳細は別画面で確認できます。
+                  同じJANでもLot・分類・保管場所・期限が違えば別の在庫明細として登録します。すべて同じ場合は登録済み明細を表示します。
                 </p>
                 <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-amber-300 bg-white p-3 text-sm font-black text-slate-900">
                   <input

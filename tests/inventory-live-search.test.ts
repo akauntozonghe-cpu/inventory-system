@@ -28,7 +28,10 @@ describe("live stocktake search", () => {
   });
   it("filters the minor QR by both parent and child", async () => {
     await GET(new NextRequest("http://localhost/api/inventory/search?sessionId=session&majorCategory=食品&minorCategory=水"));
-    expect(db.stocktakeTarget.findMany.mock.calls[0][0].where.inventoryInstance.is.AND).toEqual(expect.arrayContaining([{item:{is:{majorCategory:"食品"}}},{item:{is:{minorCategory:"水"}}}]));
+    expect(db.stocktakeTarget.findMany.mock.calls[0][0].where.inventoryInstance.is.AND).toEqual(expect.arrayContaining([
+      { OR: [{ majorCategory: "食品" }, { majorCategory: null, item: { is: { majorCategory: "食品" } } }] },
+      { OR: [{ minorCategory: "水" }, { minorCategory: null, item: { is: { minorCategory: "水" } } }] },
+    ]));
   });
   it("applies a location QR filter inside the existing session target query", async () => {
     await GET(new NextRequest("http://localhost/api/inventory/search?sessionId=session&storageLocationId=shelf&filter=ALL"));
@@ -44,7 +47,9 @@ describe("live stocktake search", () => {
   it("limits database retrieval to the session's classification", async () => {
     db.stocktakeSession.findUnique.mockResolvedValue({ id: "session", operatorUserId: "worker", status: "IN_PROGRESS", scopeType: "MAJOR_CATEGORY", scopeValue: "食品" });
     await GET(new NextRequest("http://localhost/api/inventory/search?sessionId=session&exact=true&filter=ALL&q=4901234567890"));
-    expect(db.inventoryInstance.findMany.mock.calls[0][0].where.AND).toEqual([{ item: { is: { majorCategory: "食品" } } }]);
+    expect(db.inventoryInstance.findMany.mock.calls[0][0].where.AND).toEqual([
+      { OR: [{ majorCategory: "食品" }, { majorCategory: null, item: { is: { majorCategory: "食品" } } }] },
+    ]);
   });
   it("同じJANの別ロットを正常な複数候補として返し、管理No.を混同しない", async () => {
     const lots = [{ ...inventory, id: "lot-a", lotNo: "A" }, { ...inventory, id: "lot-b", lotNo: "B" }];
@@ -58,6 +63,23 @@ describe("live stocktake search", () => {
     const response = await GET(new NextRequest("http://localhost/api/inventory/search?sessionId=session&exact=true&filter=ALL&q=new-inventory"));
     expect(response.status).toBe(200);
     expect((await response.json()).map((row: { id: string }) => row.id)).toEqual(["new-inventory"]);
+  });
+  it("keeps different stock classifications and locations visible under the same JAN", async () => {
+    const stocks = [
+      { ...inventory, id: "food", majorCategory: "食品", minorCategory: "飲料" },
+      { ...inventory, id: "supply", majorCategory: "備品", minorCategory: "店頭", storageLocation: { id: "shelf-b", name: "棚B" } },
+    ];
+    db.inventoryInstance.findMany.mockResolvedValue(stocks);
+    db.stocktakeTarget.findMany.mockResolvedValue(stocks.map(row => ({ inventoryInstanceId: row.id, expectedQuantity: 8, inventoryInstance: row })));
+    const response = await GET(new NextRequest("http://localhost/api/inventory/search?sessionId=session&exact=true&filter=ALL&q=4901234567890"));
+    expect((await response.json()).map((row: { id: string; item: { majorCategory: string }; storageLocation: { name: string } }) => [row.id, row.item.majorCategory, row.storageLocation.name])).toEqual([["food", "食品", "棚A"], ["supply", "備品", "棚B"]]);
+  });
+  it("does not enroll a stock with an overriding category into the catalog category scope", async () => {
+    db.stocktakeSession.findUnique.mockResolvedValue({ id: "session", operatorUserId: "worker", status: "IN_PROGRESS", scopeType: "MAJOR_CATEGORY", scopeValue: "食品" });
+    db.inventoryInstance.findMany.mockResolvedValue([{ ...inventory, majorCategory: "備品" }]);
+    db.stocktakeTarget.findMany.mockResolvedValue([]);
+    await GET(new NextRequest("http://localhost/api/inventory/search?sessionId=session&exact=true&filter=ALL&q=4901234567890"));
+    expect(db.stocktakeTarget.createMany).not.toHaveBeenCalled();
   });
   it("選択中の同期では他の全在庫を取得しない", async () => {
     await GET(new NextRequest("http://localhost/api/inventory/search?sessionId=session&inventoryInstanceId=new-inventory&filter=ALL"));

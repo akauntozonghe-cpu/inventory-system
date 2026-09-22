@@ -106,6 +106,8 @@ export async function GET(
           select: {
             id: true,
             managementCode: true,
+            majorCategory: true,
+            minorCategory: true,
             lotNo: true,
             expirationDate: true,
             unit: true,
@@ -179,8 +181,8 @@ export async function GET(
             systemBarcode: inventory.item.systemBarcode,
             managementCode: inventory.item.managementCode,
             manufacturer: inventory.item.manufacturer,
-            majorCategory: inventory.item.majorCategory,
-            minorCategory: inventory.item.minorCategory,
+            majorCategory: inventory.majorCategory ?? inventory.item.majorCategory,
+            minorCategory: inventory.minorCategory ?? inventory.item.minorCategory,
           },
           storageLocation: inventory.storageLocation
             ? {

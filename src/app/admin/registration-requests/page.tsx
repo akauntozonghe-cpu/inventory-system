@@ -30,6 +30,7 @@ type RegistrationRequest = {
   unit: string | null;
   lotNo: string | null;
   expirationDate: string | null;
+  expirationNotApplicable: boolean;
   memo: string | null;
   status: RequestStatus;
   createdAt: string;
@@ -489,7 +490,7 @@ export default function RegistrationRequestsPage() {
                             使用期限
                           </dt>
                           <dd className="mt-1 font-bold text-slate-900">
-                            {request.expirationDate ?? "-"}
+                            {request.expirationNotApplicable ? "期限なし" : request.expirationDate ?? "未設定"}
                           </dd>
                         </div>
                       </dl>

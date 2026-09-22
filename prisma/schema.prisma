@@ -57,6 +57,7 @@ model Item {
 
   inventoryInstances  InventoryInstance[]
 
+  @@index([janCode])
   @@index([isArchived, name])
   @@index([isArchived, majorCategory])
 }
@@ -126,7 +127,7 @@ model InventoryInstance {
   inventoryEvents  InventoryEvent[]
   marketplaceListings MarketplaceListing[]
 
-  @@unique([itemId, storageLocationId, lotNo, expirationDate])
+  @@index([itemId, storageLocationId, lotNo, expirationDate], map: "inventory_stock_lookup")
   @@index([expirationDate, expirationManagementStatus])
 }
 
@@ -357,6 +358,7 @@ model ItemRegistrationRequest {
   unit           String?
   lotNo          String?
   expirationDate String?
+  expirationNotApplicable Boolean @default(false)
   memo           String?
 
   status RegistrationRequestStatus @default(PENDING)

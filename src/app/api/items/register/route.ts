@@ -1,3 +1,4 @@
+import { findCatalogItem } from "@/lib/catalog-registration";
 import { scheduleDeviceNotifications } from "@/lib/device-push";
 import { ensureClassification } from "@/lib/item-links";
 import { unitValidationMessage } from "@/lib/unit";
@@ -148,16 +149,19 @@ export async function POST(request: NextRequest) {
     const unit = normalizeOptionalText(body.unit, 30);
     const storageLocationId = optionalText(body.storageLocationId, 100);
     const lotNo = normalizeIdentifier(body.lotNo, 100);
-    const expirationDate = normalizeExpirationDate(body.expirationDate);
+    const expirationNotApplicable = body.expirationNotApplicable === true;
+    const expirationDate = expirationNotApplicable ? null : normalizeExpirationDate(body.expirationDate);
     if (expirationDate === undefined) {
       return NextResponse.json({ code: "ITEM_EXPIRATION_FORMAT_INVALID", message: "使用期限は未入力、YYYY-MM、YYYY-MM-DDのいずれかで入力してください。" }, { status: 400 });
     }
     const memo = optionalText(body.memo, 500);
     const quantity = validQuantity(body.quantity);
-    const expirationNotApplicable = body.expirationNotApplicable === true;
     if (!expirationNotApplicable && expirationDate === null) {
       return NextResponse.json({ code: "ITEM_EXPIRATION_REQUIRED", message: "使用期限を入力するか、期限なしを選択してください。" }, { status: 400 });
     }
+
+    if (minorCategory && !majorCategory) return NextResponse.json({ message: "小分類を設定する場合は大分類を選択してください。" }, { status: 400 });
+    if (janCode && body.generateSystemBarcode === true) return NextResponse.json({ message: "JANとシステムJANはどちらか一方を指定してください。" }, { status: 400 });
 
     const generateSystemBarcode =
       body.generateSystemBarcode === true && canRegisterImmediately;
@@ -241,68 +245,6 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    if (janCode) {
-      const existingJanItem = await prisma.item.findFirst({
-        where: {
-          janCode,
-        },
-        select: {
-          id: true,
-          name: true,
-        },
-      });
-
-      if (existingJanItem) {
-        return NextResponse.json(
-          {
-            code: "ITEM_REGISTER_JAN_DUPLICATE",
-            message: `このJANコードは「${existingJanItem.name}」に登録されています。既存商品を確認してください。`,
-            item: existingJanItem,
-          },
-          {
-            status: 409,
-          }
-        );
-      }
-    }
-
-    if (managementCode) {
-      const existingManagementCode = await prisma.item.findFirst({
-        where: {
-          managementCode: { equals: managementCode, mode: "insensitive" },
-        },
-        select: {
-          id: true,
-          name: true,
-        },
-      });
-
-      if (existingManagementCode) {
-        return NextResponse.json(
-          {
-            code: "ITEM_REGISTER_MANAGEMENT_CODE_DUPLICATE",
-            message: `この管理番号は「${existingManagementCode.name}」に登録されています。`,
-            item: existingManagementCode,
-          },
-          {
-            status: 409,
-          }
-        );
-      }
-    }
-
-    const existingName = await prisma.item.findFirst({
-      where: { name: { equals: name, mode: "insensitive" }, isArchived: false },
-      select: { id: true, name: true, janCode: true },
-    });
-    if (existingName) {
-      return NextResponse.json({
-        code: "ITEM_REGISTER_POSSIBLE_DUPLICATE",
-        message: `「${existingName.name}」は登録済みの可能性があります。既存商品の詳細を確認してください。`,
-        item: existingName,
-      }, { status: 409 });
-    }
-
     // 一般ユーザーは、商品マスタや在庫を直接変更せず申請を作成する。
     if (!canRegisterImmediately) {
       const requestRecord = await prisma.itemRegistrationRequest.create({
@@ -320,6 +262,7 @@ export async function POST(request: NextRequest) {
           unit,
           lotNo,
           expirationDate,
+          expirationNotApplicable,
           memo,
         },
       });
@@ -364,7 +307,8 @@ export async function POST(request: NextRequest) {
 
     const result = await withDatabaseRetry(() => prisma.$transaction(
       async (transaction) => {
-        const item = await transaction.item.create({
+        const existingItem = await findCatalogItem(transaction, janCode);
+        const item = existingItem ?? await transaction.item.create({
           data: {
             name,
             janCode,
@@ -378,7 +322,7 @@ export async function POST(request: NextRequest) {
           },
         });
 
-        await ensureClassification(transaction, item.majorCategory, item.minorCategory);
+        await ensureClassification(transaction, majorCategory, minorCategory);
 
         const inventory = await transaction.inventoryInstance.create({
           data: {
@@ -409,7 +353,7 @@ export async function POST(request: NextRequest) {
           data: {
             inventoryInstanceId: inventory.id,
             changeQuantity: quantity,
-            action: "商品新規登録による初期在庫登録",
+            action: existingItem ? "既存JANへの別在庫登録" : "商品新規登録による初期在庫登録",
           },
         });
 
@@ -446,7 +390,7 @@ export async function POST(request: NextRequest) {
               quantity: inventory.quantity,
               storageLocationId: inventory.storageLocationId,
               item: { name: item.name, janCode: item.janCode, systemBarcode: item.systemBarcode, manufacturer: item.manufacturer, majorCategory: item.majorCategory, minorCategory: item.minorCategory, defaultUnit: item.defaultUnit },
-              inventory: { quantity: inventory.quantity, unit: inventory.unit, storageLocationName: inventory.storageLocation?.name ?? null, lotNo: inventory.lotNo, expirationDate: inventory.expirationDate, allocationType: inventory.allocationType },
+              inventory: { quantity: inventory.quantity, unit: inventory.unit, storageLocationName: inventory.storageLocation?.name ?? null, lotNo: inventory.lotNo, expirationDate: inventory.expirationDate, expirationManagementStatus: inventory.expirationManagementStatus, majorCategory: inventory.majorCategory, minorCategory: inventory.minorCategory, allocationType: inventory.allocationType },
             }),
           },
         });
@@ -468,7 +412,7 @@ export async function POST(request: NextRequest) {
         mode: "DIRECT",
         message: systemBarcode
           ? "商品を正式登録し、システムJANを発行しました。"
-          : "商品と初期在庫を正式登録しました。",
+          : "JANに紐づく在庫明細を登録しました。",
         item: result.item,
         inventory: result.inventory,
       },
