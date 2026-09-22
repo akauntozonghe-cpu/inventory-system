@@ -663,7 +663,9 @@ export default function UserManagementPage() {
                         </div>
                       </div>
                       <details className="mt-4 border-t border-slate-200 pt-4">
-                        <summary className="cursor-pointer py-2 text-sm font-black text-slate-900">利用できる機能・使用許可（{user.role==="ADMIN"?"すべて":user.featurePermissions.filter(feature=>FEATURE_KEYS.includes(feature)).length+"項目"}）</summary><p className="mt-1 text-xs text-slate-600">この設定は通常の利用権限です。一時管理者（10分間）とは別に、解除するまで継続します。編集権限の解除は次の保存操作から反映されます。新規棚卸には「棚卸作業」、販売設定には「フリマ作業」も必要です。</p>
+                        <summary className="cursor-pointer py-2 text-sm font-black text-slate-900">管理者が付与する日常業務の権限（{user.role==="ADMIN"?"すべて":user.featurePermissions.filter(feature=>FEATURE_KEYS.includes(feature)).length+"項目"}）</summary><p className="mt-1 text-xs text-slate-600">この設定は通常の利用権限です。一時管理者（10分間）とは別に、解除するまで継続します。編集権限の解除は次の保存操作から反映されます。新規棚卸には「棚卸作業」、販売設定には「フリマ作業」も必要です。</p>
+                        <div className="mt-3 rounded-xl bg-blue-50 p-3 text-sm"><p className="font-bold">棚卸中の編集を許可する場合</p><p>「棚卸作業」に加え、「商品情報の編集」「在庫明細の編集」を必要な範囲で選んでください。管理者への昇格は不要です。</p></div>
+                        <div className="mt-3 rounded-xl bg-slate-100 p-3 text-sm"><p className="font-bold">管理者専用（下の権限では許可されません）</p><p>利用者・権限管理、登録申請の承認、棚卸差異の確定反映・競合解消・終了後の再開、廃止・一括変更、データ取込・初期化・復旧、システム設定。</p></div>
                         {user.role === "ADMIN" ? (
                           <p className="mt-2 text-sm font-bold text-violet-700">
                             すべての機能を利用できます。

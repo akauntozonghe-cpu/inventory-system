@@ -8,6 +8,8 @@ import { parseStocktakeQuantity } from "@/lib/stocktake-quantity";
 import Link from "@/components/auth/PermissionLink";
 import { canReopenStocktake } from "@/lib/stocktake-reopening";
 import ReopenStocktakeButton from "@/components/stocktake/ReopenStocktakeButton";
+import InventoryEditDialog from "@/components/stocktake/InventoryEditDialog";
+import { useAppAccess } from "@/components/auth/AppAccessProvider";
 import ProductEditDialog from "@/components/ProductEditDialog";
 import { displayUnit } from "@/lib/unit";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -155,6 +157,8 @@ export default function StocktakePage() {
   const [majorCategory, setMajorCategory] = useState<string | null>(null);
   const [minorCategory, setMinorCategory] = useState<string | null>(null);
 
+  const { can } = useAppAccess();
+  const [editingInventory, setEditingInventory] = useState<string | null>(null);
   const [editingProduct, setEditingProduct] = useState<string | null>(null);
   const [countedQuantity, setCountedQuantity] = useState("");
   const [memo, setMemo] = useState("");
@@ -1152,7 +1156,8 @@ export default function StocktakePage() {
               onQuantityChange={setCountedQuantity}
               onSave={() => void saveRecord()}
               onCancel={() => { setSelected(null); setCountedQuantity(""); setMemo(""); }}
-              onEditProduct={isAdmin && selected ? () => setEditingProduct(selected.item.id) : undefined}
+              onEditProduct={can("ITEM_EDIT") && selected ? () => setEditingProduct(selected.item.id) : undefined}
+              onEditInventory={can("INVENTORY_EDIT") && selected ? () => setEditingInventory(selected.id) : undefined}
             />
           </aside>
         </div>
@@ -1165,7 +1170,8 @@ export default function StocktakePage() {
           onClose={() => setContinuousCameraOpen(false)} onProduct={findBarcode} onCategory={handleCategoryDetected} onLocation={handleLocationDetected}>
           <StocktakeInputPanel
             selected={selected}
-            onEditProduct={isAdmin && selected ? () => setEditingProduct(selected.item.id) : undefined}
+            onEditProduct={can("ITEM_EDIT") && selected ? () => setEditingProduct(selected.item.id) : undefined}
+              onEditInventory={can("INVENTORY_EDIT") && selected ? () => setEditingInventory(selected.id) : undefined}
             quantity={countedQuantity}
             saving={saving}
             disabled={!canOperate}
@@ -1199,6 +1205,7 @@ export default function StocktakePage() {
         />
       )}
 
+      {editingInventory && <InventoryEditDialog key={editingInventory} inventoryId={editingInventory} onClose={() => setEditingInventory(null)} onSaved={() => { setEditingInventory(null); setMessage("在庫明細を更新しました。入力中の棚卸数量とメモは保持しています。"); void syncInBackground().catch(() => setMessage("保存は完了しましたが画面更新に失敗しました。再接続時に取得します。")); }}/>}
       {editingProduct && <ProductEditDialog key={editingProduct} itemId={editingProduct} onClose={() => setEditingProduct(null)} onSaved={() => { setEditingProduct(null); setMessage("商品情報を更新しました。棚卸数量の入力は保持しています。"); void syncInBackground().catch(() => setMessage("保存は完了しましたが画面更新に失敗しました。再接続時に取得します。")); }}/>}
 
       <UnregisteredItemDialog

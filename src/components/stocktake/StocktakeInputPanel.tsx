@@ -45,6 +45,7 @@ type Props = {
   onCancel: () => void;
   continuous?: boolean;
   onEditProduct?: () => void;
+  onEditInventory?: () => void;
 };
 
 function Detail({
@@ -77,6 +78,7 @@ export default function StocktakeInputPanel({
   onCancel,
   continuous = false,
   onEditProduct,
+  onEditInventory,
 }: Props) {
   const [detailsOpen, setDetailsOpen] = useState(false);
 
@@ -128,6 +130,7 @@ export default function StocktakeInputPanel({
 
   return (
     <section className="rounded-3xl bg-white p-5 shadow-sm sm:p-6">
+      {onEditInventory && <button type="button" disabled={saving} onClick={onEditInventory} className="mb-3 rounded-xl border border-blue-300 p-3 font-bold text-blue-700">Lot・分類・保管場所・期限・在庫数を編集する</button>}
       {onEditProduct && <button type="button" disabled={saving} onClick={onEditProduct} className="mb-3 rounded-xl border border-blue-300 p-3 font-bold text-blue-700">商品情報・写真を編集する</button>}
       <div className="flex items-start gap-3">{selected.item.photos?.length ? <div className="w-20 shrink-0"><StocktakePhoto item={selected.item}/></div> : null}<div className="flex min-w-0 flex-1 items-start justify-between gap-3">
         <div className="min-w-0">

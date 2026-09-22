@@ -130,6 +130,11 @@ describe("explicit no-expiry registration", () => {
 });
 
 describe("inventory expiry editing", () => {
+  it("rejects an editor that opened an older version before changing the stock", async () => {
+    mocks.db.inventoryInstance.findUnique.mockResolvedValue({ ...existing, updatedAt: new Date("2026-09-22T02:00:00Z") });
+    expect((await patch({ expirationNotApplicable: true, expectedUpdatedAt: "2026-09-22T01:00:00.000Z" })).status).toBe(409);
+    expect(mocks.db.inventoryInstance.update).not.toHaveBeenCalled();
+  });
   it("changes to no expiry and journals both the date and policy", async () => {
     expect((await patch({ expirationNotApplicable: true, expirationDate: "2026-12" })).status).toBe(200);
     expect(mocks.db.inventoryInstance.update.mock.calls[0][0].data).toMatchObject({ expirationDate: null, expirationManagementStatus: "NO_EXPIRY" });

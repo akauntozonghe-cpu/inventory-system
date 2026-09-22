@@ -168,6 +168,7 @@ export async function PATCH(
       lotNo?: string | null;
       expirationDate?: string | null;
       expirationNotApplicable?: boolean;
+      expectedUpdatedAt?: string;
       unit?: string | null;
       quantity?: number;
       actualQuantity?: number | null;
@@ -273,6 +274,10 @@ export async function PATCH(
           status: 404,
         }
       );
+    }
+
+    if (body.expectedUpdatedAt !== undefined && body.expectedUpdatedAt !== existing.updatedAt.toISOString()) {
+      return NextResponse.json({ code: "INVENTORY_CHANGED", message: "別の操作で在庫が更新されました。編集を閉じて開き直し、最新の内容を確認してください。" }, { status: 409 });
     }
 
     const storageLocationId =
@@ -411,6 +416,7 @@ export async function PATCH(
         body.minorCategory === undefined ? existing.minorCategory : emptyToNull(body.minorCategory));
       const updated = await transaction.inventoryInstance.update({
         where: {
+          ...(body.expectedUpdatedAt !== undefined ? { updatedAt: existing.updatedAt } : {}),
           id,
         },
         data: updateData,
@@ -494,6 +500,7 @@ export async function PATCH(
     });
   } catch (error) {
     console.error(error);
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2025") return NextResponse.json({ code: "INVENTORY_CHANGED", message: "在庫が更新されました。最新の内容を確認してからやり直してください。" }, { status: 409 });
 
     if (
       error instanceof Prisma.PrismaClientKnownRequestError &&

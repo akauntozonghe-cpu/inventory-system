@@ -47,6 +47,7 @@ export default function ProductEditDialog({ itemId, onClose, onSaved }: { itemId
     {error && <p role="alert" className="my-3 font-bold text-red-700">{error}</p>}
     {!product ? <p>商品情報を読み込み中…</p> : <form onSubmit={async (event) => {
       event.preventDefault();
+      if (!can("ITEM_EDIT")) { setError("商品情報の編集権限がありません。管理者に付与を依頼してください。"); return; }
       const unitError = unitValidationMessage(product.defaultUnit);
       if (unitError) { setError(unitError); return; }
       setSaving(true); setError("");
@@ -59,7 +60,7 @@ export default function ProductEditDialog({ itemId, onClose, onSaved }: { itemId
       } catch (caught) { setError(caught instanceof Error ? caught.message : "保存に失敗しました。"); }
       finally { setSaving(false); }
     }}>
-      <fieldset disabled={saving} className="space-y-4">
+      <fieldset disabled={saving || !can("ITEM_EDIT")} className="space-y-4">
         <details className="rounded-xl bg-slate-50 p-3 text-sm"><summary className="cursor-pointer font-bold">食器を登録するとき</summary><p className="mt-2">大分類は「食器」、小分類は「皿」「茶碗」「コップ」など。名前に色・柄・サイズを入れ、同じ種類は枚数で管理します。保管場所が違う場合は在庫を分けてください。写真は追加した時点で保存されます。</p></details>
         <label className="block font-bold">商品名<input required maxLength={200} value={product.name} onChange={(event) => change("name", event.target.value)} className="mt-1 w-full rounded-lg border p-3"/></label>
         <ProductPhotos itemId={itemId} canEdit={can("ITEM_EDIT")||admin.active}/><ProductCodeField janCode={product.janCode} systemBarcode={product.systemBarcode} onChange={codes=>setProduct({...product,...codes})}/>
