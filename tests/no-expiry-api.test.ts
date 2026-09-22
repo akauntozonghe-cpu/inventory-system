@@ -56,6 +56,14 @@ beforeEach(() => {
 });
 
 describe("shared JAN with independent inventory IDs", () => {
+  it("creates a new stocktake inventory even when an identical lot already exists", async () => {
+    mocks.db.item.findFirst.mockResolvedValue(item);
+    mocks.db.inventoryInstance.findFirst.mockResolvedValue(existing);
+    expect((await stocktakeRegister(request({ ...registration, sessionId: "session", storageLocationId: "shelf" }))).status).toBe(201);
+    expect(mocks.db.inventoryInstance.findFirst).not.toHaveBeenCalled();
+    expect(mocks.db.inventoryInstance.update).not.toHaveBeenCalled();
+    expect(mocks.db.inventoryInstance.create).toHaveBeenCalledOnce();
+  });
   it("does not create another stock if a concurrent reviewer already approved the request", async () => {
     mocks.db.itemRegistrationRequest.findUnique.mockResolvedValue({ id: "request", status: "PENDING", scannedCode: item.janCode, ...registration });
     mocks.db.itemRegistrationRequest.updateMany.mockResolvedValue({ count: 0 });
@@ -90,7 +98,7 @@ describe("shared JAN with independent inventory IDs", () => {
     mocks.db.item.findFirst.mockResolvedValue({ ...item, majorCategory: "食品", minorCategory: "飲料" });
     mocks.db.inventoryInstance.findFirst.mockResolvedValue(null);
     expect((await stocktakeRegister(request({ ...registration, sessionId: "session", storageLocationId: "shelf", majorCategory: "備品", minorCategory: "店頭" }))).status).toBe(201);
-    expect(mocks.db.inventoryInstance.findFirst.mock.calls[0][0].where).toMatchObject({ itemId: "item", majorCategory: "備品", minorCategory: "店頭", expirationDate: null, expirationManagementStatus: "NO_EXPIRY" });
+    expect(mocks.db.inventoryInstance.findFirst).not.toHaveBeenCalled();
     expect(mocks.db.inventoryInstance.create.mock.calls[0][0].data).toMatchObject({ itemId: "item", majorCategory: "備品", minorCategory: "店頭" });
     expect(mocks.db.item.create).not.toHaveBeenCalled();
   });
@@ -130,6 +138,10 @@ describe("explicit no-expiry registration", () => {
 });
 
 describe("inventory expiry editing", () => {
+  it("does not let editing permission perform an archive operation", async () => {
+    expect((await patch({ status: "廃止" })).status).toBe(403);
+    expect(mocks.db.inventoryInstance.update).not.toHaveBeenCalled();
+  });
   it("rejects an editor that opened an older version before changing the stock", async () => {
     mocks.db.inventoryInstance.findUnique.mockResolvedValue({ ...existing, updatedAt: new Date("2026-09-22T02:00:00Z") });
     expect((await patch({ expirationNotApplicable: true, expectedUpdatedAt: "2026-09-22T01:00:00.000Z" })).status).toBe(409);

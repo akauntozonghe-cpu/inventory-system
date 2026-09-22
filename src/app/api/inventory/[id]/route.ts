@@ -51,6 +51,11 @@ const inventoryCoreSelect = {
   majorCategory: true,
   minorCategory: true,
   lotNo: true,
+  inspectionExcluded: true,
+  inspectionExclusionReason: true,
+  archivedFromStatus: true,
+  archiveReason: true,
+  archivedAt: true,
   expirationDate: true,
   expirationManagementStatus: true,
   unit: true,
@@ -280,6 +285,9 @@ export async function PATCH(
       return NextResponse.json({ code: "INVENTORY_CHANGED", message: "別の操作で在庫が更新されました。編集を閉じて開き直し、最新の内容を確認してください。" }, { status: 409 });
     }
 
+    if (body.status !== undefined && body.status !== existing.status && (body.status.trim() === "廃止" || existing.status === "廃止")) {
+      return NextResponse.json({ code: "INVENTORY_LIFECYCLE_REQUIRED", message: "廃止・復帰は管理者がこの在庫明細の専用操作から実行してください。" }, { status: 403 });
+    }
     const storageLocationId =
       body.storageLocationId === undefined
         ? existing.storageLocationId

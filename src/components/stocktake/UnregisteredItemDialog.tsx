@@ -494,7 +494,7 @@ export default function UnregisteredItemDialog({
                   </Link>
                 ))}
                 <p className="text-xs font-bold leading-5 text-amber-950">
-                  同じJANでもLot・分類・保管場所・期限が違えば別の在庫明細として登録します。すべて同じ場合は登録済み明細を表示します。
+                  今回の登録は新しい在庫明細を作成します。同じJAN・Lot・期限でも既存の明細へ統合しません。既存在庫の棚卸をする場合は登録せず、検索から選択してください。
                 </p>
                 <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-amber-300 bg-white p-3 text-sm font-black text-slate-900">
                   <input

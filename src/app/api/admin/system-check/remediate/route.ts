@@ -1,4 +1,4 @@
-import {inspectionItemWhere,inspectionInventoryWhere} from "@/lib/product-scope";
+import {inspectionInventoryWhere} from "@/lib/product-scope";
 import { randomUUID } from "node:crypto";
 import { scheduleDeviceNotifications } from "@/lib/device-push";
 import { recoveryCheckCodes, recoveryActionAllowed, recoverySessionId } from "@/lib/recovery-context";
@@ -105,7 +105,7 @@ export async function GET(request: NextRequest) {
 
         prisma.inventoryInstance.findMany({
           where: {
-            ...inspectionInventoryWhere, item: { ...inspectionItemWhere,
+            ...inspectionInventoryWhere, item: { isArchived: false,
               janCode: null,
               systemBarcode: null,
             },

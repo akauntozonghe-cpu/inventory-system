@@ -7,6 +7,9 @@ export type InspectionTarget = {
     name: string;
     owner?: string;
     lot?: string | null;
+    expirationDate?: string | null;
+    majorCategory?: string | null;
+    minorCategory?: string | null;
     location?: string | null;
     status?: string;
     updatedAt: string;

@@ -21,6 +21,7 @@ export async function POST(request:NextRequest){
     if(listings||targets)throw new Error("ITEM_ACTIVE_WORK");
    }
    const data=action==="ARCHIVE"?{isArchived:true,archivedAt:new Date(),archiveReason:reason}:action==="RESTORE"?{isArchived:false,archivedAt:null,archiveReason:null}:action==="EXCLUDE_INSPECTION"?{inspectionExcluded:true,inspectionExclusionReason:reason}:{inspectionExcluded:false,inspectionExclusionReason:null};
+   if(action==="EXCLUDE_INSPECTION"||action==="INCLUDE_INSPECTION")await tx.inventoryInstance.updateMany({where:{itemId:{in:ids}},data:{inspectionExcluded:action==="EXCLUDE_INSPECTION",inspectionExclusionReason:action==="EXCLUDE_INSPECTION"?reason:null}});
    const updated=await tx.item.updateMany({where:{id:{in:ids}},data});
    const actor=(auth.user!.baseRole??auth.user!.role)==="ADMIN"?auth.user!.id:getAdminElevation(request)?.adminUserId;
    if(!actor)throw new Error("ADMIN_REQUIRED");

@@ -387,18 +387,19 @@ export default function ItemTable({ items, reload, isAdmin, filterKey }: Props) 
                   : "text-emerald-600"
               }`}
             >
-              管理者操作
+              管理者のグループ一括操作
             </p>
 
             <h2 id="bulk-operation-title" className="mt-2 text-2xl font-black text-slate-900">
-              {`選択商品を${bulkLabels[bulkOperation]}しますか？`}
+              {`選択したJANグループ全体を${bulkLabels[bulkOperation]}しますか？`}
             </h2>
 
             <p className="mt-3 text-slate-600">
-              対象：{selectedItems.length}件
+              対象：{selectedItems.length}グループ（配下の全在庫明細）
               {bulkOperation.includes("INSPECTION")?"。点検の対象だけ変更します。商品・在庫・棚卸の履歴は消しません。廃止商品は設定に関わらず点検対象外です。":bulkOperation==="ARCHIVE"?"。商品と在庫を通常の作業対象から外します。履歴と数量は保存します。":"。商品を通常の作業対象に戻します。在庫明細そのものが廃止の場合は引き続き対象外です。"}
             </p>
 
+            <p className="mt-3 font-bold text-blue-800">Lot・期限・分類ごとに操作する場合は、商品詳細を開き、対象明細の「この在庫だけ」を使用してください。</p>
             <label className="mt-5 block">
               <span className="font-bold text-slate-800">
                 変更理由

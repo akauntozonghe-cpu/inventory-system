@@ -1,7 +1,7 @@
 import {beforeEach,expect,it,vi} from "vitest";
 import {NextRequest,NextResponse} from "next/server";
 const state=vi.hoisted(()=>({role:"ADMIN",elevated:false}));
-const db=vi.hoisted(()=>({$transaction:vi.fn(),item:{findMany:vi.fn(),updateMany:vi.fn()},marketplaceListing:{count:vi.fn()},stocktakeTarget:{count:vi.fn()},adminActionLog:{create:vi.fn()}}));
+const db=vi.hoisted(()=>({$transaction:vi.fn(),item:{findMany:vi.fn(),updateMany:vi.fn()},inventoryInstance:{updateMany:vi.fn()},marketplaceListing:{count:vi.fn()},stocktakeTarget:{count:vi.fn()},adminActionLog:{create:vi.fn()}}));
 vi.mock("@/lib/prisma",()=>({prisma:db}));
 vi.mock("@/lib/auth",()=>({requireAdmin:()=>state.role==="ADMIN"||state.elevated?{user:{id:"actor",role:state.role}}:{response:NextResponse.json({code:"ADMIN_REQUIRED"},{status:403})},getAdminElevation:()=>state.elevated?{adminUserId:"sponsor"}:null}));
 import {POST} from "../src/app/api/items/bulk/route";

@@ -85,6 +85,13 @@ model SystemOperationSetting {
 model InventoryInstance {
   id String @id @default(cuid())
 
+  // Null inherits the JAN-group inspection setting; explicit values apply to this stock only.
+  inspectionExcluded Boolean?
+  inspectionExclusionReason String?
+  archivedFromStatus String?
+  archiveReason String?
+  archivedAt DateTime?
+
   itemId String
   item   Item @relation(fields: [itemId], references: [id])
 

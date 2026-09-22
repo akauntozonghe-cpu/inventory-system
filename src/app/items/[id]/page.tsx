@@ -1,6 +1,7 @@
 "use client";
 
 import { requestBack } from "@/lib/navigation-history";
+import InventoryLifecycle from "@/components/inventory/InventoryLifecycle";
 import Modal from "@/components/common/Modal";
 import ProductCodeField from "@/components/ProductCodeField";
 import InventoryStatusBadges from "@/components/inventory/InventoryStatusBadges";
@@ -42,6 +43,7 @@ type InventoryInstance = {
   lotNo: string | null;
   expirationDate: string | null;
   expirationManagementStatus: string;
+  inspectionExcluded?: boolean | null;
   expirationAlertDays?: number;
   createdAt?: string;
   unit: string | null;
@@ -57,6 +59,7 @@ type Item = {
   updatedAt?: string;
   createdAt?: string;
   isArchived?: boolean;
+  inspectionExcluded?: boolean;
   id: string;
   name: string;
   janCode: string | null;
@@ -243,7 +246,7 @@ export default function ItemDetailPage() {
   const itemId = typeof params.id === "string" ? params.id : "";
 
   const [item, setItem] = useState<Item | null>(null);
-  const {can} = useAppAccess();
+  const {can, user: accessUser} = useAppAccess();
   const [showLabels,setShowLabels]=useState(false);
   const [locations, setLocations] = useState<StorageLocation[]>([]);
   const [loading, setLoading] = useState(true);
@@ -1110,6 +1113,7 @@ export default function ItemDetailPage() {
                               </p>
                             )}
 
+                            <InventoryLifecycle stock={inventory} groupExcluded={item.inspectionExcluded === true} canManage={accessUser?.role === "ADMIN"} onSaved={() => loadItem(true)}/>
                             {canEditInventory && (
                               <button
                                 type="button"

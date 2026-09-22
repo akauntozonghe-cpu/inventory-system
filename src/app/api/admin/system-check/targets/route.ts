@@ -48,7 +48,7 @@ export async function PATCH(request: NextRequest) {
         await prisma.$transaction(async (tx) => {
             if (action === "RESTORE_TARGET") {
                 const row = await tx.stocktakeRecord.findUnique({ where: { id: body.targetId }, include: { session: true, inventoryInstance: { include: { item: true } } } });
-                if (!row || row.updatedAt.getTime() !== expected.getTime() || row.session.updatedAt.toISOString() !== body.sessionUpdatedAt || (sessionId && row.sessionId !== sessionId) || !isInspectionTarget(row.inventoryInstance.item, row.inventoryInstance.status))
+                if (!row || row.updatedAt.getTime() !== expected.getTime() || row.session.updatedAt.toISOString() !== body.sessionUpdatedAt || (sessionId && row.sessionId !== sessionId) || !isInspectionTarget(row.inventoryInstance.item, row.inventoryInstance.status, row.inventoryInstance.inspectionExcluded))
                     throw new Error("TARGET_CHANGED");
                 if (!Number.isSafeInteger(body.expectedQuantity) || body.expectedQuantity < 0 || body.expectedQuantity > 2147483647)
                     throw new Error("TARGET_INPUT_INVALID");
@@ -62,11 +62,11 @@ export async function PATCH(request: NextRequest) {
                 return;
             }
             const row = await tx.inventoryInstance.findUnique({ where: { id: body.targetId }, include: { item: true } });
-            if (!row || !isInspectionTarget(row.item, row.status) || row.updatedAt.getTime() !== expected.getTime() || row.item.updatedAt.toISOString() !== body.itemUpdatedAt)
+            if (!row || !isInspectionTarget(row.item, row.status, row.inspectionExcluded) || row.updatedAt.getTime() !== expected.getTime() || row.item.updatedAt.toISOString() !== body.itemUpdatedAt)
                 throw new Error("TARGET_CHANGED");
             if (action === "SET_UNIT" && (typeof body.unit !== "string" || !body.unit.trim() || unitValidationMessage(body.unit)))
                 throw new Error("TARGET_INPUT_INVALID");
-            const after = action === "SET_UNIT" ? { unit: body.unit.normalize("NFKC").trim() } : { majorCategory: row.item.majorCategory, minorCategory: row.item.minorCategory, manufacturer: row.item.manufacturer };
+            const after = action === "SET_UNIT" ? { unit: body.unit.normalize("NFKC").trim() } : { manufacturer: row.item.manufacturer };
             const updated = await tx.inventoryInstance.updateMany({ where: { id: row.id, updatedAt: expected }, data: after });
             if (updated.count !== 1)
                 throw new Error("TARGET_CHANGED");

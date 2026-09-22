@@ -6,7 +6,6 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { normalizeExpirationDate } from "@/lib/expiry-management";
 import { getLoggedInUser, hasAdminAccess } from "@/lib/auth";
-import { resolveStocktakeRegistration } from "@/lib/stocktake-registration";
 import { databaseErrorCode, isRetryableDatabaseError, withDatabaseRetry } from "@/lib/database-retry";
 import { janCodeValidationMessage, normalizeDisplayText, normalizeIdentifier, normalizeJanCode, normalizeOptionalText } from "@/lib/input-normalization";
 
@@ -244,24 +243,12 @@ export async function POST(request: NextRequest) {
         const unit =
           normalizeOptionalText(body.unit, 30) ?? item.defaultUnit;
 
-        let inventory =
-          await transaction.inventoryInstance.findFirst({
-            where: {
-              itemId: item.id,
-              storageLocationId,
-              lotNo,
-              expirationDate,
-              majorCategory,
-              minorCategory,
-              expirationManagementStatus: expirationNotApplicable ? "NO_EXPIRY" : { not: "NO_EXPIRY" },
-            },
-          });
-
+        // Registration creates a new stock ID even when all JAN/lot attributes match.
+        let inventory: Awaited<ReturnType<typeof transaction.inventoryInstance.create>>;
         let inventoryCreated = false;
-        const registration = resolveStocktakeRegistration(inventory, quantity);
-        const { alreadyRegistered } = registration;
+        const alreadyRegistered = false;
+        {
 
-        if (!inventory) {
           inventory =
             await transaction.inventoryInstance.create({
               data: {
@@ -324,7 +311,7 @@ export async function POST(request: NextRequest) {
           },
         });
 
-        const countedQuantity = registration.countedQuantity;
+        const countedQuantity = quantity;
 
         await transaction.stocktakeRecord.upsert({
           where: {

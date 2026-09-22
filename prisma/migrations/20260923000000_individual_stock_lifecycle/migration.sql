@@ -1,0 +1,1 @@
+ALTER TABLE "InventoryInstance" ADD COLUMN "inspectionExcluded" BOOLEAN, ADD COLUMN "inspectionExclusionReason" TEXT, ADD COLUMN "archivedFromStatus" TEXT, ADD COLUMN "archiveReason" TEXT, ADD COLUMN "archivedAt" TIMESTAMP(3);
