@@ -64,6 +64,8 @@ export async function POST(request: NextRequest) {
   try {
     const body: unknown = await request.json();
     const itemId = getItemId(body);
+    const replacement = body as { replaceLegacy?: unknown; expectedBarcode?: unknown } | null;
+    const replaceLegacy = replacement?.replaceLegacy === true;
 
     if (!itemId) {
       return NextResponse.json(
@@ -106,7 +108,11 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    if (item.systemBarcode) {
+    if (replaceLegacy && (!item.systemBarcode?.startsWith("SYS-") || replacement?.expectedBarcode !== item.systemBarcode)) {
+      return NextResponse.json({ message: "旧コードが変更されています。画面を更新して確認してください。" }, { status: 409 });
+    }
+
+    if (item.systemBarcode && !replaceLegacy) {
       return NextResponse.json({
         success: true,
         created: false,
@@ -123,7 +129,7 @@ export async function POST(request: NextRequest) {
         const updatedItem = await prisma.item.update({
           where: {
             id: item.id,
-            AND: [{ OR: [{ janCode: null }, { janCode: "" }] }, { OR: [{ systemBarcode: null }, { systemBarcode: "" }] }],
+            AND: [{ OR: [{ janCode: null }, { janCode: "" }] }, replaceLegacy ? { systemBarcode: item.systemBarcode } : { OR: [{ systemBarcode: null }, { systemBarcode: "" }] }],
           },
           data: {
             systemBarcode,
@@ -138,6 +144,7 @@ export async function POST(request: NextRequest) {
             itemId: updatedItem.id,
             itemName: updatedItem.name,
             systemBarcode: updatedItem.systemBarcode ?? "",
+            ...(replaceLegacy ? { before: { systemBarcode: item.systemBarcode }, after: { systemBarcode: updatedItem.systemBarcode }, reason: "旧形式の内部コードを13桁のシステムJANへ変更" } : {}),
           },
         });
 

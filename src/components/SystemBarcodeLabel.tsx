@@ -55,11 +55,13 @@ export default function SystemBarcodeLabel({
   const [issuing, setIssuing] = useState(false);
   const [message, setMessage] = useState("");
   const [printOpen,setPrintOpen]=useState(false);
+  const [replaceConfirmed,setReplaceConfirmed]=useState(false);
   const scale=0.8;
   const [barcodeError, setBarcodeError] = useState("");
 
   const barcode = janCode || systemJan;
-  const barcodeTitle = janCode ? "既存JANコード" : "システムJAN";
+  const legacyCode = !janCode && Boolean(systemJan?.startsWith("SYS-"));
+  const barcodeTitle = janCode ? "既存JANコード" : legacyCode ? "旧形式の内部コード" : "システムJAN";
 
   useEffect(() => {
     setSystemJan(initialSystemJan);
@@ -83,7 +85,8 @@ export default function SystemBarcodeLabel({
     }
   }, [barcode, scale, itemName, canPrint]);
 
-  const issueSystemJan = async () => {
+  const issueSystemJan = async (replaceLegacy = false) => {
+    if (replaceLegacy && !replaceConfirmed) return;
     if (janCode) {
       setMessage("既存JANコードがあるため、システムJANは発行しません。");
       return;
@@ -100,6 +103,7 @@ export default function SystemBarcodeLabel({
         },
         body: JSON.stringify({
           itemId,
+          ...(replaceLegacy ? { replaceLegacy: true, expectedBarcode: systemJan } : {}),
         }),
       });
 
@@ -127,6 +131,8 @@ export default function SystemBarcodeLabel({
       }
 
       setSystemJan(nextSystemJan);
+      setReplaceConfirmed(false);
+      await onUpdated?.();
       setMessage(
         "システムJANを発行しました。ラベルを印刷して商品または保管ケースへ貼り付けてください。"
       );
@@ -161,7 +167,7 @@ export default function SystemBarcodeLabel({
             {janCode
               ? "商品に登録済みのJANコードをそのまま使います。"
               : systemJan
-                ? "JANコードがない商品のため、Inventory OSが発行したシステムJANです。"
+                ? legacyCode ? "以前の登録処理が発行した英数字の内部コードです。13桁のシステムJANではありません。" : "JANコードがない商品のため、Inventory OSが発行したシステムJANです。"
                 : "JANコードがない商品です。管理者はシステムJANを発行できます。"}
           </p>
         </div>
@@ -191,6 +197,12 @@ export default function SystemBarcodeLabel({
         )}
       </div>
 
+      {legacyCode && isAdmin && <div className="mt-4 rounded-xl bg-amber-50 p-4">
+        <p className="font-bold">13桁のシステムJANに変更</p>
+        <p className="mt-2 text-sm">この商品コードを共有する全明細のコード表示が変わります。各在庫No.・Lot・数量・履歴は維持されます。旧コードのラベルは使えなくなるため、変更後に印刷し直してください。</p>
+        <label className="my-3 flex gap-2"><input type="checkbox" checked={replaceConfirmed} onChange={event=>setReplaceConfirmed(event.target.checked)} disabled={issuing}/>旧ラベルを貼り替えることを確認しました</label>
+        <button type="button" disabled={!replaceConfirmed || issuing || checkingRole} onClick={()=>void issueSystemJan(true)} className="rounded-xl bg-blue-700 p-3 font-bold text-white disabled:opacity-40">{issuing ? "変更中…" : "13桁のシステムJANへ変更する"}</button>
+      </div>}
       {barcodeError && <p role="alert" className="mt-4 font-bold text-red-700">{barcodeError}</p>}
       {message && (
         <p className="mt-4 rounded-xl bg-slate-100 px-4 py-3 text-sm font-bold text-slate-700">

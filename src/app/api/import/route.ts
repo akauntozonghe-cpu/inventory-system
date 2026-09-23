@@ -1,5 +1,5 @@
+import { generateSystemJan } from "@/lib/system-jan";
 import { unitValidationMessage } from "@/lib/unit";
-import { randomUUID } from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireAdmin } from "@/lib/auth";
@@ -53,12 +53,7 @@ function normalize(value: string) {
   return value.trim().replace(/\s+/g, " ").toLowerCase();
 }
 
-function createSystemBarcode() {
-  return `SYS-${randomUUID()
-    .replace(/-/g, "")
-    .slice(0, 18)
-    .toUpperCase()}`;
-}
+
 
 function validateRow(
   row: ImportRow,
@@ -309,7 +304,7 @@ export async function POST(request: NextRequest) {
                 janCode: row.janCode,
                 systemBarcode: row.janCode
                   ? null
-                  : createSystemBarcode(),
+                  : generateSystemJan(),
                 name: row.name,
                 manufacturer: row.manufacturer,
                 majorCategory: row.majorCategory,

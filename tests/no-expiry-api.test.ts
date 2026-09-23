@@ -4,7 +4,7 @@ import { NextRequest } from "next/server";
 const mocks = vi.hoisted(() => ({
   admin: vi.fn(), log: vi.fn(),
   db: {
-    item: { findFirst: vi.fn(), findUnique: vi.fn(), create: vi.fn() },
+    item: { findFirst: vi.fn(), findUnique: vi.fn(), create: vi.fn(), update: vi.fn() },
     storageLocation: { findUnique: vi.fn() },
     inventoryInstance: { findUnique: vi.fn(), findFirst: vi.fn(), create: vi.fn(), update: vi.fn() },
     itemRegistrationRequest: { create: vi.fn(), findUnique: vi.fn(), update: vi.fn(), updateMany: vi.fn() },
@@ -30,6 +30,8 @@ import { PATCH as review } from "../src/app/api/admin/registration-requests/rout
 import { PATCH as edit } from "../src/app/api/inventory/[id]/route";
 import { POST as stocktakeRegister } from "../src/app/api/stocktake/register-item/route";
 import { POST as addStock } from "../src/app/api/inventory/route";
+import { validJan } from "../src/lib/zaico-import";
+import { POST as issueBarcode } from "../src/app/api/items/system-barcode/route";
 
 const item = { id: "item", name: "商品", janCode: "4901234567894" };
 const existing = { id: "stock", itemId: "item", quantity: 2, actualQuantity: 2, expirationDate: "2026-12", expirationManagementStatus: "ACTIVE", storageLocationId: null, item };
@@ -55,7 +57,44 @@ beforeEach(() => {
   mocks.db.stocktakeTarget.upsert.mockResolvedValue({ expectedQuantity: 2, inventoryInstance: { ...existing, item } });
 });
 
+describe("legacy system code replacement", () => {
+  const legacy = { id: "item", name: "商品", janCode: null, systemBarcode: "SYS-C0632B49480B4493B4" };
+  it("preserves an old code unless replacement is explicitly requested", async () => {
+    mocks.db.item.findUnique.mockResolvedValue(legacy);
+    expect((await issueBarcode(request({itemId:"item"}))).status).toBe(200);
+    expect(mocks.db.item.update).not.toHaveBeenCalled();
+  });
+  it("replaces only the confirmed legacy code without altering stock rows", async () => {
+    mocks.db.item.findUnique.mockResolvedValue(legacy);
+    mocks.db.item.update.mockImplementation(async ({data})=>({...legacy,...data}));
+    expect((await issueBarcode(request({itemId:"item",replaceLegacy:true,expectedBarcode:legacy.systemBarcode}))).status).toBe(200);
+    const call=mocks.db.item.update.mock.calls[0][0];
+    expect(call.where.AND).toContainEqual({systemBarcode:legacy.systemBarcode});
+    expect(Object.keys(call.data)).toEqual(["systemBarcode"]);
+    expect(call.data.systemBarcode).toMatch(/^20\d{11}$/);
+    expect(validJan(call.data.systemBarcode)).toBe(true);
+    expect(mocks.db.inventoryInstance.update).not.toHaveBeenCalled();
+    expect(mocks.log.mock.calls[0][0].detail.before.systemBarcode).toBe(legacy.systemBarcode);
+  });
+  it("rejects replacement if another device changed the code", async () => {
+    mocks.db.item.findUnique.mockResolvedValue({...legacy,systemBarcode:"2001234567893"});
+    expect((await issueBarcode(request({itemId:"item",replaceLegacy:true,expectedBarcode:legacy.systemBarcode}))).status).toBe(409);
+    expect(mocks.db.item.update).not.toHaveBeenCalled();
+  });
+  it("does not replace a manufacturer JAN", async () => {
+    mocks.db.item.findUnique.mockResolvedValue(item);
+    expect((await issueBarcode(request({itemId:"item",replaceLegacy:true,expectedBarcode:legacy.systemBarcode}))).status).toBe(409);
+    expect(mocks.db.item.update).not.toHaveBeenCalled();
+  });
+});
+
 describe("shared JAN with independent inventory IDs", () => {
+  it("issues a numeric 13-digit system JAN when stocktake registers an uncoded item", async () => {
+    expect((await stocktakeRegister(request({ ...registration, janCode: "", sessionId: "session", storageLocationId: "shelf" }))).status).toBe(201);
+    const code = mocks.db.item.create.mock.calls[0][0].data.systemBarcode;
+    expect(code).toMatch(/^20\d{11}$/);
+    expect(validJan(code)).toBe(true);
+  });
   it("creates a new stocktake inventory even when an identical lot already exists", async () => {
     mocks.db.item.findFirst.mockResolvedValue(item);
     mocks.db.inventoryInstance.findFirst.mockResolvedValue(existing);

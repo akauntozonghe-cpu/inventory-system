@@ -1,3 +1,4 @@
+import { generateSystemJan } from "@/lib/system-jan";
 import {inspectionInventoryWhere} from "@/lib/product-scope";
 import { randomUUID } from "node:crypto";
 import { scheduleDeviceNotifications } from "@/lib/device-push";
@@ -9,16 +10,11 @@ import { prisma } from "@/lib/prisma";
 import { getAdminElevation, requireAdmin } from "@/lib/auth";
 
 
-function createSystemBarcode() {
-  const timestamp = Date.now().toString(36).toUpperCase();
-  const random = Math.random().toString(36).slice(2, 8).toUpperCase();
 
-  return `SYS-${timestamp}-${random}`;
-}
 
 async function issueUniqueSystemBarcode() {
   for (let attempt = 0; attempt < 10; attempt += 1) {
-    const barcode = createSystemBarcode();
+    const barcode = generateSystemJan();
 
     const exists = await prisma.item.findUnique({
       where: {

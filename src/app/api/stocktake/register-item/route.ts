@@ -1,7 +1,7 @@
+import { generateSystemJan } from "@/lib/system-jan";
 import { findCatalogItem } from "@/lib/catalog-registration";
 import { ensureClassification } from "@/lib/item-links";
 import { unitValidationMessage } from "@/lib/unit";
-import { randomUUID } from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { normalizeExpirationDate } from "@/lib/expiry-management";
@@ -39,12 +39,7 @@ function getQuantity(value: unknown) {
     : null;
 }
 
-function createSystemBarcode() {
-  return `SYS-${randomUUID()
-    .replace(/-/g, "")
-    .slice(0, 18)
-    .toUpperCase()}`;
-}
+
 
 function getErrorCode(error: unknown) {
   return error instanceof Error
@@ -216,7 +211,7 @@ export async function POST(request: NextRequest) {
               janCode,
               systemBarcode:
                 systemBarcode ??
-                (!janCode ? createSystemBarcode() : null),
+                (!janCode ? generateSystemJan() : null),
               managementCode,
               managementGroupCode: normalizeIdentifier(body.managementGroupCode, 100),
               manufacturer: normalizeOptionalText(body.manufacturer, 200),
