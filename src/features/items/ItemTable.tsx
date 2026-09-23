@@ -3,7 +3,7 @@ import InventoryStatusBadges from "@/components/inventory/InventoryStatusBadges"
 import { useAppAccess } from "@/components/auth/AppAccessProvider";
 import Image from "next/image";
 import ProductIdentity from "@/components/inventory/ProductIdentity";
-import StockStateSummary from "@/components/inventory/StockStateSummary";
+
 import { displayUnit } from "@/lib/unit";
 
 import Pagination from "@/components/common/Pagination";
@@ -244,14 +244,14 @@ export default function ItemTable({ items, reload, isAdmin, filterKey }: Props) 
 
               {selectedItems.length > 0 && <button onClick={() => setSelectedIds([])} className="rounded-xl border px-3 py-2 font-bold">選択解除</button>}
               {isAdmin && (
-                <details className="rounded-xl border p-3"><summary className="cursor-pointer font-bold">管理操作</summary><div className="mt-2 flex flex-wrap gap-2">
+                <details className="rounded-xl border p-3"><summary className="cursor-pointer font-bold">高度な操作：選択したJANの全在庫を一括変更</summary><div className="mt-2 flex flex-wrap gap-2">
                   <button disabled={!selectedItems.length} onClick={()=>openBulkDialog("EXCLUDE_INSPECTION")} className="rounded-xl border p-3 font-bold">点検対象外にする</button><button disabled={!selectedItems.length} onClick={()=>openBulkDialog("INCLUDE_INSPECTION")} className="rounded-xl border p-3 font-bold">点検対象に戻す</button><button
                     type="button"
                     disabled={selectedItems.length === 0}
                     onClick={() => openBulkDialog("ARCHIVE")}
                     className="rounded-xl bg-amber-500 px-4 py-3 font-bold text-white transition hover:bg-amber-600 disabled:cursor-not-allowed disabled:bg-slate-300"
                   >
-                    選択商品を廃止
+                    選択したJANの全在庫を廃止
                   </button>
 
                   <button
@@ -260,7 +260,7 @@ export default function ItemTable({ items, reload, isAdmin, filterKey }: Props) 
                     onClick={() => openBulkDialog("RESTORE")}
                     className="rounded-xl bg-emerald-600 px-4 py-3 font-bold text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:bg-slate-300"
                   >
-                    選択商品を復元
+                    選択したJANの全在庫を復元
                   </button>
                 </div><p className="mt-2 text-sm text-slate-500">廃止しても在庫・棚卸履歴は残ります。</p></details>
               )}
@@ -274,18 +274,6 @@ export default function ItemTable({ items, reload, isAdmin, filterKey }: Props) 
         <Pagination {...pagination} />
         <div className="grid gap-4 md:grid-cols-2">
           {pagination.visible.map((item) => {
-
-            const category =
-              [item.majorCategory, item.minorCategory]
-                .filter(Boolean)
-                .join(" / ") || "-";
-            const locationNames = Array.from(
-              new Set(
-                item.inventoryInstances
-                  .map((inventory) => inventory.storageLocation?.name)
-                  .filter((name): name is string => Boolean(name))
-              )
-            );
 
             return (
               <article
@@ -310,7 +298,7 @@ export default function ItemTable({ items, reload, isAdmin, filterKey }: Props) 
                   <div className="min-w-0 flex-1">
                     <div className="flex flex-wrap items-start justify-between gap-2">
                       <h2 className="break-words text-lg font-black text-slate-900">
-                        <Link href={`/items/${item.id}`} prefetch={false} className="after:absolute after:inset-0 after:rounded-2xl focus:outline-none" aria-label={`${item.name}の在庫詳細を開く`}>{item.name}</Link>
+                        <Link href={`/items/${item.id}`} prefetch={false} className="underline decoration-slate-300 underline-offset-4" aria-label={`${item.name}の在庫詳細を開く`}>{item.name}</Link>
                       </h2>
 
                       <div className="flex gap-2">
@@ -324,44 +312,15 @@ export default function ItemTable({ items, reload, isAdmin, filterKey }: Props) 
                       </div>
                     </div>
 
-                    <div className="flex items-start gap-3">{item.photos?.[0]&&<Image unoptimized width={120} height={100} src={"/api/items/"+item.id+"/photos/"+item.photos[0].id+"?thumbnail=1"} alt={item.name+"の写真"} className="h-16 w-20 shrink-0 rounded-lg bg-slate-50 object-contain"/>}<div className="min-w-0 flex-1"><InventoryStatusBadges item={item} stocks={item.inventoryInstances}/><ProductIdentity item={item}/></div></div>{item.inspectionExcluded&&<p className="rounded-xl bg-amber-50 p-2 text-sm">点検対象外：{item.inspectionExclusionReason}</p>}
-                    <StockStateSummary showLink={false} stocks={item.inventoryInstances} defaultUnit={item.defaultUnit} itemId={item.id}/>
-                    <dl className="mt-4 grid grid-cols-2 gap-3 text-sm">
-                      <div>
-                        <dt className="font-bold text-slate-500">保管場所</dt>
-                        <dd className="mt-1 text-slate-800">
-                          {locationNames.join("、") || "未設定"}
-                        </dd>
-                      </div>
-                      <div>
-                        <dt className="font-bold text-slate-500">分類</dt>
-                        <dd className="mt-1 text-slate-800">{category}</dd>
-                      </div>
-
-                      <div>
-                        <dt className="font-bold text-slate-500">メーカー</dt>
-                        <dd className="mt-1 text-slate-800">
-                          {item.manufacturer ?? "-"}
-                        </dd>
-                      </div>
-
-
-
-                      <div>
-                        <dt className="font-bold text-slate-500">基本単位</dt>
-                        <dd className="mt-1 text-slate-800">
-                          {displayUnit(item.defaultUnit)}
-                        </dd>
-                      </div>
-
-                      <div>
-                        <dt className="font-bold text-slate-500">登録日時</dt>
-                        <dd className="mt-1 text-slate-800">
-                          {new Date(item.createdAt).toLocaleString("ja-JP")}
-                        </dd>
-                      </div>
-                    </dl>
-
+                    <div className="flex items-start gap-3">{item.photos?.[0]&&<Image unoptimized width={120} height={100} src={"/api/items/"+item.id+"/photos/"+item.photos[0].id+"?thumbnail=1"} alt={item.name+"の写真"} className="h-16 w-20 shrink-0 rounded-lg bg-slate-50 object-contain"/>}<div className="min-w-0 flex-1"><InventoryStatusBadges item={item} stocks={item.inventoryInstances}/><ProductIdentity item={item}/></div></div>
+                    <p className="mt-3 font-bold">個別の在庫 {item.inventoryInstances.length}件</p>
+                    <div className="mt-2 space-y-2">{item.inventoryInstances.map(stock=><Link key={stock.id} href={`/items/${item.id}?inventoryId=${encodeURIComponent(stock.id)}`} className="block rounded-xl border border-slate-200 p-3 hover:bg-blue-50">
+                      <p className="font-bold">Lot：{stock.lotNo || "未設定"} ／ 期限：{stock.expirationDate ? stock.expirationDate.slice(0,10) : stock.expirationManagementStatus === "NO_EXPIRY" ? "期限なし" : "未設定"}</p>
+                      <p className="text-sm">分類：{[stock.majorCategory,stock.minorCategory].filter(Boolean).join(" ／ ") || "未設定"} ／ 場所：{stock.storageLocation?.name || "未設定"}</p>
+                      <p className="mt-1 font-bold">{stock.quantity} {displayUnit(stock.unit,item.defaultUnit)} ／ {stock.status || "在庫"} ／ 点検：{stock.status === "廃止" || item.isArchived || (stock.inspectionExcluded ?? item.inspectionExcluded) ? "対象外" : "対象"}</p>
+                      <p className="break-all text-xs text-slate-500">在庫No.：{stock.id}</p>
+                      <span className="mt-1 inline-block text-sm font-bold text-blue-700">この在庫の編集・廃止・点検設定 →</span>
+                    </Link>)}</div>
                     {item.isArchived && item.archiveReason && (
                       <p className="mt-4 rounded-xl bg-amber-50 px-3 py-2 text-sm text-amber-800">
                         廃止理由：{item.archiveReason}

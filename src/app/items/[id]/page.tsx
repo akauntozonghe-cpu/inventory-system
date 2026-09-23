@@ -570,7 +570,7 @@ export default function ItemDetailPage() {
             </h1>
 
             <p className="mt-2 text-sm text-slate-600">
-              保管場所・数量を確認し、変更するときは編集を開いてください。
+              対象の明細を選んで編集・廃止・点検設定を行えます。
             </p>
           </div>
 
@@ -585,13 +585,10 @@ export default function ItemDetailPage() {
           </div>
         </header>
 
-        <section aria-label="対象の在庫" className="mb-5 rounded-2xl border border-slate-200 bg-white p-4">
-          <h2 className="text-xl font-black">{focusedInventory?"開いている在庫":"この商品の在庫"}</h2>
-          <p className="my-2 text-sm">{[item.majorCategory,item.minorCategory].filter(Boolean).join(" ／ ")} · {item.inventoryInstances.length}明細</p>
-          {item.inventoryInstances.length>1&&<label className="block font-bold">Lot・保管場所で在庫を選ぶ<select aria-label="Lot・保管場所で在庫を選ぶ" value={focusedInventory} onChange={event=>setFocusedInventory(event.target.value)} className="mt-2 w-full rounded-xl border p-3"><option value="">すべての在庫</option>{item.inventoryInstances.map(row=><option key={row.id} value={row.id}>{row.storageLocation?.name||"場所未設定"} ／ Lot {row.lotNo||"なし"} ／ {row.quantity} {displayUnit(row.unit,item.defaultUnit)} ／ {row.status}</option>)}</select></label>}
-          {focusedInventory&&!inventoryInstances.length&&<p role="alert" className="my-3 font-bold text-red-700">指定された在庫が見つかりません。上の選択から最新の在庫を確認してください。</p>}
-          <div className="mt-3 max-h-80 space-y-2 overflow-auto">{inventoryInstances.map(row=><article key={row.id} className="rounded-xl bg-teal-50 p-3"><div className="flex flex-wrap items-center justify-between gap-3"><div><p className="text-lg font-black">{row.storageLocation?.name||"保管場所未設定"} ／ Lot {row.lotNo||"なし"}</p><InventoryStatusBadges item={{isArchived:item.isArchived}} stocks={[row]}/><p className="mt-1">状態：{row.status} ／ 棚卸：{row.stocktakeStatus}</p><p className="mt-1 text-2xl font-black">{row.quantity} {displayUnit(row.unit,item.defaultUnit)}</p></div><button className="rounded-xl border bg-white p-3 font-bold" onClick={()=>{setFocusedInventory(row.id);requestAnimationFrame(()=>document.getElementById("inventory-"+row.id)?.scrollIntoView({behavior:"smooth",block:"start"}));}}>この在庫の明細へ</button></div></article>)}</div>
-          <StockStateSummary stocks={inventoryInstances} defaultUnit={item.defaultUnit} itemId={item.id} inventoryId={focusedInventory||undefined}/>
+        <section aria-label="JANの在庫明細" className="mb-4 rounded-xl bg-white p-4">
+          <ProductIdentity item={item}/>
+          <p className="mt-2 font-bold">独立した在庫 {item.inventoryInstances.length}件</p>
+          <p className="text-sm text-slate-600">同じJANの在庫を一覧にしています。分類・Lot・期限・保管場所・点検設定は各明細で管理します。</p>
         </section>
         <FeedbackToast
           message={notice}
@@ -707,8 +704,8 @@ export default function ItemDetailPage() {
               </fieldset></form>
             </Modal>
           ) : (
-            <section className="rounded-3xl bg-white p-5 shadow-sm sm:p-7">
-              <div className="grid grid-cols-[100px_minmax(0,1fr)] items-start gap-3"><ProductPhotos itemId={item.id} canEdit={canEditItem} compact/><div className="min-w-0"><div className="flex flex-wrap items-center justify-between gap-2"><h2 className="text-xl font-black text-slate-950">商品情報</h2>{canEditItem&&<button onClick={startItemEdit} className="rounded-lg bg-blue-700 px-3 py-2 font-bold text-white">商品情報を編集</button>}</div><InventoryStatusBadges item={item} stocks={inventoryInstances}/><ProductIdentity item={item}/>
+            <details className="rounded-xl bg-white p-4"><summary className="cursor-pointer font-bold">JAN共通の商品名・写真・登録時の既定値</summary>
+              <div className="mt-3 grid grid-cols-[100px_minmax(0,1fr)] items-start gap-3"><ProductPhotos itemId={item.id} canEdit={canEditItem} compact/><div className="min-w-0"><div className="flex flex-wrap items-center justify-between gap-2"><h2 className="text-xl font-black text-slate-950">商品情報</h2>{canEditItem&&<button onClick={startItemEdit} className="rounded-lg bg-blue-700 px-3 py-2 font-bold text-white">商品情報を編集</button>}</div><InventoryStatusBadges item={item} stocks={inventoryInstances}/><ProductIdentity item={item}/>
 
               <dl className="mt-3 grid grid-cols-2 gap-3 lg:grid-cols-3">
 
@@ -741,7 +738,7 @@ export default function ItemDetailPage() {
                   </dd>
                 </div>
               </dl></div></div>
-            </section>
+            </details>
           )}
 
           {can("LABEL_PRINT")&&<section className="rounded-xl border bg-white p-3"><button type="button" aria-expanded={showLabels} onClick={()=>setShowLabels(value=>!value)} className="min-h-11 font-bold">JANラベルの表示・印刷 {showLabels?"を閉じる":"を開く"}</button>{showLabels&&<SystemBarcodeLabel
@@ -758,7 +755,7 @@ export default function ItemDetailPage() {
                   在庫詳細
                 </h2>
                 <p className="mt-1 text-sm text-slate-600">
-                  保管場所・ロット・使用期限ごとに分かれた在庫です。
+                  各枠が独立した在庫です。テスト登録や誤登録も、その明細だけ廃止・点検対象外にできます。
                 </p>
               </div>
 
@@ -767,10 +764,10 @@ export default function ItemDetailPage() {
               </span>
             </div>
 
-            {focusedInventory&&<p className="my-4 rounded-xl bg-blue-50 p-3 font-bold">選んだ在庫だけを表示しています。Lot・保管場所を確認して、この明細を編集してください。<button className="ml-3 underline" onClick={()=>setFocusedInventory("")}>この商品の全在庫を表示</button><Link href="/admin/recovery" className="ml-3 underline">点検へ戻って再確認</Link></p>}
+            {focusedInventory&&<p className="my-4 rounded-xl bg-blue-50 p-3 font-bold">選んだ在庫だけを表示しています。Lot・保管場所を確認して、この明細を編集してください。<Link className="ml-3 underline" href={`/items/${item.id}`}>同じJANの全在庫を表示</Link></p>}
             {inventoryInstances.length === 0 ? (
               <div className="mt-5 rounded-2xl bg-slate-100 p-7 text-center text-slate-600">
-                登録されている在庫はありません。
+                {focusedInventory ? "指定された在庫が見つかりません。同じJANの全在庫から対象を確認してください。" : "登録されている在庫はありません。"}
               </div>
             ) : (
               <div className="mt-5 space-y-4">
@@ -1027,7 +1024,7 @@ export default function ItemDetailPage() {
                           </div>
                         </form>
                       ) : (
-                        <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+                        <div className="space-y-4">
                           <div>
                             <div className="flex flex-wrap items-center gap-2">
                               <h3 className="text-lg font-black text-slate-950">
@@ -1048,7 +1045,7 @@ export default function ItemDetailPage() {
                             <dl className="mt-4 grid gap-3 text-sm sm:grid-cols-2 lg:grid-cols-4">
                               <div>
                                 <dt className="font-bold text-slate-500">この在庫の分類</dt>
-                                <dd className="mt-1 text-slate-800">{[inventory.majorCategory ?? item.majorCategory, inventory.minorCategory ?? item.minorCategory].filter(Boolean).join(" ／ ") || "未設定"}</dd>
+                                <dd className="mt-1 text-slate-800">{[inventory.majorCategory, inventory.minorCategory].filter(Boolean).join(" ／ ") || "未設定"}</dd>
                               </div>
                               <div>
                                 <dt className="font-bold text-slate-500">在庫システムNo.</dt>
@@ -1068,7 +1065,7 @@ export default function ItemDetailPage() {
                                   使用期限
                                 </dt>
                                 <dd className="mt-1 text-slate-800">
-                                  {!inventory.expirationDate && inventory.expirationManagementStatus === "NO_EXPIRY" ? "期限なし" : formatDate(inventory.expirationDate)}<span className="mt-1 block font-bold">期限管理：{expiryPolicyLabels[expiryPolicy(inventory.expirationDate, inventory.expirationManagementStatus)]}</span><Link href={`/expiry?itemId=${item.id}`} className="underline">期限管理を設定</Link>
+                                  {!inventory.expirationDate && inventory.expirationManagementStatus === "NO_EXPIRY" ? "期限なし" : formatDate(inventory.expirationDate)}<span className="mt-1 block font-bold">期限管理：{expiryPolicyLabels[expiryPolicy(inventory.expirationDate, inventory.expirationManagementStatus)]}</span><Link href={`/expiry?itemId=${item.id}&inventoryId=${encodeURIComponent(inventory.id)}`} className="underline">期限管理を設定</Link>
                                 </dd>
                               </div>
 
@@ -1093,7 +1090,7 @@ export default function ItemDetailPage() {
                           </div>
 
                           <StockStateSummary stocks={[inventory]} defaultUnit={item.defaultUnit} itemId={item.id} inventoryId={inventory.id}/>
-                          <div className="flex flex-wrap items-end gap-3 sm:flex-col sm:items-end">
+                          <div className="flex flex-wrap items-start gap-3">
                             <div className="rounded-2xl bg-blue-50 px-5 py-3 text-right">
                               <p className="text-sm font-bold text-slate-500">
                                 現在在庫
@@ -1113,6 +1110,7 @@ export default function ItemDetailPage() {
                               </p>
                             )}
 
+                            <Link href={`/history?inventoryId=${encodeURIComponent(inventory.id)}`} className="rounded-xl border p-3 font-bold">この在庫の数量履歴</Link>
                             <InventoryLifecycle stock={inventory} groupExcluded={item.inspectionExcluded === true} canManage={accessUser?.role === "ADMIN"} onSaved={() => loadItem(true)}/>
                             {canEditInventory && (
                               <button

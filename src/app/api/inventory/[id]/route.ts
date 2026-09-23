@@ -478,6 +478,8 @@ export async function PATCH(
         reason,
         memo: emptyToNull(body.memo),
         inventoryInstanceId: id,
+        itemId: existing.itemId,
+        janCode: existing.item.janCode,
         authorization: authorization.authorization,
         itemName: existing.item.name,
         before,

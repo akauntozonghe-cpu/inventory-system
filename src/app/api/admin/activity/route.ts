@@ -91,7 +91,7 @@ export async function GET(request: NextRequest) {
           operationAccess: true,
           updatedAt: true,
           session: { select: { id: true, title: true, operator: true } },
-          inventoryInstance: { select: { item: { select: { id: true, name: true } } } },
+          inventoryInstance: { select: { id: true, lotNo: true, expirationDate: true, majorCategory: true, minorCategory: true, storageLocation: { select: { name: true } }, item: { select: { id: true, name: true, janCode: true, systemBarcode: true } } } },
         },
       }),
       prisma.inventoryEvent.findMany({
@@ -106,7 +106,7 @@ export async function GET(request: NextRequest) {
           reason: true,
           createdAt: true,
           performedBy: { select: { displayName: true } },
-          inventoryInstance: { select: { item: { select: { id: true, name: true } } } },
+          inventoryInstance: { select: { id: true, lotNo: true, expirationDate: true, majorCategory: true, minorCategory: true, storageLocation: { select: { name: true } }, item: { select: { id: true, name: true, janCode: true, systemBarcode: true } } } },
         },
       }),
       prisma.adminActionLog.findMany({

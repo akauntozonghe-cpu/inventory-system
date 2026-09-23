@@ -31,6 +31,7 @@ export type Item = {
     expirationAlertDays?: number;
     createdAt?: string;
     status?: string;
+    inspectionExcluded?: boolean | null;
     unit: string | null;
     stocktakeStatus: string;
     storageLocation: { id: string; name: string } | null;

@@ -58,6 +58,7 @@ export class ItemRepository {
             expirationAlertDays: true,
             createdAt: true,
             status: true,
+            inspectionExcluded: true,
             unit: true,
             marketplaceListings: {select:marketplaceStockSelect},
             allocationType: true,

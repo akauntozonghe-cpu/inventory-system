@@ -36,7 +36,7 @@ export async function PATCH(request: NextRequest, context: { params: Promise<{ i
       if (changed.count !== 1) throw new Error("STOCK_CHANGED");
       await tx.adminActionLog.create({ data: {
         adminUserId: auth.user!.id, action: `INVENTORY_${action}`, route: `/api/inventory/${id}/lifecycle`,
-        detail: JSON.parse(JSON.stringify({ reason, inventoryInstanceId: id, itemId: stock.itemId, itemName: stock.item.name,
+        detail: JSON.parse(JSON.stringify({ reason, inventoryInstanceId: id, itemId: stock.itemId, itemName: stock.item.name, janCode: stock.item.janCode, systemBarcode: stock.item.systemBarcode,
           lotNo: stock.lotNo, expirationDate: stock.expirationDate, majorCategory: stock.majorCategory, minorCategory: stock.minorCategory, storageLocationId: stock.storageLocationId,
           before: { status: stock.status, inspectionExcluded: stock.inspectionExcluded, inspectionExclusionReason: stock.inspectionExclusionReason }, after: changes,
         })) as Prisma.InputJsonValue,

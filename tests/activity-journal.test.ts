@@ -40,4 +40,22 @@ describe("activity journal", () => {
   it("uses Japanese time regardless of the viewing device timezone", () => {
     expect(journalTime("2026-09-13T15:05:00Z")).toBe("00:05");
   });
+  it("keeps same-JAN stock events separate and links to the exact inventory", () => {
+    const shared = {id:"item", name:"同じ商品", janCode:"4901234567894"};
+    const entries = ["stock-a", "stock-b"].map((id,index) => ({...activity.inventoryEvents[0], id, inventoryInstance:{id, lotNo:"LOT-"+index, expirationDate:"2027-0"+(index+1), majorCategory:"分類"+index, minorCategory:null, storageLocation:{name:"場所"+index}, item:shared}}));
+    const rows = journalRows({...activity,items:[],records:[],adminActions:[],inventoryEvents:entries});
+    expect(rows).toHaveLength(2);
+    rows.forEach((row,index) => {
+      expect(row.detail).toContain("JAN：4901234567894");
+      expect(row.href).toBe("/items/item?inventoryId="+entries[index].id);
+      expect(row.fields).toContainEqual({label:"Lot",value:"LOT-"+index});
+      expect(row.fields).toContainEqual({label:"大分類",value:"分類"+index});
+    });
+  });
+  it("links a lifecycle audit to the selected stock rather than all stock sharing its JAN", () => {
+    const rows = journalRows({...activity,items:[],records:[],inventoryEvents:[],adminActions:[{...activity.adminActions[0],action:"INVENTORY_ARCHIVE",detail:{itemId:"item",inventoryInstanceId:"test-stock",janCode:"4901234567894",lotNo:"TEST",before:{status:"在庫中"},after:{status:"廃止"}}}]});
+    expect(rows[0].href).toBe("/items/item?inventoryId=test-stock");
+    expect(rows[0].subject).toBe("個別在庫を廃止");
+    expect(rows[0].detail).toContain("JAN：4901234567894");
+  });
 });

@@ -2,6 +2,7 @@
 import {useLiveRefresh} from "@/hooks/useLiveRefresh";
 import {fetchFresh} from "@/lib/fetch-fresh";
 
+import Link from "@/components/auth/PermissionLink";
 import { useEffect, useState } from "react";
 import { displayActionLabel } from "@/lib/display-labels";
 
@@ -15,8 +16,9 @@ type History = {
   createdAt: string;
 
   inventoryInstance: {
+    id: string; lotNo: string | null; expirationDate: string | null; majorCategory: string | null; minorCategory: string | null; storageLocation: {name:string} | null;
     item: {
-      name: string;
+      id: string; name: string; janCode: string | null; systemBarcode: string | null;
     };
   };
 };
@@ -27,7 +29,7 @@ export default function HistoryPage() {
 
   const fetchHistories = async () => {
     const res =
-      await fetchFresh("/api/history");
+      await fetchFresh("/api/history" + window.location.search);
 
     if(!res.ok)throw new Error("HISTORY_FETCH_FAILED");
     const data = await res.json();
@@ -47,6 +49,7 @@ export default function HistoryPage() {
         履歴
       </h1>
 
+      <Link href="/items" className="mb-4 inline-block underline">在庫一覧へ</Link>
       <div className="border rounded overflow-hidden">
         <table className="w-full">
           <thead className="bg-gray-100">
@@ -78,6 +81,9 @@ export default function HistoryPage() {
                       .inventoryInstance
                       .item.name
                   }
+                  <p>JAN：{history.inventoryInstance.item.janCode || history.inventoryInstance.item.systemBarcode || "未設定"}</p>
+                  <p>Lot：{history.inventoryInstance.lotNo || "未設定"} ／ 期限：{history.inventoryInstance.expirationDate?.slice(0,10) || "なし・未設定"} ／ 分類：{[history.inventoryInstance.majorCategory,history.inventoryInstance.minorCategory].filter(Boolean).join("・") || "未設定"} ／ 場所：{history.inventoryInstance.storageLocation?.name || "未設定"}</p>
+                  <Link className="break-all underline" href={`/items/${history.inventoryInstance.item.id}?inventoryId=${encodeURIComponent(history.inventoryInstance.id)}`}>在庫No.：{history.inventoryInstance.id}の明細へ</Link>
                 </td>
 
                 <td className="p-3 border-b">

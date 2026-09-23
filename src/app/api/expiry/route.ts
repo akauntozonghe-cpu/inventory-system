@@ -21,7 +21,7 @@ export async function GET(request: NextRequest) {
     const [inventories, missingMajor, missingMinor, missingLocation] = await Promise.all([prisma.inventoryInstance.findMany({
       where: activeInventoryWhere,
       select: {
-        id: true, expirationDate: true, expirationAlertDays: true,
+        id: true, majorCategory: true, minorCategory: true, expirationDate: true, expirationAlertDays: true,
         expirationManagementStatus: true, expirationNote: true, expirationReviewedAt: true,
         quantity: true, unit: true, lotNo: true, allocationType: true,
         item: { select: { id: true, name: true, janCode: true, systemBarcode: true, majorCategory: true, minorCategory: true } },
