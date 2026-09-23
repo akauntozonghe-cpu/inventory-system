@@ -1,4 +1,5 @@
 "use client";
+import ImeInput from "@/components/common/ImeInput";
 import {useLiveRefresh} from "@/hooks/useLiveRefresh";
 import {fetchFresh} from "@/lib/fetch-fresh";
 
@@ -443,7 +444,7 @@ export default function UserManagementPage() {
                   ログインID
                 </label>
 
-                <input
+                <ImeInput
                   id="username"
                   value={form.username}
                   onChange={(event) =>
@@ -467,7 +468,7 @@ export default function UserManagementPage() {
                   表示名
                 </label>
 
-                <input
+                <ImeInput
                   id="displayName"
                   value={form.displayName}
                   onChange={(event) =>
@@ -502,7 +503,7 @@ export default function UserManagementPage() {
                   </button>
                 </div>
 
-                <input
+                <ImeInput
                   id="password"
                   type="text"
                   value={form.password}
@@ -677,7 +678,7 @@ export default function UserManagementPage() {
                                 key={feature}
                                 className="flex cursor-pointer items-start gap-3 rounded-xl border border-slate-200 p-3 hover:bg-slate-50"
                               >
-                                <input
+                                <ImeInput
                                   type="checkbox"
                                   checked={user.featurePermissions.includes(feature)}
                                   disabled={busy || !user.isActive}
@@ -738,7 +739,7 @@ export default function UserManagementPage() {
                 </button>
               </div>
 
-              <input
+              <ImeInput
                 type="text"
                 value={temporaryPassword}
                 onChange={(event) =>
@@ -756,7 +757,7 @@ export default function UserManagementPage() {
                 仮パスワード（確認）
               </label>
 
-              <input
+              <ImeInput
                 type="text"
                 value={confirmTemporaryPassword}
                 onChange={(event) =>

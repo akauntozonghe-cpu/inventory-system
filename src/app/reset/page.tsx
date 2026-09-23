@@ -1,4 +1,5 @@
 "use client";
+import ImeInput from "@/components/common/ImeInput";
 
 
 import { useState } from "react";
@@ -146,7 +147,7 @@ export default function ResetPage() {
             {CONFIRMATION_TEXT}
           </code>
 
-          <input
+          <ImeInput
             value={confirmation}
             onChange={(event) =>
               setConfirmation(event.target.value)

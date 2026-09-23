@@ -10,6 +10,7 @@ import { databaseErrorCode, isRetryableDatabaseError, withDatabaseRetry } from "
 import { janCodeValidationMessage, normalizeDisplayText, normalizeIdentifier, normalizeJanCode, normalizeOptionalText } from "@/lib/input-normalization";
 
 type RegisterItemBody = {
+  generateSystemBarcode?: unknown;
   sessionId?: unknown;
   name?: unknown;
   janCode?: unknown;
@@ -191,7 +192,7 @@ export async function POST(request: NextRequest) {
           });
         }
 
-        if (!item && !managementCode && !janCode && !systemBarcode) {
+        if (!item && !managementCode && !janCode && !systemBarcode && body.generateSystemBarcode !== true) {
           item = await transaction.item.findFirst({
             where: {
               name: { equals: name, mode: "insensitive" },

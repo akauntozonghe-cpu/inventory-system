@@ -1,4 +1,5 @@
 "use client";
+import ImeInput from "@/components/common/ImeInput";
 
 import { FormEvent, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
@@ -110,7 +111,7 @@ export default function PasswordPage() {
           {!resetMode && (
             <label className="block font-bold">
               現在のパスワード
-              <input
+              <ImeInput
                 type="password"
                 value={currentPassword}
                 onChange={(event) => setCurrentPassword(event.target.value)}
@@ -123,7 +124,7 @@ export default function PasswordPage() {
 
           <label className="block font-bold">
             新しいパスワード
-            <input
+            <ImeInput
               type="password"
               value={newPassword}
               onChange={(event) => setNewPassword(event.target.value)}
@@ -137,7 +138,7 @@ export default function PasswordPage() {
 
           <label className="block font-bold">
             新しいパスワード（確認）
-            <input
+            <ImeInput
               type="password"
               value={confirmPassword}
               onChange={(event) => setConfirmPassword(event.target.value)}

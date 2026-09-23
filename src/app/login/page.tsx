@@ -1,4 +1,5 @@
 "use client";
+import ImeInput from "@/components/common/ImeInput";
 
 import {notificationReturnPath} from "@/lib/page-flow";
 import { type FormEvent, useState } from "react";
@@ -142,7 +143,7 @@ export default function LoginPage() {
           <label className="block font-bold text-slate-800">
             ログインID
 
-            <input
+            <ImeInput
               value={username}
               onChange={(event) => setUsername(asciiOnly(event.target.value))}
               className="mt-2 w-full rounded-xl border border-slate-300 p-3 font-normal outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
@@ -160,7 +161,7 @@ export default function LoginPage() {
           <label className="block font-bold text-slate-800">
             パスワード
 
-            <input
+            <ImeInput
               type="password"
               value={password}
               onChange={(event) => setPassword(event.target.value)}

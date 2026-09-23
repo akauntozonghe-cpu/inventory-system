@@ -1,4 +1,5 @@
 "use client";
+import ImeInput from "@/components/common/ImeInput";
 import { useId, useState } from "react";
 import FieldScanButton,{type FieldScanValue} from "./FieldScanButton";
 
@@ -17,7 +18,7 @@ export default function SelectOrCreate({ value, options, onChange, label, requir
       {unique.map((option) => <option key={option} value={option}>{option}</option>)}
       <option value="__CREATE__">＋ 新しい{label}を追加</option>
     </select>{scanKind&&<FieldScanButton kind={scanKind} onRead={value=>{setCreating(false);if(onScan)onScan(value);else onChange(value.value);}}/>}</div>
-    {custom && <><input id={id} aria-label={`新しい${label}`} value={value} maxLength={label.includes("単位") ? 30 : 100} required={required}
+    {custom && <><ImeInput id={id} aria-label={`新しい${label}`} value={value} maxLength={label.includes("単位") ? 30 : 100} required={required}
       onChange={(event) => onChange(event.target.value)} onBlur={() => onChange(value.normalize("NFKC").trim())}
       placeholder={`新しい${label}を入力`} className="w-full rounded-xl border border-blue-400 px-4 py-3" />
       <p className="text-xs text-slate-600">商品を保存すると、他の端末でも選べるようになります。</p></>}

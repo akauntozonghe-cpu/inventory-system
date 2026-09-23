@@ -1,3 +1,4 @@
+import { generateSystemJan } from "@/lib/system-jan";
 import { requireEditAccess } from "@/lib/edit-access";
 import {marketplaceStockSelect} from "@/lib/stock-state";
 import { syncItemLinks } from "@/lib/item-links";
@@ -15,6 +16,7 @@ type Params = {
 };
 
 type ItemInput = {
+  generateSystemBarcode?: unknown;
   name?: unknown;
   janCode?: unknown;
   systemBarcode?: unknown;
@@ -274,6 +276,12 @@ export async function PUT(
     }
 
     data = toItemData({ ...before, ...body });
+    if (body.generateSystemBarcode === true) {
+      if (data.janCode) return NextResponse.json({message:"既存JANと自動採番は同時に選べません。"},{status:400});
+      data.systemBarcode = before.systemBarcode || generateSystemJan();
+    } else if (data.systemBarcode && data.systemBarcode !== before.systemBarcode) {
+      return NextResponse.json({message:"システムJANは自動採番してください。番号の手入力はできません。"},{status:400});
+    }
     if(data.janCode&&data.systemBarcode)return NextResponse.json({code:"ITEM_CODE_CONFLICT",message:"JANとシステムJANはどちらか一方だけ指定してください。変更する場合は元のコードを空欄にしてください。"},{status:400});
     if (data.minorCategory && !data.majorCategory) return NextResponse.json({ message: "小分類を設定する場合は大分類を選択してください。" }, { status: 400 });
     if (body.expectedUpdatedAt !== undefined && (typeof body.expectedUpdatedAt !== "string" || !Number.isFinite(Date.parse(body.expectedUpdatedAt)))) return NextResponse.json({ message: "更新日時が不正です。画面を開き直してください。" }, { status: 400 });

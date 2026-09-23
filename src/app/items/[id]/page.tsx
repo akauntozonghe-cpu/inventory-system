@@ -1,4 +1,5 @@
 "use client";
+import ImeInput from "@/components/common/ImeInput";
 
 import { requestBack } from "@/lib/navigation-history";
 import InventoryLifecycle from "@/components/inventory/InventoryLifecycle";
@@ -72,6 +73,7 @@ type Item = {
 };
 
 type ItemForm = {
+  generateSystemBarcode?: boolean;
   expectedUpdatedAt?: string;
   name: string;
   janCode: string;
@@ -615,7 +617,7 @@ export default function ItemDetailPage() {
                 <div className="grid gap-4 sm:grid-cols-2">
                   <label className="block sm:col-span-2">
                     <span className="font-bold text-slate-700">商品名</span>
-                    <input
+                    <ImeInput
                       required
                       value={itemForm.name}
                       onChange={(event) =>
@@ -628,7 +630,7 @@ export default function ItemDetailPage() {
                     />
                   </label>
 
-                  <ProductCodeField janCode={itemForm.janCode} systemBarcode={itemForm.systemBarcode} onChange={codes=>setItemForm({...itemForm,...codes})}/>
+                  <ProductCodeField janCode={itemForm.janCode} systemBarcode={itemForm.systemBarcode} generateSystemBarcode={itemForm.generateSystemBarcode} onChange={codes=>setItemForm({...itemForm,...codes})}/>
 
 
 
@@ -636,7 +638,7 @@ export default function ItemDetailPage() {
 
                   <label className="block">
                     <span className="font-bold text-slate-700">メーカー</span>
-                    <input
+                    <ImeInput
                       value={itemForm.manufacturer}
                       onChange={(event) =>
                         setItemForm({
@@ -838,7 +840,7 @@ export default function ItemDetailPage() {
                               <span className="font-bold text-slate-700">
                                 理論在庫
                               </span>
-                              <input
+                              <ImeInput
                                 type="number"
                                 min="0"
                                 value={inventoryForm.quantity}
@@ -856,7 +858,7 @@ export default function ItemDetailPage() {
                               <span className="font-bold text-slate-700">
                                 実在庫
                               </span>
-                              <input
+                              <ImeInput
                                 type="number"
                                 min="0"
                                 value={inventoryForm.actualQuantity}
@@ -875,7 +877,7 @@ export default function ItemDetailPage() {
                               <span className="font-bold text-slate-700">
                                 ロット番号
                               </span>
-                              <input
+                              <ImeInput
                                 value={inventoryForm.lotNo}
                                 onChange={(event) =>
                                   setInventoryForm({
@@ -892,14 +894,14 @@ export default function ItemDetailPage() {
                                 使用期限（年月のみ・年月日）
                               </span>
                               <label className="mt-2 flex items-center gap-2 font-bold">
-                                <input type="checkbox" checked={inventoryForm.expirationNotApplicable} onChange={(event) => setInventoryForm({ ...inventoryForm, expirationNotApplicable: event.target.checked, expirationDate: "" })} className="h-5 w-5" />
+                                <ImeInput type="checkbox" checked={inventoryForm.expirationNotApplicable} onChange={(event) => setInventoryForm({ ...inventoryForm, expirationNotApplicable: event.target.checked, expirationDate: "" })} className="h-5 w-5" />
                                 期限なし
                               </label>
                               {!inventoryForm.expirationNotApplicable && <>
                               <span className="mt-1 block text-sm font-semibold text-slate-600">年月までなら左、日付まであれば右を使用してください。</span>
                               <span className="mt-2 grid gap-2 sm:grid-cols-2">
-                                <span><span className="text-xs font-bold">年月まで</span><input type="month" value={inventoryForm.expirationDate.length === 7 ? inventoryForm.expirationDate : ""} onChange={(event) => setInventoryForm({ ...inventoryForm, expirationDate: event.target.value })} className="mt-1 w-full rounded-xl border border-slate-300 px-4 py-3" /></span>
-                                <span><span className="text-xs font-bold">日付まで</span><input type="date" value={inventoryForm.expirationDate.length === 10 ? inventoryForm.expirationDate : ""} onChange={(event) => setInventoryForm({ ...inventoryForm, expirationDate: event.target.value })} className="mt-1 w-full rounded-xl border border-slate-300 px-4 py-3" /></span>
+                                <span><span className="text-xs font-bold">年月まで</span><ImeInput type="month" value={inventoryForm.expirationDate.length === 7 ? inventoryForm.expirationDate : ""} onChange={(event) => setInventoryForm({ ...inventoryForm, expirationDate: event.target.value })} className="mt-1 w-full rounded-xl border border-slate-300 px-4 py-3" /></span>
+                                <span><span className="text-xs font-bold">日付まで</span><ImeInput type="date" value={inventoryForm.expirationDate.length === 10 ? inventoryForm.expirationDate : ""} onChange={(event) => setInventoryForm({ ...inventoryForm, expirationDate: event.target.value })} className="mt-1 w-full rounded-xl border border-slate-300 px-4 py-3" /></span>
                               </span>
                               </>}
                               <span className="mt-2 block text-xs font-bold text-blue-800">保存値：{inventoryForm.expirationNotApplicable ? "期限なし" : inventoryForm.expirationDate || "期限未設定"}</span>
@@ -939,7 +941,7 @@ export default function ItemDetailPage() {
                               <span className="font-bold text-slate-700">
                                 在庫状態
                               </span>
-                              <input
+                              <ImeInput
                                 value={inventoryForm.status}
                                 onChange={(event) =>
                                   setInventoryForm({
@@ -955,7 +957,7 @@ export default function ItemDetailPage() {
                               <span className="font-bold text-slate-700">
                                 棚卸状態
                               </span>
-                              <input
+                              <ImeInput
                                 value={inventoryForm.stocktakeStatus}
                                 onChange={(event) =>
                                   setInventoryForm({

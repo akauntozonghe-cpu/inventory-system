@@ -1,4 +1,5 @@
 "use client";
+import ImeInput from "@/components/common/ImeInput";
 import {rememberRecoveryReturn} from "@/lib/recovery-return";
 import { recoveryCheckCodes, recoveryNextStep } from "@/lib/recovery-context";
 import { fetchFresh } from "@/lib/fetch-fresh";
@@ -60,7 +61,7 @@ export default function RecoveryWizard({contextRoute:sourceRoute,errorCode,initi
     </article>)}</div>
 
     <div className="mt-4 flex flex-wrap gap-3"><button disabled={busy} onClick={() => void diagnose(Boolean(run))} className="rounded-xl bg-slate-900 px-5 py-3 font-black text-white disabled:opacity-50">{busy ? `${steps[step]}中…` : run ? "次へ：再チェックする" : "次へ：このエラーを診断"}</button>{rechecked && !error && <Link onClick={leave} href={nextStep.href} className="rounded-xl border px-5 py-3 font-bold">{nextStep.text}</Link>}</div>
-    {contextRoute&&rechecked&&reports.length>0&&<section className="my-4 rounded-xl border p-4"><h3 className="font-black">最後に元の操作を確認する</h3><p className="my-2 text-sm">診断だけで直ったと判断せず、元の画面で問題の操作ができるか確認します。</p><label className="flex gap-2"><input type="checkbox" checked={verified} onChange={e=>setVerified(e.target.checked)}/>元の操作が正常にできることを確認しました</label><textarea aria-label="復旧完了の対応内容" className="my-3 w-full rounded-xl border p-3" value={completionNote} onChange={e=>setCompletionNote(e.target.value)} placeholder="実施した対応と確認結果"/>{reports.filter(report=>report.id===selectedReportId).map(report=><div key={report.id} className="my-2 rounded-xl bg-slate-50 p-3"><p>{report.code}：{report.message}</p><button disabled={busy||!verified||!completionNote.trim()||issues.some(item=>item.status==="FAIL"||item.status==="NOT_RUN")} onClick={()=>void finish(report)} className="mt-2 rounded-xl bg-blue-700 p-3 font-bold text-white disabled:opacity-40">この問題の復旧を完了する</button></div>)}</section>}
+    {contextRoute&&rechecked&&reports.length>0&&<section className="my-4 rounded-xl border p-4"><h3 className="font-black">最後に元の操作を確認する</h3><p className="my-2 text-sm">診断だけで直ったと判断せず、元の画面で問題の操作ができるか確認します。</p><label className="flex gap-2"><ImeInput type="checkbox" checked={verified} onChange={e=>setVerified(e.target.checked)}/>元の操作が正常にできることを確認しました</label><textarea aria-label="復旧完了の対応内容" className="my-3 w-full rounded-xl border p-3" value={completionNote} onChange={e=>setCompletionNote(e.target.value)} placeholder="実施した対応と確認結果"/>{reports.filter(report=>report.id===selectedReportId).map(report=><div key={report.id} className="my-2 rounded-xl bg-slate-50 p-3"><p>{report.code}：{report.message}</p><button disabled={busy||!verified||!completionNote.trim()||issues.some(item=>item.status==="FAIL"||item.status==="NOT_RUN")} onClick={()=>void finish(report)} className="mt-2 rounded-xl bg-blue-700 p-3 font-bold text-white disabled:opacity-40">この問題の復旧を完了する</button></div>)}</section>}
 
   </section>;
 }

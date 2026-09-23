@@ -1,4 +1,5 @@
 "use client";
+import ImeInput from "@/components/common/ImeInput";
 import { useEffect, useRef, useState } from "react";
 import Modal from "@/components/common/Modal";
 import SelectOrCreate from "@/components/SelectOrCreate";
@@ -10,7 +11,7 @@ import ProductPhotos from "@/components/inventory/ProductPhotos";
 import ProductCodeField from "./ProductCodeField";
 import { unitValidationMessage } from "@/lib/unit";
 
-type Product = { name: string; janCode: string; systemBarcode: string; manufacturer: string; majorCategory: string; minorCategory: string; defaultUnit: string; updatedAt: string };
+type Product = { generateSystemBarcode?: boolean; name: string; janCode: string; systemBarcode: string; manufacturer: string; majorCategory: string; minorCategory: string; defaultUnit: string; updatedAt: string };
 export default function ProductEditDialog({ itemId, onClose, onSaved }: { itemId: string; onClose: () => void; onSaved: () => void }) {
   const {can}=useAppAccess();const admin=useAdminMode();
   const options = useRegistrationOptions();
@@ -62,13 +63,13 @@ export default function ProductEditDialog({ itemId, onClose, onSaved }: { itemId
     }}>
       <fieldset disabled={saving || !can("ITEM_EDIT")} className="space-y-4">
         <details className="rounded-xl bg-slate-50 p-3 text-sm"><summary className="cursor-pointer font-bold">食器を登録するとき</summary><p className="mt-2">大分類は「食器」、小分類は「皿」「茶碗」「コップ」など。名前に色・柄・サイズを入れ、同じ種類は枚数で管理します。保管場所が違う場合は在庫を分けてください。写真は追加した時点で保存されます。</p></details>
-        <label className="block font-bold">商品名<input required maxLength={200} value={product.name} onChange={(event) => change("name", event.target.value)} className="mt-1 w-full rounded-lg border p-3"/></label>
-        <ProductPhotos itemId={itemId} canEdit={can("ITEM_EDIT")||admin.active}/><ProductCodeField janCode={product.janCode} systemBarcode={product.systemBarcode} onChange={codes=>setProduct({...product,...codes})}/>
-        <label className="block font-bold">メーカー<input maxLength={200} value={product.manufacturer} onChange={(event) => change("manufacturer", event.target.value)} className="mt-1 w-full rounded-lg border p-3"/></label>
+        <label className="block font-bold">商品名<ImeInput required maxLength={200} value={product.name} onChange={(event) => change("name", event.target.value)} className="mt-1 w-full rounded-lg border p-3"/></label>
+        <ProductPhotos itemId={itemId} canEdit={can("ITEM_EDIT")||admin.active}/><ProductCodeField janCode={product.janCode} systemBarcode={product.systemBarcode} generateSystemBarcode={product.generateSystemBarcode} onChange={codes=>setProduct({...product,...codes})}/>
+        <label className="block font-bold">メーカー<ImeInput maxLength={200} value={product.manufacturer} onChange={(event) => change("manufacturer", event.target.value)} className="mt-1 w-full rounded-lg border p-3"/></label>
         <SelectOrCreate scanKind="MAJOR" label="大分類" value={product.majorCategory} options={options.majorCategories} onChange={(value) => change("majorCategory", value)}/>
         <SelectOrCreate key={product.majorCategory} label="小分類" value={product.minorCategory} options={options.minorsFor(product.majorCategory)} onChange={(value) => change("minorCategory", value)}/>
         <SelectOrCreate label="単位" value={product.defaultUnit} options={options.units} onChange={(value) => change("defaultUnit", value)} required/>
-        <label className="block font-bold">変更理由<input required maxLength={300} value={reason} onChange={(event) => setReason(event.target.value)} className="mt-1 w-full rounded-lg border p-3"/></label>
+        <label className="block font-bold">変更理由<ImeInput required maxLength={300} value={reason} onChange={(event) => setReason(event.target.value)} className="mt-1 w-full rounded-lg border p-3"/></label>
         {options.failed && <p role="status">分類・単位の更新を確認できません。通信回復後に自動で再取得します。</p>}
         <button type="submit" className="rounded-xl bg-blue-700 px-5 py-3 font-bold text-white">{saving ? "保存中…" : "変更を保存"}</button>
       </fieldset>

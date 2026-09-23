@@ -1,4 +1,5 @@
 "use client";
+import ImeInput from "@/components/common/ImeInput";
 import { useLiveRefresh } from "@/hooks/useLiveRefresh";
 import { fetchFresh } from "@/lib/fetch-fresh";
 import { displayUnit } from "@/lib/unit";
@@ -18,6 +19,7 @@ type RequestStatus = "PENDING" | "APPROVED" | "REJECTED";
 type ReviewAction = "APPROVE" | "REJECT";
 
 type RegistrationRequest = {
+  generateSystemBarcode?: boolean;
   id: string;
   scannedCode: string | null;
   name: string;
@@ -225,7 +227,7 @@ export default function RegistrationRequestsPage() {
     setAction(nextAction);
     setReviewMemo("");
     setJanCode(request.scannedCode ?? "");
-    setGenerateSystemBarcode(false);
+    setGenerateSystemBarcode(request.generateSystemBarcode === true);
     setError("");
     setNotice("");
   };
@@ -590,7 +592,7 @@ export default function RegistrationRequestsPage() {
                     JANコード
                   </span>
 
-                  <input
+                  <ImeInput
                     value={janCode}
                     disabled={generateSystemBarcode}
                     onChange={(event) => {
@@ -606,7 +608,7 @@ export default function RegistrationRequestsPage() {
                 </label>
 
                 <label className="flex items-start gap-3 rounded-xl border border-blue-200 bg-blue-50 p-4">
-                  <input
+                  <ImeInput
                     type="checkbox"
                     checked={generateSystemBarcode}
                     disabled={Boolean(janCode.trim())}

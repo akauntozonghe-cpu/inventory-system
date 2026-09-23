@@ -195,17 +195,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    if (body.generateSystemBarcode === true && !canRegisterImmediately) {
-      return NextResponse.json(
-        {
-          code: "ITEM_REGISTER_SYSTEM_BARCODE_FORBIDDEN",
-          message: "システムJANの発行は管理者のみ実行できます。",
-        },
-        {
-          status: 403,
-        }
-      );
-    }
+
 
     // 管理者の直接登録では、JANまたはシステムJANが必須。
     // 一般ユーザーはJAN未確認でも申請でき、承認時に管理者が判断する。
@@ -251,6 +241,7 @@ export async function POST(request: NextRequest) {
         data: {
           requestedByUserId: currentUser.id,
           scannedCode: janCode,
+          generateSystemBarcode: body.generateSystemBarcode === true,
           name,
           manufacturer,
           managementCode,

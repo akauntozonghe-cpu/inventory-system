@@ -1,4 +1,5 @@
 "use client";
+import ImeInput from "@/components/common/ImeInput";
 
 import { forwardRef } from "react";
 
@@ -11,7 +12,7 @@ type Props = {
 const BarcodeInput = forwardRef<HTMLInputElement, Props>(
   ({ value, onChange, onEnter }, ref) => {
     return (
-      <input
+      <ImeInput
         ref={ref}
         type="text"
         value={value}

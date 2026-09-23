@@ -1,4 +1,5 @@
 "use client";
+import ImeInput from "@/components/common/ImeInput";
 import StocktakePhoto from "@/components/stocktake/StocktakePhoto";
 import ProductIdentity from "@/components/inventory/ProductIdentity";
 import { useStocktakePresence } from "@/hooks/useStocktakePresence";
@@ -976,7 +977,7 @@ export default function StocktakePage() {
           <div className="space-y-6">
             <section className="rounded-3xl bg-white p-5 shadow-sm">
               <div className="flex flex-col gap-3 sm:flex-row">
-                <input
+                <ImeInput
                   value={keyword}
                   onChange={(event) => setKeyword(event.target.value)}
                   disabled={!canOperate}

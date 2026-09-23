@@ -1,4 +1,5 @@
 "use client";
+import ImeInput from "@/components/common/ImeInput";
 
 import { useEffect, useRef, useState } from "react";
 import Modal from "@/components/common/Modal";
@@ -99,14 +100,14 @@ export default function InventoryEditDialog({ inventoryId, onClose, onSaved }: {
         <label className="block font-bold">保管場所<select value={form.storageLocationId} onChange={event => change("storageLocationId", event.target.value)} className="mt-1 w-full rounded-xl border p-3"><option value="">未設定</option>{form.storageLocationId && !options.storageLocationOptions.some(option => option.id === form.storageLocationId) && <option value={form.storageLocationId}>現在の保管場所</option>}{options.storageLocationOptions.map(option => <option key={option.id} value={option.id}>{option.name}</option>)}</select></label>
         <SelectOrCreate label="この在庫の大分類" value={form.majorCategory} options={options.majorCategories} onChange={value => setForm({ ...form, majorCategory: value, minorCategory: "" })}/>
         <SelectOrCreate label="この在庫の小分類" value={form.minorCategory} options={options.minorsFor(form.majorCategory)} onChange={value => change("minorCategory", value)}/>
-        <label className="block font-bold">Lot<input value={form.lotNo} maxLength={100} onChange={event => change("lotNo", event.target.value)} className="mt-1 w-full rounded-xl border p-3"/></label>
-        <label className="flex items-center gap-2 font-bold"><input type="checkbox" checked={form.expirationNotApplicable} onChange={event => setForm({ ...form, expirationNotApplicable: event.target.checked, expirationDate: "" })}/>期限なし</label>
+        <label className="block font-bold">Lot<ImeInput value={form.lotNo} maxLength={100} onChange={event => change("lotNo", event.target.value)} className="mt-1 w-full rounded-xl border p-3"/></label>
+        <label className="flex items-center gap-2 font-bold"><ImeInput type="checkbox" checked={form.expirationNotApplicable} onChange={event => setForm({ ...form, expirationNotApplicable: event.target.checked, expirationDate: "" })}/>期限なし</label>
         {!form.expirationNotApplicable && <div className="grid gap-3 sm:grid-cols-2">
-          <label className="font-bold">期限（年月）<input type="month" value={form.expirationDate.length === 7 ? form.expirationDate : ""} onChange={event => change("expirationDate", event.target.value)} className="mt-1 w-full rounded-xl border p-3"/></label>
-          <label className="font-bold">期限（年月日）<input type="date" value={form.expirationDate.length === 10 ? form.expirationDate : ""} onChange={event => change("expirationDate", event.target.value)} className="mt-1 w-full rounded-xl border p-3"/></label>
+          <label className="font-bold">期限（年月）<ImeInput type="month" value={form.expirationDate.length === 7 ? form.expirationDate : ""} onChange={event => change("expirationDate", event.target.value)} className="mt-1 w-full rounded-xl border p-3"/></label>
+          <label className="font-bold">期限（年月日）<ImeInput type="date" value={form.expirationDate.length === 10 ? form.expirationDate : ""} onChange={event => change("expirationDate", event.target.value)} className="mt-1 w-full rounded-xl border p-3"/></label>
         </div>}
-        <label className="block font-bold">帳簿在庫数<input required inputMode="numeric" value={form.quantity} onChange={event => change("quantity", event.target.value)} className="mt-1 w-full rounded-xl border p-3"/><span className="mt-1 block text-sm font-normal">棚卸で数えた数量とは別の、現在の帳簿上の在庫数です。</span></label>
-        <label className="block font-bold">変更理由<input required maxLength={300} value={reason} onChange={event => setReason(event.target.value)} className="mt-1 w-full rounded-xl border p-3"/></label>
+        <label className="block font-bold">帳簿在庫数<ImeInput required inputMode="numeric" value={form.quantity} onChange={event => change("quantity", event.target.value)} className="mt-1 w-full rounded-xl border p-3"/><span className="mt-1 block text-sm font-normal">棚卸で数えた数量とは別の、現在の帳簿上の在庫数です。</span></label>
+        <label className="block font-bold">変更理由<ImeInput required maxLength={300} value={reason} onChange={event => setReason(event.target.value)} className="mt-1 w-full rounded-xl border p-3"/></label>
         <button type="submit" className="rounded-xl bg-blue-700 px-5 py-3 font-bold text-white">{saving ? "保存中…" : "変更を保存"}</button>
       </fieldset>
     </form>}

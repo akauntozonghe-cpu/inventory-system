@@ -1,4 +1,5 @@
 "use client";
+import ImeInput from "@/components/common/ImeInput";
 import Modal from "@/components/common/Modal";
 import Image from "next/image";
 import { useCallback, useEffect, useState } from "react";
@@ -31,7 +32,7 @@ export default function ProductPhotos({itemId,canEdit=false,compact=false}:{item
     {(error||stale)&&<p role="alert" className="mt-2 text-sm text-red-700">{error||"写真を更新できませんでした。"}<button type="button" className="ml-2 underline" onClick={()=>void load().then(()=>setError("")).catch(e=>setError(e.message))}>再読み込み</button></p>}
     <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-3">{photos.map((photo,i)=><div key={photo.id}><a href={base+"/"+photo.id} target="_blank" rel="noreferrer" aria-label={"写真"+(i+1)+"を拡大"}><Image unoptimized width={320} height={240} src={base+"/"+photo.id} alt={"商品写真 "+(i+1)} className="h-36 w-full rounded-xl bg-slate-50 object-contain"/></a>{canEdit&&<button type="button" disabled={busy} onClick={()=>{if(window.confirm("この写真を削除しますか？"))void remove(photo.id);}} className="mt-1 min-h-11 rounded-lg border px-3 text-sm">写真を削除</button>}</div>)}</div>
     {!photos.length&&<p className="mt-3 text-sm text-slate-500">写真はまだありません。</p>}
-    {canEdit&&photos.length<5&&<fieldset disabled={busy} className="mt-3 flex flex-wrap gap-3">{[false,true].map(camera=><label key={String(camera)} className="cursor-pointer rounded-xl border border-blue-300 px-4 py-3 text-sm font-bold text-blue-800">{camera?"カメラで撮影":"写真を選んで追加"}<input aria-label={camera?"カメラで撮影":"写真を選んで追加"} type="file" accept="image/*" capture={camera?"environment":undefined} className="sr-only" onChange={e=>{const file=e.target.files?.[0];if(file)void upload(file);e.target.value="";}}/></label>)}</fieldset>}
+    {canEdit&&photos.length<5&&<fieldset disabled={busy} className="mt-3 flex flex-wrap gap-3">{[false,true].map(camera=><label key={String(camera)} className="cursor-pointer rounded-xl border border-blue-300 px-4 py-3 text-sm font-bold text-blue-800">{camera?"カメラで撮影":"写真を選んで追加"}<ImeInput aria-label={camera?"カメラで撮影":"写真を選んで追加"} type="file" accept="image/*" capture={camera?"environment":undefined} className="sr-only" onChange={e=>{const file=e.target.files?.[0];if(file)void upload(file);e.target.value="";}}/></label>)}</fieldset>}
     {busy&&<p role="status" className="mt-2 text-sm">写真を保存しています…</p>}<button type="button" disabled={busy} onClick={()=>setExpanded(false)} className="mt-4 min-h-11 rounded-lg border px-4 font-bold">閉じる</button></Modal>}
   </section>;
 }

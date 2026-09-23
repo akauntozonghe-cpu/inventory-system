@@ -1,5 +1,6 @@
 "use client";
-import JanInput from "@/components/JanInput";
+import ImeInput from "@/components/common/ImeInput";
+import ProductCodeField from "@/components/ProductCodeField";
 import SelectOrCreate from "@/components/SelectOrCreate";
 import { useRegistrationOptions } from "@/hooks/useRegistrationOptions";
 import { unitValidationMessage } from "@/lib/unit";
@@ -118,7 +119,7 @@ export default function AddPage() {
   const [error, setError] = useState("");
 
   const isAdmin = currentUser?.role === "ADMIN";
-  const hasJanCode = form.janCode.trim().length > 0;
+
 
   const showValidationError = (
     text: string,
@@ -217,10 +218,7 @@ export default function AddPage() {
       return;
     }
 
-    if (generateSystemBarcode && !isAdmin) {
-      setError("システムJANの発行は管理者のみ実行できます。");
-      return;
-    }
+
 
     setSaving(true);
 
@@ -338,7 +336,7 @@ export default function AddPage() {
                   商品名 <span className="text-red-600">*</span>
                 </span>
 
-                <input
+                <ImeInput
                   ref={nameRef}
                   value={form.name}
                   onChange={(event) => change("name", event.target.value)}
@@ -347,59 +345,8 @@ export default function AddPage() {
                 />
               </label>
 
-              <label>
-                <span className="font-bold text-slate-800">
-                  JANコード
-                </span>
-
-                <JanInput value={form.janCode} onChange={value=>change("janCode",value)} disabled={generateSystemBarcode} />
-
-                <span className="mt-1 block text-xs text-slate-500">
-                  商品に印字されているJANコードを優先して入力します。
-                </span>
-              </label>
-
-              <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
-                <p className="font-bold text-slate-800">
-                  JANコードがない商品
-                </p>
-
-                {isAdmin ? (
-                  <>
-                    <label className="mt-3 flex items-start gap-3">
-                      <input
-                        type="checkbox"
-                        checked={generateSystemBarcode}
-                        disabled={hasJanCode && !generateSystemBarcode}
-                        onChange={(event) =>
-                          setGenerateSystemBarcode(event.target.checked)
-                        }
-                        className="mt-1 h-5 w-5"
-                      />
-
-                      <span>
-                        <span className="block font-bold text-blue-700">
-                          システムJANを発行する
-                        </span>
-
-                        <span className="mt-1 block text-sm text-slate-600">
-                          JANがない商品へ、システム内専用のバーコードを発行します。
-                        </span>
-                      </span>
-                    </label>
-
-                    {hasJanCode && (
-                      <p className="mt-2 text-xs font-bold text-slate-500">
-                        JANコードがある商品にはシステムJANを発行しません。
-                      </p>
-                    )}
-                  </>
-                ) : (
-                  <p className="mt-2 text-sm text-slate-600">
-                    JANが確認できない場合も、そのまま申請できます。管理者が確認時にシステムJANを発行できます。
-                  </p>
-                )}
-              </div>
+              <ProductCodeField janCode={form.janCode} systemBarcode="" generateSystemBarcode={generateSystemBarcode} onChange={codes=>{change("janCode",codes.janCode);setGenerateSystemBarcode(codes.generateSystemBarcode);}}/>
+              {!isAdmin && <p className="text-sm text-slate-600">申請した商品は管理者の承認時に登録・採番されます。</p>}
 
 
 
@@ -410,7 +357,7 @@ export default function AddPage() {
                   メーカー
                 </span>
 
-                <input
+                <ImeInput
                   value={form.manufacturer}
                   onChange={(event) =>
                     change("manufacturer", event.target.value)
@@ -480,7 +427,7 @@ export default function AddPage() {
                   数量 <span className="text-red-600">*</span>
                 </span>
 
-                <input
+                <ImeInput
                   ref={quantityRef}
                   type="text"
                   onFocus={(event) => event.currentTarget.select()}
@@ -508,7 +455,7 @@ export default function AddPage() {
                   ロット番号
                 </span>
 
-                <input
+                <ImeInput
                   value={form.lotNo}
                   onChange={(event) => change("lotNo", normalizeAsciiCodeInput(event.target.value))}
                   placeholder="任意"
@@ -521,8 +468,8 @@ export default function AddPage() {
                   使用期限（年月のみ・年月日の両方に対応）
                 </span>
 
-                <label className="mt-2 flex items-center gap-2 font-bold"><input type="checkbox" checked={noExpiration} onChange={(event) => { setNoExpiration(event.target.checked); change("expirationDate", ""); }} className="h-5 w-5" />期限なしで登録する</label>
-                {!noExpiration&&<><label className="mt-2 flex items-center gap-2 font-bold"><input type="checkbox" checked={expirationHasDay} onChange={(event) => { setExpirationHasDay(event.target.checked); change("expirationDate", ""); }} className="h-5 w-5" />日付まで記載されている</label><input type={expirationHasDay ? "date" : "month"} value={form.expirationDate} onChange={(event) => change("expirationDate", event.target.value)} className="mt-2 w-full rounded-xl border border-slate-300 px-4 py-3" /></>}
+                <label className="mt-2 flex items-center gap-2 font-bold"><ImeInput type="checkbox" checked={noExpiration} onChange={(event) => { setNoExpiration(event.target.checked); change("expirationDate", ""); }} className="h-5 w-5" />期限なしで登録する</label>
+                {!noExpiration&&<><label className="mt-2 flex items-center gap-2 font-bold"><ImeInput type="checkbox" checked={expirationHasDay} onChange={(event) => { setExpirationHasDay(event.target.checked); change("expirationDate", ""); }} className="h-5 w-5" />日付まで記載されている</label><ImeInput type={expirationHasDay ? "date" : "month"} value={form.expirationDate} onChange={(event) => change("expirationDate", event.target.value)} className="mt-2 w-full rounded-xl border border-slate-300 px-4 py-3" /></>}
                 <span className="mt-2 block text-sm text-slate-600">同じJANでも、今回のLot・分類・保管場所で別の在庫明細を登録します。</span>
                 <span className="mt-2 block text-sm font-bold text-blue-800">登録内容：{noExpiration?"期限なし":form.expirationDate||"期限を選択してください"}</span>
               </label>

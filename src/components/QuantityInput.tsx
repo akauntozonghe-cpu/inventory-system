@@ -1,4 +1,5 @@
 "use client";
+import ImeInput from "@/components/common/ImeInput";
 import { displayUnit } from "@/lib/unit";
 
 import { useEffect, useRef } from "react";
@@ -54,7 +55,7 @@ export default function QuantityInput({
           −
         </button>
 
-        <input
+        <ImeInput
           ref={inputRef}
           type="number"
           min={0}

@@ -1,4 +1,5 @@
 "use client";
+import ImeInput from "@/components/common/ImeInput";
 import { readItemListQuery, writeItemListQuery } from "@/lib/item-list-query";
 import { useAppAccess } from "@/components/auth/AppAccessProvider";
 import {matchesStockFilter,stockFilterLabels,type StockFilter} from "@/lib/stock-state";
@@ -311,7 +312,7 @@ export default function ItemPage() {
               </div>
 
               <label className="flex cursor-pointer items-center gap-3 rounded-xl bg-white px-4 py-3 font-bold text-slate-700 shadow-sm">
-                <input
+                <ImeInput
                   type="checkbox"
                   checked={showArchived}
                   onChange={(event) => {
@@ -335,7 +336,7 @@ export default function ItemPage() {
 
         <section className="rounded-2xl bg-white p-4 shadow-sm sm:p-5">
           <div className="grid gap-3 lg:grid-cols-[1fr_auto_auto]">
-            <input
+            <ImeInput
               aria-label="商品を検索"
               type="search"
               value={search}
@@ -368,7 +369,7 @@ export default function ItemPage() {
 
           <label className="mt-3 block text-sm font-bold">在庫・フリマの状態<select aria-label="在庫・フリマの状態" value={stockFilter} onChange={event=>setStockFilter(event.target.value as StockFilter)} className="ml-2 max-w-full rounded-xl border p-3">{Object.entries(stockFilterLabels).map(([value,label])=><option key={value} value={value}>{label}</option>)}</select></label>
           <label className="mt-3 inline-flex cursor-pointer items-center gap-3 rounded-xl bg-blue-50 px-4 py-3 text-sm font-black text-blue-950">
-            <input
+            <ImeInput
               type="checkbox"
               checked={todayOnly}
               onChange={(event) => setTodayOnly(event.target.checked)}

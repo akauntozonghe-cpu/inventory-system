@@ -1,4 +1,5 @@
 "use client";
+import ImeInput from "@/components/common/ImeInput";
 import StocktakePhoto from "./StocktakePhoto";
 import ProductIdentity from "@/components/inventory/ProductIdentity";
 import { parseStocktakeQuantity, stepStocktakeQuantity } from "@/lib/stocktake-quantity";
@@ -190,7 +191,7 @@ export default function StocktakeInputPanel({
       <label className="mt-5 block">
         <span className="font-black text-slate-900">棚卸数量</span>
 
-        <input
+        <ImeInput
           ref={inputRef}
           type="text"
           inputMode="numeric"

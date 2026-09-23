@@ -1,4 +1,5 @@
 "use client";
+import ImeInput from "@/components/common/ImeInput";
 
 import { useEffect, useRef, useState } from "react";
 
@@ -156,7 +157,7 @@ export default function AdminModeDialog({
 
           <label className="mt-5 block text-sm font-bold text-slate-800">
             管理者ID
-            <input
+            <ImeInput
               value={username}
               autoComplete="username"
               disabled={loading}
@@ -172,7 +173,7 @@ export default function AdminModeDialog({
 
           <label className="mt-4 block text-sm font-bold text-slate-800">
             パスワード
-            <input
+            <ImeInput
               type="password"
               value={password}
               autoComplete="current-password"

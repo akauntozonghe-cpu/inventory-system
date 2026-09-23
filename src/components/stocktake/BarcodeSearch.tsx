@@ -1,4 +1,5 @@
 "use client";
+import ImeInput from "@/components/common/ImeInput";
 
 import {
   forwardRef,
@@ -44,7 +45,7 @@ const BarcodeSearch = forwardRef<
 
         <div className="flex gap-3">
 
-          <input
+          <ImeInput
             ref={ref}
             type="text"
             value={barcode}

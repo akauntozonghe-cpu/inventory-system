@@ -150,6 +150,20 @@ describe("shared JAN with independent inventory IDs", () => {
 });
 
 describe("explicit no-expiry registration", () => {
+  it("retains a worker's automatic-code choice for approval", async () => {
+    mocks.admin.mockReturnValue(false);
+    const response=await register(request({...registration,janCode:"",generateSystemBarcode:true}));
+    expect(response.status).toBe(201);
+    expect(mocks.db.itemRegistrationRequest.create.mock.calls[0][0].data).toMatchObject({scannedCode:null,generateSystemBarcode:true});
+    expect(mocks.db.item.create).not.toHaveBeenCalled();
+  });
+  it("automatically numbers an approved request with the saved system-JAN choice", async () => {
+    mocks.db.itemRegistrationRequest.findUnique.mockResolvedValue({id:"request",status:"PENDING",...registration,scannedCode:null,generateSystemBarcode:true});
+    mocks.db.item.findUnique.mockResolvedValue(null);
+    expect((await review(request({requestId:"request",action:"APPROVE"}))).status).toBe(200);
+    const code=mocks.db.item.create.mock.calls[0][0].data.systemBarcode;
+    expect(code).toMatch(/^20\d{11}$/);expect(validJan(code)).toBe(true);
+  });
   it("registers a no-expiry inventory and clears a stale date", async () => {
     const response = await register(request({ ...registration, expirationDate: "2026-12" }));
     expect(response.status).toBe(201);

@@ -1,4 +1,5 @@
 "use client";
+import ImeInput from "@/components/common/ImeInput";
 
 import {uploadImportedPhoto} from "@/lib/photo-import-client";
 import Link from "@/components/auth/PermissionLink";
@@ -110,8 +111,8 @@ export default function ZaicoImportPanel() {
       <h2 className="text-xl font-bold">CSV・Excelを取り込む</h2>
       <p className="mt-2 text-sm text-slate-600">JANが一致する商品は紐付け、新しい商品は通常の在庫に登録します。JANが空欄・不正な商品にはシステムJANを付けます。数量不備や重複候補は確認待ちに残ります。</p>
       <p className="mt-2 text-sm text-slate-600">既存商品への数量加算・上書きはしません。移行元の数量は履歴に残し、実際の数は棚卸で確定します。zaicoのCSVと従来の管理表にも対応しています。</p>
-      <label className="mt-4 block font-bold">CSV・Excelファイル<input aria-label="取り込みファイル" type="file" accept=".csv,.xlsx,.xls" disabled={busy} className={inputClass} onChange={e => { const file = e.target.files?.[0]; if (file) void read(file); e.target.value = ""; }} /></label>
-      <label className="mt-3 block text-sm font-bold">写真も取り込む（任意）<input type="file" multiple accept="image/*" disabled={busy} className={inputClass} onChange={event=>setPhotoFiles(Array.from(event.target.files??[]))}/></label><p className="mt-1 text-xs text-slate-500">CSVの「写真」または「写真1」〜「写真5」に画像のファイル名を指定し、画像をまとめて選びます。公開画像URLは「写真URL」に指定できます。写真の追加だけなら同じCSVを再度取り込めます。在庫は二重登録しません。</p>
+      <label className="mt-4 block font-bold">CSV・Excelファイル<ImeInput aria-label="取り込みファイル" type="file" accept=".csv,.xlsx,.xls" disabled={busy} className={inputClass} onChange={e => { const file = e.target.files?.[0]; if (file) void read(file); e.target.value = ""; }} /></label>
+      <label className="mt-3 block text-sm font-bold">写真も取り込む（任意）<ImeInput type="file" multiple accept="image/*" disabled={busy} className={inputClass} onChange={event=>setPhotoFiles(Array.from(event.target.files??[]))}/></label><p className="mt-1 text-xs text-slate-500">CSVの「写真」または「写真1」〜「写真5」に画像のファイル名を指定し、画像をまとめて選びます。公開画像URLは「写真URL」に指定できます。写真の追加だけなら同じCSVを再度取り込めます。在庫は二重登録しません。</p>
       <p className="mt-2 text-xs text-slate-500">1回1,000行まで。商品名・JAN・数量・単位・保管場所・カテゴリ（大分類）を取り込みます。メーカー・小分類・ロット・期限にも対応。空欄の項目は未設定になります。新規在庫は対象範囲に合う作業中・中断中の棚卸にも追加されます。</p>
     </div>
     {busy && <p role="status">処理しています…</p>}
@@ -131,11 +132,11 @@ export default function ZaicoImportPanel() {
       {count > 0 && <button type="button" disabled={busy} onClick={()=>void registerPendingSystemJan()} className="mt-3 rounded-xl bg-indigo-700 px-4 py-3 font-bold text-white disabled:opacity-50">JAN不備だけの確認待ちをまとめて登録</button>}
       {count > pending.length && <p className="mt-2 text-sm">先頭{pending.length}件を表示中です。処理すると次の行が表示されます。</p>}
       {pending.some(entry => !validJan(entry.row.janCode) && !rowProblem(entry.row) && !entry.candidates.length) && <button disabled={busy} className="mt-3 rounded-xl border px-4 py-3 font-bold" onClick={() => setPending(values => values.map(entry => ({ ...entry, selected: !validJan(entry.row.janCode) && !rowProblem(entry.row) && !entry.candidates.length, mode: "AUTO" })))}>JANなし・不正で登録できる行を選択</button>}
-      {pending.length > 0 && <label className="mt-4 block"><input type="checkbox" disabled={busy} checked={pending.every(row => row.selected)} onChange={e => setPending(values => values.map(row => ({ ...row, selected: e.target.checked })))} /> 表示中の行をすべて選択</label>}
+      {pending.length > 0 && <label className="mt-4 block"><ImeInput type="checkbox" disabled={busy} checked={pending.every(row => row.selected)} onChange={e => setPending(values => values.map(row => ({ ...row, selected: e.target.checked })))} /> 表示中の行をすべて選択</label>}
       <fieldset disabled={busy} className="mt-4 space-y-4">{pending.map(entry => <article key={entry.id} className="rounded-xl border p-4">
-        <label className="font-bold"><input type="checkbox" checked={entry.selected} onChange={e => update(entry.id, { selected: e.target.checked })}/> {entry.row.name || "商品名なし"}</label>
+        <label className="font-bold"><ImeInput type="checkbox" checked={entry.selected} onChange={e => update(entry.id, { selected: e.target.checked })}/> {entry.row.name || "商品名なし"}</label>
         <p className="mt-2 text-sm text-amber-800">{entry.reason}</p>
-        <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">{([['name', '商品名'], ['janCode', 'JAN'], ['quantity', '数量'], ['unit', '単位'], ['storageLocation', '保管場所'], ['majorCategory', '大分類']] as const).map(([key, label]) => <label key={key} className="text-sm">{label}<input aria-label={`${entry.id}-${label}`} type="text" inputMode={key === "quantity" || key === "janCode" ? "numeric" : "text"} value={entry.row[key]} onChange={e => update(entry.id, { row: { ...entry.row, [key]: e.target.value } })} className={inputClass}/></label>)}</div>
+        <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">{([['name', '商品名'], ['janCode', 'JAN'], ['quantity', '数量'], ['unit', '単位'], ['storageLocation', '保管場所'], ['majorCategory', '大分類']] as const).map(([key, label]) => <label key={key} className="text-sm">{label}<ImeInput aria-label={`${entry.id}-${label}`} type="text" inputMode={key === "quantity" || key === "janCode" ? "numeric" : "text"} value={entry.row[key]} onChange={e => update(entry.id, { row: { ...entry.row, [key]: e.target.value } })} className={inputClass}/></label>)}</div>
         <label className="mt-3 block text-sm">処理方法<select className={inputClass} value={entry.mode} onChange={e => update(entry.id, { mode: e.target.value })}><option value="AUTO">再判定（JANなし・不正は自動発行）</option><option value="NEW_NO_JAN">システムJANを付けて登録</option>{entry.candidates.some(item => !item.isArchived) && <option value="LINK">JANが一致する既存商品を選ぶ</option>}<option value="SKIP">対象外にする</option></select></label>
         {entry.mode === "LINK" && <label className="mt-3 block text-sm">紐付ける商品<select className={inputClass} value={entry.itemId} onChange={e => update(entry.id, { itemId: e.target.value })}><option value="">商品を選択</option>{entry.candidates.filter(item => !item.isArchived).map(item => <option key={item.id} value={item.id}>{item.name}（{item.id}）</option>)}</select></label>}
       </article>)}</fieldset>

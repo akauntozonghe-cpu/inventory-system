@@ -177,7 +177,7 @@ export async function PATCH(request: NextRequest) {
     const janCodeOverride = optionalText(body.janCode, 30);
 
     // JANがない商品の場合のみ管理者が選べる
-    const generateSystemBarcode = body.generateSystemBarcode === true;
+    let generateSystemBarcode = body.generateSystemBarcode === true;
 
     if (!requestId) {
       return NextResponse.json(
@@ -292,6 +292,7 @@ export async function PATCH(request: NextRequest) {
 
     // 優先順位：管理者が入力したJAN → 申請時のJAN → システムJAN
     const finalJanCode = janCodeOverride ?? registrationRequest.scannedCode;
+    if (body.generateSystemBarcode === undefined && !finalJanCode) generateSystemBarcode = registrationRequest.generateSystemBarcode;
 
     if (!finalJanCode && !generateSystemBarcode) {
       return NextResponse.json(

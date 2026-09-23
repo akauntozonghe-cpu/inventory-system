@@ -1,4 +1,5 @@
 "use client";
+import ImeInput from "@/components/common/ImeInput";
 import InventoryStatusBadges from "@/components/inventory/InventoryStatusBadges";
 import { useAppAccess } from "@/components/auth/AppAccessProvider";
 import Image from "next/image";
@@ -218,7 +219,7 @@ export default function ItemTable({ items, reload, isAdmin, filterKey }: Props) 
           <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
             {(isAdmin || can("LABEL_PRINT")) ? (
               <label className="flex items-center gap-3 font-bold text-slate-700">
-                <input
+                <ImeInput
                   type="checkbox"
                   checked={allSelected}
                   onChange={toggleAll}
@@ -286,7 +287,7 @@ export default function ItemTable({ items, reload, isAdmin, filterKey }: Props) 
               >
                 <div className="flex gap-3">
                   {(isAdmin || can("LABEL_PRINT")) && (
-                    <input
+                    <ImeInput
                       type="checkbox"
                       checked={selectedIdSet.has(item.id)}
                       onChange={() => toggleItem(item.id)}
@@ -375,7 +376,7 @@ export default function ItemTable({ items, reload, isAdmin, filterKey }: Props) 
             </label>
 
             <label className="mt-4 flex items-start gap-3 rounded-xl bg-slate-50 p-4 text-sm font-bold text-slate-700">
-              <input
+              <ImeInput
                 type="checkbox"
                 checked={confirmed}
                 onChange={(event) => setConfirmed(event.target.checked)}

@@ -366,6 +366,7 @@ model ItemRegistrationRequest {
   lotNo          String?
   expirationDate String?
   expirationNotApplicable Boolean @default(false)
+  generateSystemBarcode Boolean @default(false)
   memo           String?
 
   status RegistrationRequestStatus @default(PENDING)

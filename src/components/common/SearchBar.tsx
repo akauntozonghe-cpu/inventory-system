@@ -1,4 +1,5 @@
 "use client";
+import ImeInput from "@/components/common/ImeInput";
 
 import { Search, X } from "lucide-react";
 
@@ -22,7 +23,7 @@ export default function SearchBar({
         className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"
       />
 
-      <input
+      <ImeInput
         type="search"
         aria-label={placeholder}
         value={value}

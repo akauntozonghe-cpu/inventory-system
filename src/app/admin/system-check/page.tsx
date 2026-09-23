@@ -1,4 +1,5 @@
 "use client";
+import ImeInput from "@/components/common/ImeInput";
 
 import Link from "@/components/auth/PermissionLink";
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -437,7 +438,7 @@ export default function SystemCheckPage() {
                   </select>
                 </div>
 
-                <input
+                <ImeInput
                   value={check.detail}
                   onChange={(event) =>
                     updateManualCheck(index, "detail", event.target.value)

@@ -1,5 +1,6 @@
 "use client";
-import JanInput from "@/components/JanInput";
+import ImeInput from "@/components/common/ImeInput";
+import ProductCodeField from "@/components/ProductCodeField";
 import SelectOrCreate from "@/components/SelectOrCreate";
 import { useRegistrationOptions } from "@/hooks/useRegistrationOptions";
 import { unitValidationMessage } from "@/lib/unit";
@@ -98,6 +99,7 @@ export default function UnregisteredItemDialog({
     name: "",
     janCode: "",
     systemBarcode: "",
+    generateSystemBarcode: false,
     managementCode: "",
     manufacturer: "",
     majorCategory: "",
@@ -121,6 +123,7 @@ export default function UnregisteredItemDialog({
       ...previous,
       janCode: /^(?:\d{8}|\d{13})$/.test(barcode) ? barcode : "",
       systemBarcode: isSystemBarcode(barcode) ? barcode : "",
+      generateSystemBarcode: !barcode,
     }));
   }, [initialJanCode, open]);
 
@@ -279,6 +282,7 @@ export default function UnregisteredItemDialog({
         name: "",
         janCode: "",
         systemBarcode: "",
+    generateSystemBarcode: false,
         managementCode: "",
         manufacturer: "",
         majorCategory: "",
@@ -338,7 +342,7 @@ export default function UnregisteredItemDialog({
               商品名 <span className="text-red-600">*</span>
             </span>
 
-            <input
+            <ImeInput
               ref={nameRef}
               value={form.name}
               onChange={(event) => update("name", event.target.value)}
@@ -347,35 +351,14 @@ export default function UnregisteredItemDialog({
             />
           </label>
 
-          <label>
-            <span className="text-sm font-bold">JANコード</span>
-
-            <JanInput value={form.janCode} onChange={value=>update("janCode",value)} />
-          </label>
-
-          <label>
-            <span className="text-sm font-bold">システムJAN</span>
-
-            <input
-              value={form.systemBarcode}
-              onChange={(event) =>
-                update("systemBarcode", event.target.value.toUpperCase())
-              }
-              placeholder="JANがなければ自動発行"
-              className="mt-2 w-full rounded-xl border border-slate-300 px-4 py-3 outline-none focus:border-blue-600"
-            />
-
-            <span className="mt-1 block text-xs text-slate-500">
-              空欄なら、JANがない商品にだけ自動で発行します。
-            </span>
-          </label>
+          <ProductCodeField key={String(open)+initialJanCode} janCode={form.janCode} systemBarcode={form.systemBarcode} generateSystemBarcode={form.generateSystemBarcode} onChange={codes=>setForm(current=>({...current,...codes}))}/>
 
 
 
           <label>
             <span className="text-sm font-bold">メーカー</span>
 
-            <input
+            <ImeInput
               value={form.manufacturer}
               onChange={(event) => update("manufacturer", event.target.value)}
               placeholder="任意"
@@ -434,7 +417,7 @@ export default function UnregisteredItemDialog({
               登録時の在庫数 <span className="text-red-600">*</span>
             </span>
 
-            <input
+            <ImeInput
               ref={quantityRef}
                   type="text"
                   onFocus={(event) => event.currentTarget.select()}
@@ -450,7 +433,7 @@ export default function UnregisteredItemDialog({
           <label>
             <span className="text-sm font-bold">ロット番号</span>
 
-            <input
+            <ImeInput
               value={form.lotNo}
               onChange={(event) => update("lotNo", event.target.value)}
               placeholder="任意"
@@ -461,8 +444,8 @@ export default function UnregisteredItemDialog({
           <label>
             <span className="text-sm font-bold">使用期限（年月のみ・年月日）</span>
 
-            <label className="mt-2 flex items-center gap-2 text-sm font-bold"><input type="checkbox" checked={noExpiration} onChange={(event) => { setNoExpiration(event.target.checked); update("expirationDate", ""); }} className="h-5 w-5" />期限なしで登録する</label>
-            {!noExpiration&&<><label className="mt-2 flex items-center gap-2 text-sm font-bold"><input type="checkbox" checked={expirationHasDay} onChange={(event) => { setExpirationHasDay(event.target.checked); update("expirationDate", ""); }} className="h-5 w-5" />日付まで記載されている</label><input type={expirationHasDay ? "date" : "month"} value={form.expirationDate} onChange={(event) => update("expirationDate", event.target.value)} className="mt-2 w-full rounded-xl border border-slate-300 px-4 py-3" /></>}
+            <label className="mt-2 flex items-center gap-2 text-sm font-bold"><ImeInput type="checkbox" checked={noExpiration} onChange={(event) => { setNoExpiration(event.target.checked); update("expirationDate", ""); }} className="h-5 w-5" />期限なしで登録する</label>
+            {!noExpiration&&<><label className="mt-2 flex items-center gap-2 text-sm font-bold"><ImeInput type="checkbox" checked={expirationHasDay} onChange={(event) => { setExpirationHasDay(event.target.checked); update("expirationDate", ""); }} className="h-5 w-5" />日付まで記載されている</label><ImeInput type={expirationHasDay ? "date" : "month"} value={form.expirationDate} onChange={(event) => update("expirationDate", event.target.value)} className="mt-2 w-full rounded-xl border border-slate-300 px-4 py-3" /></>}
             <span className="mt-2 block text-xs font-bold text-blue-800">登録値：{form.expirationDate || "未入力（期限データなしエラーになります）"}</span>
           </label>
         </div>
@@ -497,7 +480,7 @@ export default function UnregisteredItemDialog({
                   今回の登録は新しい在庫明細を作成します。同じJAN・Lot・期限でも既存の明細へ統合しません。既存在庫の棚卸をする場合は登録せず、検索から選択してください。
                 </p>
                 <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-amber-300 bg-white p-3 text-sm font-black text-slate-900">
-                  <input
+                  <ImeInput
                     type="checkbox"
                     checked={duplicateConfirmed}
                     onChange={(event) => setDuplicateConfirmed(event.target.checked)}

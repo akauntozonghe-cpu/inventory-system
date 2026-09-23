@@ -1,4 +1,5 @@
 "use client";
+import ImeInput from "@/components/common/ImeInput";
 import { useAppAccess } from "@/components/auth/AppAccessProvider";
 import FieldScanButton from "@/components/FieldScanButton";
 import { fetchFresh } from "@/lib/fetch-fresh";
@@ -470,7 +471,7 @@ export default function StocktakeStartPage() {
               <label className="block font-bold" htmlFor="stocktake-title">
                 棚卸名
               </label>
-                <input
+                <ImeInput
                   ref={titleRef}
                 id="stocktake-title"
                 value={title}
@@ -484,7 +485,7 @@ export default function StocktakeStartPage() {
               <label className="block font-bold" htmlFor="stocktake-operator">
                 担当者
               </label>
-              <input
+              <ImeInput
                 id="stocktake-operator"
                 value={operator}
                 onChange={(event) => setOperator(event.target.value)}

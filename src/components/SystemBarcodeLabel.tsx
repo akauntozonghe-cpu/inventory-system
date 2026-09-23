@@ -1,4 +1,5 @@
 "use client";
+import ImeInput from "@/components/common/ImeInput";
 
 import { useAppAccess } from "@/components/auth/AppAccessProvider";
 import { useAdminMode } from "@/components/auth/PageAdminMode";
@@ -200,7 +201,7 @@ export default function SystemBarcodeLabel({
       {legacyCode && isAdmin && <div className="mt-4 rounded-xl bg-amber-50 p-4">
         <p className="font-bold">13桁のシステムJANに変更</p>
         <p className="mt-2 text-sm">この商品コードを共有する全明細のコード表示が変わります。各在庫No.・Lot・数量・履歴は維持されます。旧コードのラベルは使えなくなるため、変更後に印刷し直してください。</p>
-        <label className="my-3 flex gap-2"><input type="checkbox" checked={replaceConfirmed} onChange={event=>setReplaceConfirmed(event.target.checked)} disabled={issuing}/>旧ラベルを貼り替えることを確認しました</label>
+        <label className="my-3 flex gap-2"><ImeInput type="checkbox" checked={replaceConfirmed} onChange={event=>setReplaceConfirmed(event.target.checked)} disabled={issuing}/>旧ラベルを貼り替えることを確認しました</label>
         <button type="button" disabled={!replaceConfirmed || issuing || checkingRole} onClick={()=>void issueSystemJan(true)} className="rounded-xl bg-blue-700 p-3 font-bold text-white disabled:opacity-40">{issuing ? "変更中…" : "13桁のシステムJANへ変更する"}</button>
       </div>}
       {barcodeError && <p role="alert" className="mt-4 font-bold text-red-700">{barcodeError}</p>}

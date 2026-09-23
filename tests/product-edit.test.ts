@@ -19,6 +19,20 @@ describe("product editing during stocktake", () => {
     expect(response.status).toBe(200);
     expect(db.item.update.mock.calls[0][0].data).toMatchObject({ name: "新商品名", managementCode: "ITEM-A", managementGroupCode: "GROUP-A", majorCategory: "食品", minorCategory: "飲料", defaultUnit: "個" });
   });
+  it("generates a system JAN on the server when selected without manual input",async()=>{
+    const response=await request({name:"商品",reason:"コード設定",janCode:"",systemBarcode:"",generateSystemBarcode:true});
+    expect(response.status).toBe(200);
+    expect(db.item.update.mock.calls[0][0].data.systemBarcode).toMatch(/^20\d{11}$/);
+  });
+  it("rejects a manually supplied new system JAN",async()=>{
+    const response=await request({name:"商品",reason:"コード設定",systemBarcode:"2001234567893"});
+    expect(response.status).toBe(400);expect(db.item.update).not.toHaveBeenCalled();
+  });
+  it("retains a previously issued system JAN on repeated saves",async()=>{
+    db.item.findUnique.mockResolvedValue({...original,systemBarcode:"2001234567893"});
+    expect((await request({name:"商品",reason:"修正",janCode:"",systemBarcode:"",generateSystemBarcode:true})).status).toBe(200);
+    expect(db.item.update.mock.calls[0][0].data.systemBarcode).toBe("2001234567893");
+  });
   it("does not block a visible edit on an unchanged obsolete manual code",async()=>{
     db.item.findFirst.mockResolvedValue({id:"legacy-other",name:"古い商品"});
     const response=await request({name:"商品名だけ修正",reason:"誤記"});

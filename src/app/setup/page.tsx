@@ -1,4 +1,5 @@
 "use client";
+import ImeInput from "@/components/common/ImeInput";
 
 import { FormEvent, useState } from "react";
 import { useRouter } from "next/navigation";
@@ -80,7 +81,7 @@ export default function SetupPage() {
         <form onSubmit={submit} className="mt-6 space-y-5">
           <label className="block font-bold">
             ログインID
-            <input
+            <ImeInput
               value={username}
               onChange={(event) => setUsername(event.target.value.normalize("NFKC").replace(/[^A-Za-z0-9]/g, "").slice(0, 64))}
               className="mt-2 w-full rounded-xl border border-slate-300 p-3 font-normal"
@@ -96,7 +97,7 @@ export default function SetupPage() {
 
           <label className="block font-bold">
             表示名（実施者名）
-            <input
+            <ImeInput
               value={displayName}
               onChange={(event) => setDisplayName(event.target.value)}
               className="mt-2 w-full rounded-xl border border-slate-300 p-3 font-normal"
@@ -107,7 +108,7 @@ export default function SetupPage() {
 
           <label className="block font-bold">
             パスワード
-            <input
+            <ImeInput
               type="password"
               value={password}
               onChange={(event) => setPassword(event.target.value)}

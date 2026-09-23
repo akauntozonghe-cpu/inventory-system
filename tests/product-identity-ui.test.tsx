@@ -13,7 +13,17 @@ it("shows only the assigned system JAN without exposing internal identifiers or 
 it("shows no absence badge when neither barcode is assigned",()=>{
   expect(renderToStaticMarkup(<ProductIdentity item={{id:"internal"}}/>)).toBe("");
 });
-it("edits the assigned code in one field",()=>{
+it("shows assigned system JAN as read-only with an explicit code mode choice",()=>{
   const html=renderToStaticMarkup(<ProductCodeField janCode="" systemBarcode="2001234567893" onChange={()=>{}}/>);
-  expect(html.match(/<input/g)).toHaveLength(1);expect(html).toContain('value="2001234567893"');
+  expect(html.match(/type="radio"/g)).toHaveLength(2);
+  expect(html).toContain("2001234567893");
+  expect(html).not.toContain('value="2001234567893"');
+  expect(html).toContain("システムJANを自動採番");
+});
+it("asks only for existing JAN numbers and explains automatic numbering",()=>{
+  const existing=renderToStaticMarkup(<ProductCodeField janCode="4901234567894" systemBarcode="" onChange={()=>{}}/>);
+  expect(existing).toContain('value="4901234567894"');
+  const automatic=renderToStaticMarkup(<ProductCodeField janCode="" systemBarcode="" generateSystemBarcode onChange={()=>{}}/>);
+  expect(automatic).toContain("保存時に13桁の番号を自動発行します");
+  expect(automatic).not.toContain('aria-label="JANコード"');
 });

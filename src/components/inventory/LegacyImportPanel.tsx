@@ -1,4 +1,5 @@
 "use client";
+import ImeInput from "@/components/common/ImeInput";
 
 import { useState } from "react";
 import * as XLSX from "xlsx";
@@ -150,7 +151,7 @@ export default function LegacyImportPanel() {
 
         <div className="space-y-6">
 
-          <input
+          <ImeInput
             type="file"
             accept=".xlsx,.xls"
             onChange={(e) => {
