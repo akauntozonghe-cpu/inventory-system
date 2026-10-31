@@ -23,12 +23,14 @@ TRL Explorerは公開情報を収集・正規化・評価・保留・保存・�
 
 ## 2026-10-31 今回の実装（コード反映）
 - `src/app/api/items/[id]/route.ts`: 商品詳細GETのサーバー側認可、削除済み商品を一般ユーザーに404、単品の論理削除。
+- `src/app/api/items/search/route.ts`: 商品検索APIの未認証閲覧を拒否。
 - `src/app/api/inventory/route.ts`: 個別在庫DELETEを履歴保存する論理削除に統一。
 - `src/repositories/ItemRepository.ts`: 通常一覧と検索で削除済み在庫明細を除外、旧APIの物理削除を論理削除へ統一。
 - `src/app/api/items/route.ts`: 旧APIの「削除済み」表現と操作ログ名を整合。
 - `src/app/api/items/bulk/route.ts`: 一括論理削除の事前診断、管理者による復元、監査ログ。
 - `src/app/items/[id]/page.tsx`、`src/features/items/ItemTable.tsx`、`src/components/inventory/InventoryLifecycle.tsx`: 操作説明の統一、管理者復元導線、削除済みラベル。
-- `tests/inspection-bulk.test.ts`、`tests/item-detail-privacy.test.ts`: 削除・復元・再送時の状態・認可の回帰テスト。
+- `src/app/api/system/version/route.ts`: ログイン後、デプロイのGitコミットSHAを非キャッシュのメタデータとして取得。
+- `tests/inspection-bulk.test.ts`、`tests/item-detail-privacy.test.ts`、`tests/soft-delete-api.test.ts`、`tests/item-search-access.test.ts`、`tests/build-version.test.ts`: 削除・復元・再送・認可・リリース版照合の回帰テスト。
 
 ## 次に優先する受入・監査（この文書作成時点で未検証）
 **P0**
@@ -43,7 +45,7 @@ TRL Explorerは公開情報を収集・正規化・評価・保留・保存・�
 - [ ] スマホ・タブレット・PCの320/360/390/430/768/1024/1440px表示、200%ズーム・長文・IME・キーボードのみ検証。
 - [ ] JAN再読取・同時送信・通信切断時の冪等性、エラーからの復旧導線。
 - [ ] APIエラーを権限不足・未発見・競合・内部障害・通信失敗で統一。
-- [ ] CIと本番で版情報・GitコミットIDを照合できる表示／スモークテスト。
+- [ ] 追加した版情報APIを使いCI・本番のGitコミットID一致を実環境でスモークテストし、必要なら管理者UIに版表示を追加する。
 
 ## リリースゲート
 **実装済み**≠**テスト通過**≠**本番反映**≠**実機検収**。各段階を別々に証明し、未確認を完了扱いしない。
