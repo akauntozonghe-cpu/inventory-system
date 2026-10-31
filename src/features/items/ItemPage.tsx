@@ -303,11 +303,11 @@ export default function ItemPage() {
 
         <p role="status" className="mb-3 text-sm font-bold text-slate-700">{syncFailed ? "同期できていません。表示は前回取得時点です。通信回復後に再取得します。" : "他端末の登録・在庫変更を自動取得（通信時間＋約1秒）。"}</p>
         {isAdmin && (
-          <details className="mb-5 rounded-2xl border border-indigo-200 bg-indigo-50 p-3"><summary className="cursor-pointer font-bold">廃止商品の表示</summary>
+          <details className="mb-5 rounded-2xl border border-indigo-200 bg-indigo-50 p-3"><summary className="cursor-pointer font-bold">削除済み商品の管理</summary>
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <div>
                 <p className="mt-1 text-sm text-indigo-800">
-                  商品の編集・廃止・復元・複数選択による一括操作ができます。
+                  削除済みは管理者だけ確認できます。通常の検索・棚卸の対象には含まれません。
                 </p>
               </div>
 
@@ -322,13 +322,13 @@ export default function ItemPage() {
                   }}
                   className="h-5 w-5"
                 />
-                廃止済みも表示
+                削除済みを表示（管理者のみ）
               </label>
             </div>
 
             <p className="mt-3 text-sm text-indigo-800">
               通常商品：{activeItemCount}件
-              {showArchived && ` ／ 廃止済み：${archivedItemCount}件`}
+              {showArchived && ` ／ 削除済み：${archivedItemCount}件`}
             </p>
           </details>
         )}
