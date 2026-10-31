@@ -3,7 +3,7 @@ import {activeInventoryWhere} from "@/lib/product-scope";
 import { unitValidationMessage } from "@/lib/unit";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { requireAdmin } from "@/lib/auth";
+import { requireAdmin, requireLogin } from "@/lib/auth";
 import { createAdminActionLog } from "@/lib/error-report";
 import { normalizeExpirationDate } from "@/lib/expiry-management";
 
@@ -35,7 +35,10 @@ function errorMessage(error: unknown, fallback: string) {
   return error instanceof Error ? error.message : fallback;
 }
 
-export async function GET() {
+export async function GET(request: NextRequest) {
+  const auth = requireLogin(request);
+  if (auth.response) return auth.response;
+
   try {
     const inventories = await prisma.inventoryInstance.findMany({
       where:activeInventoryWhere,
