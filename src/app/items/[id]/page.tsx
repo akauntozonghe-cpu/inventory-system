@@ -654,7 +654,7 @@ export default function ItemDetailPage() {
               </h2>
 
               {error && <p role="alert" className="mt-3 text-sm text-red-700">{error}</p>}
-              <form className="mt-5" onSubmit={saveItem}><fieldset disabled={saving} className="space-y-5">
+              <form data-guard-unsaved className="mt-5" onSubmit={saveItem}><fieldset disabled={saving} className="space-y-5">
                 <div className="grid gap-4 sm:grid-cols-2">
                   <label className="block sm:col-span-2">
                     <span className="font-bold text-slate-700">商品名</span>
@@ -830,6 +830,7 @@ export default function ItemDetailPage() {
                     >
                       {editing && inventoryForm ? (
                         <form
+                          data-guard-unsaved
                           className="space-y-5"
                           onSubmit={(event) =>
                             void saveInventory(event, inventory.id)
