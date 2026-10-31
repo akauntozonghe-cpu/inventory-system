@@ -219,7 +219,7 @@ export default function ItemTable({ items, reload, isAdmin, filterKey }: Props) 
       <section className="rounded-2xl bg-white p-10 text-center shadow-sm">
         <p className="font-bold text-slate-700">該当する商品がありません。</p>
         <p className="mt-2 text-sm text-slate-500">
-          検索条件・分類の絞り込み・廃止済み表示を確認してください。
+          検索条件・分類の絞り込み・削除済み表示を確認してください。
         </p>
       </section>
     );
@@ -319,7 +319,7 @@ export default function ItemTable({ items, reload, isAdmin, filterKey }: Props) 
                       <div className="flex gap-2">
                         {item.isArchived && (
                           <span className="rounded-full bg-amber-100 px-3 py-1 text-xs font-bold text-amber-800">
-                            廃止済み
+                            削除済み
                           </span>
                         )}
 
@@ -338,7 +338,7 @@ export default function ItemTable({ items, reload, isAdmin, filterKey }: Props) 
                     </Link>)}</div>
                     {item.isArchived && item.archiveReason && (
                       <p className="mt-4 rounded-xl bg-amber-50 px-3 py-2 text-sm text-amber-800">
-                        廃止理由：{item.archiveReason}
+                        削除理由：{item.archiveReason}
                       </p>
                     )}
 
