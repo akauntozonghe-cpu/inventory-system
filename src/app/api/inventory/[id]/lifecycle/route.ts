@@ -3,7 +3,7 @@ import { Prisma } from "@prisma/client";
 import { requireAdmin } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 
-const labels = { ARCHIVE: "廃止", RESTORE: "復帰", EXCLUDE_INSPECTION: "点検対象外", INCLUDE_INSPECTION: "点検対象" } as const;
+const labels = { ARCHIVE: "廃止", RESTORE: "復帰", EXCLUDE_INSPECTION: "棚卸・点検対象外", INCLUDE_INSPECTION: "棚卸・点検対象" } as const;
 export async function PATCH(request: NextRequest, context: { params: Promise<{ id: string }> }) {
   const auth = requireAdmin(request);
   if (auth.response || !auth.user) return auth.response;
