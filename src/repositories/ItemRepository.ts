@@ -46,6 +46,7 @@ export class ItemRepository {
       include: {
         photos: {select:{id:true},orderBy:[{createdAt:"asc"},{id:"asc"}],take:1},
         inventoryInstances: {
+          ...(options.includeArchived ? {} : { where: { status: { not: "廃止" } } }),
           select: {
             id: true,
             quantity: true,
