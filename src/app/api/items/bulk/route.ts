@@ -40,26 +40,18 @@ export async function POST(request: NextRequest) {
    const items = await tx.item.findMany({ where: { id: { in: ids } }, select: { id: true, name: true, isArchived: true, inspectionExcluded: true, inspectionExclusionReason: true } });
    if (items.length !== ids.length) throw new Error("ITEMS_CHANGED");
    if (action === "DELETE") {
-    const stocks = await tx.inventoryInstance.findMany({ where: { itemId: { in: ids } }, select: stockSelect });
-    const candidates = classify(items, stocks);
-    const eligible = candidates.filter(candidate => candidate.eligible);
-    const blocked = candidates.filter(candidate => !candidate.eligible);
-    if (preview) return { preview: true, eligible: eligible.map(({ id, name }) => ({ id, name })), blocked: blocked.map(({ id, name, reasons }) => ({ id, name, reasons })), eligibleCount: eligible.length, blockedCount: blocked.length };
-    if (blocked.length && !onlyEligible) throw new Error("DELETE_PROTECTED");
-    if (!eligible.length) throw new Error("NOTHING_ELIGIBLE");
-    // Deletion is transactional: recheck dependencies and record the audit in the same commit.
-    const stockIds = eligible.flatMap(candidate => candidate.stockIds);
-    if (stockIds.length) {
-     await tx.inventoryHistory.deleteMany({ where: { inventoryInstanceId: { in: stockIds }, action: "初回在庫登録" } });
-     const removedStocks = await tx.inventoryInstance.deleteMany({ where: { id: { in: stockIds } } });
-     if (removedStocks.count !== stockIds.length) throw new Error("ITEMS_CHANGED");
-    }
+    const active = items.filter(item => !item.isArchived);
+    if (preview) return { preview: true, eligible: active.map(item => ({ id: item.id, name: item.name })), blocked: [], eligibleCount: active.length, blockedCount: 0 };
+    if (!active.length) throw new Error("NOTHING_ELIGIBLE");
+    const changed = await tx.item.updateMany({
+     where: { id: { in: active.map(item => item.id) }, isArchived: false },
+     data: { isArchived: true, archivedAt: new Date(), archiveReason: reason },
+    });
+    if (changed.count !== active.length) throw new Error("ITEMS_CHANGED");
     const actor = (auth.user!.baseRole ?? auth.user!.role) === "ADMIN" ? auth.user!.id : getAdminElevation(request)?.adminUserId;
     if (!actor) throw new Error("ADMIN_REQUIRED");
-    const deleted = await tx.item.deleteMany({ where: { id: { in: eligible.map(candidate => candidate.id) } } });
-    if (deleted.count !== eligible.length) throw new Error("ITEMS_CHANGED");
-    await tx.adminActionLog.create({ data: { adminUserId: actor, action: "ITEM_BULK_DELETE", route: "/items", detail: { reason, items: eligible.map(candidate => ({ id: candidate.id, name: candidate.name })), stockIds, skipped: blocked.map(candidate => ({ id: candidate.id, reasons: candidate.reasons })), requestedBy: auth.user!.id } } });
-    return { success: true, summary: { affectedCount: deleted.count, skippedCount: blocked.length }, message: `${deleted.count}件を削除しました。${blocked.length ? `${blocked.length}件は履歴保護のため残しました。` : ""}` };
+    await tx.adminActionLog.create({ data: { adminUserId: actor, action: "ITEM_BULK_SOFT_DELETE", route: "/items", detail: { reason, itemIds: active.map(item => item.id), requestedBy: auth.user!.id } } });
+    return { success: true, summary: { affectedCount: changed.count }, message: changed.count + "件を削除済みにしました。履歴は保存されています。" };
    }
    const data = action === "EXCLUDE_INSPECTION" ? { inspectionExcluded: true, inspectionExclusionReason: reason } : { inspectionExcluded: false, inspectionExclusionReason: null };
    await tx.inventoryInstance.updateMany({ where: { itemId: { in: ids } }, data: { inspectionExcluded: action === "EXCLUDE_INSPECTION", inspectionExclusionReason: action === "EXCLUDE_INSPECTION" ? reason : null } });
