@@ -4,12 +4,13 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "node scripts/migrate-with-retry.mjs && prisma generate && vitest run && next build",
+    "build": "prisma generate && vitest run && next build",
     "verify": "npm test && npm run build",
     "start": "next start -H 0.0.0.0",
     "lint": "eslint",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "db:migrate": "node scripts/migrate-with-retry.mjs"
   },
   "dependencies": {
     "@prisma/client": "^6.19.3",
