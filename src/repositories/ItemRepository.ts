@@ -203,6 +203,7 @@ export class ItemRepository {
                     {
                       inventoryInstances: {
                         some: {
+                          ...(options.includeArchived ? {} : { status: { not: "廃止" } }),
                           lotNo: {
                             contains: query,
                             mode: "insensitive" as const,
@@ -213,6 +214,7 @@ export class ItemRepository {
                     {
                       inventoryInstances: {
                         some: {
+                          ...(options.includeArchived ? {} : { status: { not: "廃止" } }),
                           storageLocation: {
                             is: {
                               name: {
@@ -232,6 +234,7 @@ export class ItemRepository {
       },
       include: {
         inventoryInstances: {
+          ...(options.includeArchived ? {} : { where: { status: { not: "廃止" } } }),
           include: {
             storageLocation: true,
           },
