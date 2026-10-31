@@ -26,16 +26,16 @@ it("records exclusion and its administrator reason in one transaction without ar
  expect(db.$transaction.mock.calls[0][1]).toMatchObject({isolationLevel:"Serializable"});
 });
 it("attributes elevated operations to the authorizing administrator",async()=>{state.role="WORKER";state.elevated=true;await request("EXCLUDE_INSPECTION");expect(db.adminActionLog.create.mock.calls[0][0].data).toMatchObject({adminUserId:"sponsor",detail:{requestedBy:"actor"}});});
-it.each(["stocktakeTargets","marketplaceListings"] as const)("blocks deletion of products with %s",async relation=>{
- db.inventoryInstance.findMany.mockResolvedValue([{id:"stock",itemId:"item",histories:[{action:"初回在庫登録"}],_count:{stocktakeRecords:0,stocktakeTargets:0,inventoryEvents:0,marketplaceListings:0,[relation]:1}}]);
- expect((await request("DELETE"))?.status).toBe(409);
- expect(db.item.deleteMany).not.toHaveBeenCalled();
+it("marks products as deleted without deleting history even if stocktake or listings exist",async()=>{
+ db.item.findMany.mockResolvedValue([{id:"item",name:"テスト",isArchived:false}]);
+ expect((await request("DELETE","整理のため"))?.status).toBe(200);
+ expect(db.item.updateMany).toHaveBeenCalledWith(expect.objectContaining({
+  where:{id:{in:["item"]},isArchived:false},
+  data:expect.objectContaining({isArchived:true,archiveReason:"整理のため"}),
+ }));
  expect(db.inventoryInstance.deleteMany).not.toHaveBeenCalled();
-});
-it("deletes unused products with an audit record",async()=>{
- expect((await request("DELETE","誤登録の削除"))?.status).toBe(200);
- expect(db.item.deleteMany).toHaveBeenCalledWith({where:{id:{in:["item"]}}});
- expect(db.adminActionLog.create.mock.calls[0][0].data).toMatchObject({action:"ITEM_BULK_DELETE",detail:{reason:"誤登録の削除"}});
+ expect(db.item.deleteMany).not.toHaveBeenCalled();
+ expect(db.adminActionLog.create.mock.calls[0][0].data.action).toBe("ITEM_BULK_SOFT_DELETE");
 });
 it("rejects removed archive and restore operations",async()=>{
  expect((await request("ARCHIVE"))?.status).toBe(400);
