@@ -4,7 +4,7 @@ import Modal from "@/components/common/Modal";
 import { fetchFresh } from "@/lib/fetch-fresh";
 
 type Stock = { id: string; status: string; updatedAt: string; lotNo: string | null; expirationDate: string | null; expirationManagementStatus?: string; majorCategory: string | null; minorCategory: string | null; inspectionExcluded?: boolean | null; storageLocation: { name: string } | null };
-const labels = { EXCLUDE_INSPECTION: "対象から外す", INCLUDE_INSPECTION: "対象に戻す" } as const;
+const labels = { RESTORE: "削除済みから復元", EXCLUDE_INSPECTION: "対象から外す", INCLUDE_INSPECTION: "対象に戻す" } as const;
 export default function InventoryLifecycle({ stock, groupExcluded, canManage, onSaved, onDelete, deleting = false }: { stock: Stock; groupExcluded: boolean; canManage: boolean; onSaved: () => Promise<void>; onDelete?: () => void; deleting?: boolean }) {
   const [action, setAction] = useState<keyof typeof labels | null>(null);
   const [reason, setReason] = useState("");
@@ -12,8 +12,8 @@ export default function InventoryLifecycle({ stock, groupExcluded, canManage, on
   const [busy, setBusy] = useState(false);
   const excluded = stock.inspectionExcluded ?? groupExcluded;
   return <div className="mt-4 rounded-xl border border-slate-200 p-3">
-    <p className="font-bold">棚卸・点検：{stock.status === "廃止" ? "対象外（旧廃止データ）" : excluded ? "対象外" : "対象"}</p>
-    {canManage && <div className="mt-2 flex flex-wrap gap-2">{([excluded ? "INCLUDE_INSPECTION" : "EXCLUDE_INSPECTION"] as const).map(operation => <button type="button" key={operation} onClick={() => { setAction(operation); setReason(""); setError(""); }} className="rounded-lg border bg-white px-3 py-2 font-bold">この在庫だけ{labels[operation]}</button>)}{onDelete && <button type="button" disabled={deleting} onClick={onDelete} className="rounded-lg border border-red-300 bg-white px-3 py-2 font-bold text-red-700 disabled:opacity-50">削除</button>}</div>}
+    <p className="font-bold">棚卸・点検：{stock.status === "廃止" ? "削除済み（作業対象外）" : excluded ? "対象外" : "対象"}</p>
+    {canManage && <div className="mt-2 flex flex-wrap gap-2">{(stock.status === "廃止" ? (["RESTORE"] as const) : ([excluded ? "INCLUDE_INSPECTION" : "EXCLUDE_INSPECTION"] as const)).map(operation => <button type="button" key={operation} onClick={() => { setAction(operation); setReason(""); setError(""); }} className="rounded-lg border bg-white px-3 py-2 font-bold">この在庫だけ{labels[operation]}</button>)}{onDelete && <button type="button" disabled={deleting} onClick={onDelete} className="rounded-lg border border-red-300 bg-white px-3 py-2 font-bold text-red-700 disabled:opacity-50">削除</button>}</div>}
     {action && <Modal titleId="stock-lifecycle-title" busy={busy} onClose={() => { if (!busy) setAction(null); }}>
       <h2 id="stock-lifecycle-title" className="text-xl font-black">この在庫明細だけ{labels[action]}</h2>
       <p className="my-3">{stock.storageLocation?.name ?? "場所未設定"} ／ Lot {stock.lotNo ?? "なし"} ／ 期限 {stock.expirationDate ?? (stock.expirationManagementStatus === "NO_EXPIRY" ? "期限なし" : "未設定")} ／ {[stock.majorCategory, stock.minorCategory].filter(Boolean).join("・") || "分類未設定"}</p>
