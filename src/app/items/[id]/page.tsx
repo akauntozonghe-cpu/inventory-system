@@ -533,7 +533,7 @@ export default function ItemDetailPage() {
 
   const deleteInventory = async (inventory: InventoryInstance) => {
     if (!item || saving || !(accessUser?.role === "ADMIN" || adminMode.active)) return;
-    if (!window.confirm(`「${item.name}」の在庫明細（${inventory.storageLocation?.name ?? "保管場所未設定"}、Lot: ${inventory.lotNo ?? "未設定"}）を削除しますか？棚卸や取引の実績がある明細は削除されません。`)) return;
+    if (!window.confirm(`「${item.name}」の在庫明細（${inventory.storageLocation?.name ?? "保管場所未設定"}、Lot: ${inventory.lotNo ?? "未設定"}）を削除しますか？棚卸・取引・出品履歴は保持し、通常の作業画面から除外します。`)) return;
     setSaving(true);
     setError("");
     setNotice("");
@@ -542,7 +542,7 @@ export default function ItemDetailPage() {
       const data = await readJson(response);
       if (!response.ok) throw new Error(getMessage(data, "在庫を削除できませんでした。"));
       if (focusedInventory === inventory.id) setFocusedInventory("");
-      setNotice("在庫明細を削除しました。");
+      setNotice("在庫を削除済みにしました。履歴は残っています。");
       await loadItem(true);
     } catch (error) {
       setError(error instanceof Error ? error.message : "在庫を削除できませんでした。");
@@ -553,12 +553,8 @@ export default function ItemDetailPage() {
 
   const deleteItem = async () => {
     if (!item || saving || !(accessUser?.role === "ADMIN" || adminMode.active)) return;
-    if (item.inventoryInstances.length > 0) {
-      setError("在庫明細が残っています。削除できない記録を保持する必要がある場合は対象から外してください。");
-      return;
-    }
     if (!item.updatedAt) { setError("商品を再読み込みしてください。"); return; }
-    if (!window.confirm(`商品「${item.name}」を完全に削除しますか？この操作は元に戻せません。`)) return;
+    if (!window.confirm(`商品「${item.name}」を削除済みにしますか？通常の検索・棚卸から除外されますが、履歴は残り、管理者が復元できます。`)) return;
     setSaving(true);
     setError("");
     try {
@@ -613,7 +609,7 @@ export default function ItemDetailPage() {
             </h1>
 
             <p className="mt-2 text-sm text-slate-600">
-              対象の明細を選んで編集・廃止・点検設定を行えます。
+              対象の明細を選んで編集・削除・棚卸対象の設定を行えます。
             </p>
           </div>
 
@@ -807,9 +803,9 @@ export default function ItemDetailPage() {
               </span>
             </div>
 
-            {(accessUser?.role === "ADMIN" || adminMode.active) && item.inventoryInstances.length === 0 && (
+            {(accessUser?.role === "ADMIN" || adminMode.active) && !item.isArchived && (
               <button type="button" disabled={saving} onClick={() => void deleteItem()} className="mt-4 rounded-xl border border-red-300 px-4 py-3 text-sm font-bold text-red-700 hover:bg-red-50 disabled:opacity-50">
-                在庫明細のない商品を削除
+                この商品を削除
               </button>
             )}
             {focusedInventory&&<p className="my-4 rounded-xl bg-blue-50 p-3 font-bold">選んだ在庫だけを表示しています。Lot・保管場所を確認して、この明細を編集してください。<Link className="ml-3 underline" href={`/items/${item.id}`}>同じJANの全在庫を表示</Link></p>}
@@ -1160,7 +1156,7 @@ export default function ItemDetailPage() {
                             )}
 
                             <Link href={`/history?inventoryId=${encodeURIComponent(inventory.id)}`} className="rounded-xl border p-3 font-bold">この在庫の数量履歴</Link>
-                            <InventoryLifecycle stock={inventory} groupExcluded={item.inspectionExcluded === true} canManage={accessUser?.role === "ADMIN" || adminMode.active} onSaved={() => loadItem(true)} onDelete={() => void deleteInventory(inventory)} deleting={saving}/>
+                            <InventoryLifecycle stock={inventory} groupExcluded={item.inspectionExcluded === true} canManage={accessUser?.role === "ADMIN" || adminMode.active} onSaved={() => loadItem(true)} onDelete={inventory.status === "廃止" ? undefined : () => void deleteInventory(inventory)} deleting={saving}/>
                             {canEditInventory && (
                               <button
                                 type="button"
