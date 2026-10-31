@@ -196,7 +196,10 @@ export default function ItemTable({ items, reload, isAdmin, filterKey }: Props) 
       const result = data as {message?:string};
       setMessage(result.message || `${selectedItems.length}件を${actionLabel}しました。`);
       setSelectedIds([]);
-      closeBulkDialog();
+      setBulkOperation(null);
+      setDeletePreview(null);
+      setConfirmed(false);
+      setReason("");
       await reload();
     } catch (operationError) {
       setError(
