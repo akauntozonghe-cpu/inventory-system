@@ -532,7 +532,7 @@ export default function ItemDetailPage() {
   };
 
   const deleteInventory = async (inventory: InventoryInstance) => {
-    if (!item || saving || accessUser?.role !== "ADMIN") return;
+    if (!item || saving || !(accessUser?.role === "ADMIN" || adminMode.active)) return;
     if (!window.confirm(`「${item.name}」の在庫明細（${inventory.storageLocation?.name ?? "保管場所未設定"}、Lot: ${inventory.lotNo ?? "未設定"}）を削除しますか？棚卸や取引の実績がある明細は削除されません。`)) return;
     setSaving(true);
     setError("");
@@ -552,7 +552,7 @@ export default function ItemDetailPage() {
   };
 
   const deleteItem = async () => {
-    if (!item || saving || accessUser?.role !== "ADMIN") return;
+    if (!item || saving || !(accessUser?.role === "ADMIN" || adminMode.active)) return;
     if (item.inventoryInstances.length > 0) {
       setError("在庫明細が残っています。削除できない記録を保持する必要がある場合は対象から外してください。");
       return;
@@ -798,7 +798,7 @@ export default function ItemDetailPage() {
                   在庫詳細
                 </h2>
                 <p className="mt-1 text-sm text-slate-600">
-                  各枠が独立した在庫です。管理者は登録直後の明細を削除できます。履歴がある明細は対象から外して記録を保持します。
+                  各枠が独立した在庫です。「削除」と「対象から外す」を選べます。履歴がある明細は削除せず、対象外にして記録を保持します。
                 </p>
               </div>
 
@@ -807,7 +807,7 @@ export default function ItemDetailPage() {
               </span>
             </div>
 
-            {accessUser?.role === "ADMIN" && item.inventoryInstances.length === 0 && (
+            {(accessUser?.role === "ADMIN" || adminMode.active) && item.inventoryInstances.length === 0 && (
               <button type="button" disabled={saving} onClick={() => void deleteItem()} className="mt-4 rounded-xl border border-red-300 px-4 py-3 text-sm font-bold text-red-700 hover:bg-red-50 disabled:opacity-50">
                 在庫明細のない商品を削除
               </button>
@@ -1160,12 +1160,7 @@ export default function ItemDetailPage() {
                             )}
 
                             <Link href={`/history?inventoryId=${encodeURIComponent(inventory.id)}`} className="rounded-xl border p-3 font-bold">この在庫の数量履歴</Link>
-                            {accessUser?.role === "ADMIN" && (
-                               <button type="button" disabled={saving} onClick={() => void deleteInventory(inventory)} className="rounded-xl border border-red-300 px-4 py-3 text-sm font-bold text-red-700 hover:bg-red-50 disabled:opacity-50">
-                                 この在庫を削除
-                               </button>
-                             )}
-                             <InventoryLifecycle stock={inventory} groupExcluded={item.inspectionExcluded === true} canManage={accessUser?.role === "ADMIN"} onSaved={() => loadItem(true)}/>
+                            <InventoryLifecycle stock={inventory} groupExcluded={item.inspectionExcluded === true} canManage={accessUser?.role === "ADMIN" || adminMode.active} onSaved={() => loadItem(true)} onDelete={() => void deleteInventory(inventory)} deleting={saving}/>
                             {canEditInventory && (
                               <button
                                 type="button"
