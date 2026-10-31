@@ -14,7 +14,7 @@ export default function PageNavigation(){
  useLayoutEffect(()=>installNavigationHistory({isDirty:()=>dirty.current,onLeave:()=>{dirty.current=false;setUnsavedWork(false);void leaveCurrentStocktakes().catch(()=>{});}}),[]);
  useEffect(()=>{
   dirty.current=false;setUnsavedWork(false);setDestination(null);
-  const input=(event:Event)=>{const element=event.target as HTMLInputElement;if(element.closest("form")&&element.type!=="search"){dirty.current=true;setUnsavedWork(true);}};
+  const input=(event:Event)=>{const element=event.target as HTMLInputElement;if(element.closest("form[data-guard-unsaved]")&&element.type!=="search"){dirty.current=true;setUnsavedWork(true);}};
   const draft=(event:Event)=>{dirty.current=Boolean((event as CustomEvent).detail?.dirty);setUnsavedWork(dirty.current);};
   const click=(event:MouseEvent)=>{const link=(event.target as Element)?.closest?.("a[href]") as HTMLAnchorElement|null;if(!link||event.defaultPrevented||event.button!==0||link.target==="_blank"||link.origin!==location.origin||(link.pathname===location.pathname&&link.search===location.search)||event.ctrlKey||event.metaKey||event.shiftKey||event.altKey)return;if(dirty.current){event.preventDefault();event.stopPropagation();window.dispatchEvent(new Event("inventory:close-menu"));setDestination(link.pathname+link.search+link.hash);}};
   const back=(event:Event)=>{const fallback=(event as CustomEvent).detail?.fallback??parent.href;if(canGoBack())router.back();else if(dirty.current)setDestination(fallback);else{void leaveCurrentStocktakes().catch(()=>{});router.push(fallback);}};
