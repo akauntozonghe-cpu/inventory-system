@@ -24,7 +24,7 @@ type Props = {
   reload: () => void | Promise<void>;
 };
 
-const bulkLabels={DELETE:"削除",EXCLUDE_INSPECTION:"対象から外す",INCLUDE_INSPECTION:"対象に戻す"};
+const bulkLabels={DELETE:"削除",RESTORE:"復元",EXCLUDE_INSPECTION:"対象から外す",INCLUDE_INSPECTION:"対象に戻す"};
 type BulkOperation = keyof typeof bulkLabels;
 type DeletePreview = { eligible: {id:string;name:string}[]; blocked: {id:string;name:string;reasons:string[]}[]; eligibleCount:number; blockedCount:number };
 
@@ -72,7 +72,6 @@ export default function ItemTable({ items, reload, isAdmin, filterKey }: Props) 
   const [confirmed, setConfirmed] = useState(false);
   const [deletePreview,setDeletePreview] = useState<DeletePreview|null>(null);
   const [previewBusy,setPreviewBusy] = useState(false);
-  const [onlyEligible,setOnlyEligible] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [printIds,setPrintIds]=useState<string[]|null>(null);
 
@@ -131,7 +130,6 @@ export default function ItemTable({ items, reload, isAdmin, filterKey }: Props) 
     setConfirmed(false);
     setBulkOperation(operation);
     setDeletePreview(null);
-    setOnlyEligible(true);
     if(operation==="DELETE"){
       setPreviewBusy(true);
       try {
@@ -155,7 +153,7 @@ export default function ItemTable({ items, reload, isAdmin, filterKey }: Props) 
       return;
     }
 
-    if (bulkOperation==="DELETE" && (!deletePreview || !deletePreview.eligibleCount || (deletePreview.blockedCount>0 && !onlyEligible))) {
+    if (bulkOperation==="DELETE" && (!deletePreview || !deletePreview.eligibleCount)) {
       setError("削除可能な商品のみを選択してください。");
       return;
     }
@@ -178,7 +176,6 @@ export default function ItemTable({ items, reload, isAdmin, filterKey }: Props) 
           operation: bulkOperation,
           itemIds: selectedItems.map((item) => item.id),
           reason: reason.trim(),
-          ...(bulkOperation==="DELETE"?{onlyEligible}:{}),
         }),
       });
 
@@ -277,6 +274,7 @@ export default function ItemTable({ items, reload, isAdmin, filterKey }: Props) 
                   <button disabled={!selectedItems.length} onClick={()=>openBulkDialog("EXCLUDE_INSPECTION")} className="rounded-xl border p-3 font-bold">対象から外す</button>
                   <button disabled={!selectedItems.length} onClick={()=>openBulkDialog("INCLUDE_INSPECTION")} className="rounded-xl border p-3 font-bold">対象に戻す</button>
                   <button type="button" disabled={!selectedItems.length} onClick={()=>openBulkDialog("DELETE")} className="rounded-xl border border-red-300 p-3 font-bold text-red-700 disabled:opacity-50">選択した商品を削除</button>
+                  {selectedItems.some(item => item.isArchived) && <button type="button" onClick={()=>void openBulkDialog("RESTORE")} className="rounded-xl border border-emerald-300 p-3 font-bold text-emerald-700">削除済みを復元</button>}
                 </div><p className="mt-2 text-sm text-slate-500">削除できるのは履歴のない商品・初回登録のみの在庫です。履歴がある場合は対象から外してください。</p></details>
               )}
             </div>
@@ -332,7 +330,7 @@ export default function ItemTable({ items, reload, isAdmin, filterKey }: Props) 
                     <div className="mt-2 space-y-2">{item.inventoryInstances.map(stock=><Link key={stock.id} href={`/items/${item.id}?inventoryId=${encodeURIComponent(stock.id)}`} className="block rounded-xl border border-slate-200 p-3 hover:bg-blue-50">
                       <p className="font-bold">Lot：{stock.lotNo || "未設定"} ／ 期限：{stock.expirationDate ? stock.expirationDate.slice(0,10) : stock.expirationManagementStatus === "NO_EXPIRY" ? "期限なし" : "未設定"}</p>
                       <p className="text-sm">分類：{[stock.majorCategory,stock.minorCategory].filter(Boolean).join(" ／ ") || "未設定"} ／ 場所：{stock.storageLocation?.name || "未設定"}</p>
-                      <p className="mt-1 font-bold">{stock.quantity} {displayUnit(stock.unit,item.defaultUnit)} ／ {stock.status || "在庫"} ／ 点検：{stock.status === "廃止" || item.isArchived || (stock.inspectionExcluded ?? item.inspectionExcluded) ? "対象外" : "対象"}</p>
+                      <p className="mt-1 font-bold">{stock.quantity} {displayUnit(stock.unit,item.defaultUnit)} ／ {stock.status === "廃止" ? "削除済み" : stock.status || "在庫"} ／ 点検：{stock.status === "廃止" || item.isArchived || (stock.inspectionExcluded ?? item.inspectionExcluded) ? "対象外" : "対象"}</p>
                       <p className="break-all text-xs text-slate-500">在庫No.：{stock.id}</p>
                       <span className="mt-1 inline-block text-sm font-bold text-blue-700">この在庫の編集・削除・対象外設定 →</span>
                     </Link>)}</div>
@@ -370,7 +368,7 @@ export default function ItemTable({ items, reload, isAdmin, filterKey }: Props) 
 
             <p className="mt-3 text-slate-600">
               対象：{selectedItems.length}グループ（配下の全在庫明細）
-              {bulkOperation==="DELETE"?"。記録がある在庫が含まれる場合は1件も削除しません。削除は元に戻せません。":"。棚卸・点検の対象だけ変更します。在庫と履歴は保持します。"}
+              {bulkOperation==="DELETE"?"。履歴と在庫データは消さず、通常の検索・棚卸から除外します。管理者は後から復元できます。":bulkOperation==="RESTORE"?"。削除済み商品だけ復元します。個別に削除済みの在庫は復元されません。":"。棚卸・点検の対象だけ変更します。在庫と履歴は保持します。"}
             </p>
 
             {bulkOperation==="DELETE" && (
@@ -380,12 +378,11 @@ export default function ItemTable({ items, reload, isAdmin, filterKey }: Props) 
                 {deletePreview && <>
                   <div className="grid grid-cols-2 gap-3 text-center">
                     <div className="rounded-lg bg-emerald-50 p-3"><p className="text-sm">削除可能</p><strong className="text-2xl">{deletePreview.eligibleCount}件</strong></div>
-                    <div className="rounded-lg bg-amber-50 p-3"><p className="text-sm">履歴保護</p><strong className="text-2xl">{deletePreview.blockedCount}件</strong></div>
+                    <div className="rounded-lg bg-amber-50 p-3"><p className="text-sm">既に削除済み</p><strong className="text-2xl">{deletePreview.blockedCount}件</strong></div>
                   </div>
-                  {deletePreview.blocked.length>0 && <div className="max-h-48 overflow-y-auto"><p className="font-bold">削除できない商品と理由</p>{deletePreview.blocked.map(item=><div key={item.id} className="mt-2 rounded-lg border p-2 text-sm"><strong>{item.name}</strong><p>{item.reasons.join("、")}</p></div>)}</div>}
+                  {deletePreview.blocked.length>0 && <div className="max-h-48 overflow-y-auto"><p className="font-bold">今回の削除対象外</p>{deletePreview.blocked.map(item=><div key={item.id} className="mt-2 rounded-lg border p-2 text-sm"><strong>{item.name}</strong><p>{item.reasons.join("、")}</p></div>)}</div>}
                   {deletePreview.eligible.length>0 && <details><summary className="cursor-pointer font-bold">削除可能な商品を表示（{deletePreview.eligibleCount}件）</summary><div className="max-h-32 overflow-y-auto text-sm">{deletePreview.eligible.map(item=><p key={item.id}>{item.name}</p>)}</div></details>}
-                  <label className="flex items-center gap-2 font-bold"><input type="checkbox" checked={onlyEligible} onChange={e=>{setOnlyEligible(e.target.checked);setConfirmed(false);}}/>削除できる商品だけ削除する</label>
-                  <p className="text-xs text-slate-600">対象は実行時に再検証されます。保護対象は残り、削除した商品は元に戻せません。</p>
+                  <p className="text-xs text-slate-600">削除前の状態は実行時に再検証します。削除後も履歴は保存され、管理者が復元できます。</p>
                 </>}
               </div>
             )}
@@ -436,7 +433,7 @@ export default function ItemTable({ items, reload, isAdmin, filterKey }: Props) 
               <button
                 type="button"
                 onClick={() => void runBulkOperation()}
-                disabled={submitting || (bulkOperation==="DELETE" && (!deletePreview || !deletePreview.eligibleCount || !onlyEligible || previewBusy))}
+                disabled={submitting || (bulkOperation==="DELETE" && (!deletePreview || !deletePreview.eligibleCount || previewBusy))}
                 className={`rounded-xl px-5 py-3 font-bold text-white disabled:cursor-not-allowed disabled:bg-slate-300 ${
                   bulkOperation === "DELETE"
                     ? "bg-amber-500 hover:bg-amber-600"
