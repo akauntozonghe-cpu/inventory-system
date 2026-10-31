@@ -425,20 +425,48 @@ export async function DELETE(
   { params }: Params
 ) {
   const auth = requireAdmin(request);
-
-  if (auth.response) {
-    return auth.response;
-  }
+  if (auth.response) return auth.response;
+  if (!auth.user) return NextResponse.json({ message: "管理者権限が必要です。" }, { status: 403 });
 
   const { id } = await params;
+  const expectedUpdatedAt = new URL(request.url).searchParams.get("expectedUpdatedAt");
+  if (!expectedUpdatedAt || !Number.isFinite(Date.parse(expectedUpdatedAt))) {
+    return NextResponse.json({ message: "削除前に商品情報を再読み込みしてください。" }, { status: 400 });
+  }
 
-  return NextResponse.json(
-    {
-      code: "ITEM_DELETE_DISABLED",
-      message:
-        "商品は削除できません。在庫・棚卸履歴・監査記録との整合性を守るため、商品情報を更新して運用してください。",
-      itemId: id,
-    },
-    { status: 409 }
-  );
+  try {
+    const result = await prisma.$transaction(async (tx) => {
+      const item = await tx.item.findUnique({
+        where: { id },
+        include: { _count: { select: { inventoryInstances: true } } },
+      });
+      if (!item) return "NOT_FOUND";
+      if (item.updatedAt.getTime() !== Date.parse(expectedUpdatedAt)) return "CHANGED";
+      if (item._count.inventoryInstances > 0) return "IN_USE";
+
+      // No stock entries may be discarded together with a product master.
+      const removed = await tx.item.deleteMany({ where: { id, updatedAt: item.updatedAt } });
+      if (removed.count !== 1) return "CHANGED";
+      await tx.adminActionLog.create({
+        data: {
+          adminUserId: auth.user!.id,
+          action: "ITEM_DELETE",
+          route: `/api/items/${id}`,
+          detail: { itemId: id, itemName: item.name, janCode: item.janCode, systemBarcode: item.systemBarcode },
+        },
+      });
+      return "DELETED";
+    }, { isolationLevel: "Serializable" });
+
+    if (result === "NOT_FOUND") return NextResponse.json({ message: "商品が見つかりません。" }, { status: 404 });
+    if (result === "CHANGED") return NextResponse.json({ message: "商品が更新されています。再読み込みしてください。" }, { status: 409 });
+    if (result === "IN_USE") return NextResponse.json({
+      code: "ITEM_DELETE_IN_USE",
+      message: "この商品には在庫明細が紐づいているため削除できません。必要な記録を残すには対象外・廃止を利用してください。",
+    }, { status: 409 });
+    return NextResponse.json({ success: true, message: "商品を削除しました。" });
+  } catch (error) {
+    console.error("DELETE /api/items/[id]", error);
+    return NextResponse.json({ message: "削除できませんでした。関連データや最新の状態を確認してください。" }, { status: 409 });
+  }
 }
