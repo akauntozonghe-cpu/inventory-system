@@ -531,6 +531,47 @@ export default function ItemDetailPage() {
     }
   };
 
+  const deleteInventory = async (inventory: InventoryInstance) => {
+    if (!item || saving || accessUser?.role !== "ADMIN") return;
+    if (!window.confirm(`「${item.name}」の在庫明細（${inventory.storageLocation?.name ?? "保管場所未設定"}、Lot: ${inventory.lotNo ?? "未設定"}）を削除しますか？棚卸や取引の実績がある明細は削除されません。`)) return;
+    setSaving(true);
+    setError("");
+    setNotice("");
+    try {
+      const response = await fetch(`/api/inventory?id=${encodeURIComponent(inventory.id)}&expectedUpdatedAt=${encodeURIComponent(inventory.updatedAt)}`, { method: "DELETE" });
+      const data = await readJson(response);
+      if (!response.ok) throw new Error(getMessage(data, "在庫を削除できませんでした。"));
+      if (focusedInventory === inventory.id) setFocusedInventory("");
+      setNotice("在庫明細を削除しました。");
+      await loadItem(true);
+    } catch (error) {
+      setError(error instanceof Error ? error.message : "在庫を削除できませんでした。");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const deleteItem = async () => {
+    if (!item || saving || accessUser?.role !== "ADMIN") return;
+    if (item.inventoryInstances.length > 0) {
+      setError("在庫明細が残っています。削除できない記録を保持する必要がある場合は対象から外してください。");
+      return;
+    }
+    if (!item.updatedAt) { setError("商品を再読み込みしてください。"); return; }
+    if (!window.confirm(`商品「${item.name}」を完全に削除しますか？この操作は元に戻せません。`)) return;
+    setSaving(true);
+    setError("");
+    try {
+      const response = await fetch(`/api/items/${encodeURIComponent(item.id)}?expectedUpdatedAt=${encodeURIComponent(item.updatedAt)}`, { method: "DELETE" });
+      const data = await readJson(response);
+      if (!response.ok) throw new Error(getMessage(data, "商品を削除できませんでした。"));
+      window.location.assign("/items");
+    } catch (error) {
+      setError(error instanceof Error ? error.message : "商品を削除できませんでした。");
+      setSaving(false);
+    }
+  };
+
   if (loading) {
     return (
       <main className="min-h-screen bg-slate-100 p-4 sm:p-5">
@@ -757,7 +798,7 @@ export default function ItemDetailPage() {
                   在庫詳細
                 </h2>
                 <p className="mt-1 text-sm text-slate-600">
-                  各枠が独立した在庫です。テスト登録や誤登録も、その明細だけ廃止・点検対象外にできます。
+                  各枠が独立した在庫です。管理者は登録直後の明細を削除できます。履歴がある明細は対象から外して記録を保持します。
                 </p>
               </div>
 
@@ -766,6 +807,11 @@ export default function ItemDetailPage() {
               </span>
             </div>
 
+            {accessUser?.role === "ADMIN" && item.inventoryInstances.length === 0 && (
+              <button type="button" disabled={saving} onClick={() => void deleteItem()} className="mt-4 rounded-xl border border-red-300 px-4 py-3 text-sm font-bold text-red-700 hover:bg-red-50 disabled:opacity-50">
+                在庫明細のない商品を削除
+              </button>
+            )}
             {focusedInventory&&<p className="my-4 rounded-xl bg-blue-50 p-3 font-bold">選んだ在庫だけを表示しています。Lot・保管場所を確認して、この明細を編集してください。<Link className="ml-3 underline" href={`/items/${item.id}`}>同じJANの全在庫を表示</Link></p>}
             {inventoryInstances.length === 0 ? (
               <div className="mt-5 rounded-2xl bg-slate-100 p-7 text-center text-slate-600">
@@ -1113,7 +1159,12 @@ export default function ItemDetailPage() {
                             )}
 
                             <Link href={`/history?inventoryId=${encodeURIComponent(inventory.id)}`} className="rounded-xl border p-3 font-bold">この在庫の数量履歴</Link>
-                            <InventoryLifecycle stock={inventory} groupExcluded={item.inspectionExcluded === true} canManage={accessUser?.role === "ADMIN"} onSaved={() => loadItem(true)}/>
+                            {accessUser?.role === "ADMIN" && (
+                               <button type="button" disabled={saving} onClick={() => void deleteInventory(inventory)} className="rounded-xl border border-red-300 px-4 py-3 text-sm font-bold text-red-700 hover:bg-red-50 disabled:opacity-50">
+                                 この在庫を削除
+                               </button>
+                             )}
+                             <InventoryLifecycle stock={inventory} groupExcluded={item.inspectionExcluded === true} canManage={accessUser?.role === "ADMIN"} onSaved={() => loadItem(true)}/>
                             {canEditInventory && (
                               <button
                                 type="button"
