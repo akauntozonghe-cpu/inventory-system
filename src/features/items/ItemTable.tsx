@@ -26,6 +26,7 @@ type Props = {
 
 const bulkLabels={DELETE:"削除",EXCLUDE_INSPECTION:"対象から外す",INCLUDE_INSPECTION:"対象に戻す"};
 type BulkOperation = keyof typeof bulkLabels;
+type DeletePreview = { eligible: {id:string;name:string}[]; blocked: {id:string;name:string;reasons:string[]}[]; eligibleCount:number; blockedCount:number };
 
 function getMessage(data: unknown, fallback: string) {
   if (
@@ -69,6 +70,9 @@ export default function ItemTable({ items, reload, isAdmin, filterKey }: Props) 
   );
   const [reason, setReason] = useState("");
   const [confirmed, setConfirmed] = useState(false);
+  const [deletePreview,setDeletePreview] = useState<DeletePreview|null>(null);
+  const [previewBusy,setPreviewBusy] = useState(false);
+  const [onlyEligible,setOnlyEligible] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [printIds,setPrintIds]=useState<string[]|null>(null);
 
@@ -111,11 +115,12 @@ export default function ItemTable({ items, reload, isAdmin, filterKey }: Props) 
     }
 
     setBulkOperation(null);
+    setDeletePreview(null);
     setReason("");
     setConfirmed(false);
   };
 
-  const openBulkDialog = (operation: BulkOperation) => {
+  const openBulkDialog = async (operation: BulkOperation) => {
     if (!isAdmin || selectedItems.length === 0) {
       return;
     }
@@ -125,6 +130,19 @@ export default function ItemTable({ items, reload, isAdmin, filterKey }: Props) 
     setReason("");
     setConfirmed(false);
     setBulkOperation(operation);
+    setDeletePreview(null);
+    setOnlyEligible(true);
+    if(operation==="DELETE"){
+      setPreviewBusy(true);
+      try {
+        const response=await fetch("/api/items/bulk",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({operation:"DELETE",preview:true,itemIds:selectedItems.map(item=>item.id)})});
+        const data=await readJson(response);
+        if(!response.ok)throw new Error(getMessage(data,"削除対象を確認できませんでした。"));
+        setDeletePreview(data as DeletePreview);
+      } catch(error) {
+        setError(error instanceof Error?error.message:"削除対象を確認できませんでした。");
+      } finally {setPreviewBusy(false);}
+    }
   };
 
   const runBulkOperation = async () => {
@@ -134,6 +152,11 @@ export default function ItemTable({ items, reload, isAdmin, filterKey }: Props) 
 
     if (reason.trim().length < 2) {
       setError("変更理由を2文字以上で入力してください。");
+      return;
+    }
+
+    if (bulkOperation==="DELETE" && (!deletePreview || !deletePreview.eligibleCount || (deletePreview.blockedCount>0 && !onlyEligible))) {
+      setError("削除可能な商品のみを選択してください。");
       return;
     }
 
@@ -155,6 +178,7 @@ export default function ItemTable({ items, reload, isAdmin, filterKey }: Props) 
           operation: bulkOperation,
           itemIds: selectedItems.map((item) => item.id),
           reason: reason.trim(),
+          ...(bulkOperation==="DELETE"?{onlyEligible}:{}),
         }),
       });
 
@@ -169,7 +193,8 @@ export default function ItemTable({ items, reload, isAdmin, filterKey }: Props) 
       const actionLabel =
         bulkLabels[bulkOperation];
 
-      setMessage(`${selectedItems.length}件を${actionLabel}しました。`);
+      const result = data as {message?:string};
+      setMessage(result.message || `${selectedItems.length}件を${actionLabel}しました。`);
       setSelectedIds([]);
       closeBulkDialog();
       await reload();
@@ -345,6 +370,22 @@ export default function ItemTable({ items, reload, isAdmin, filterKey }: Props) 
               {bulkOperation==="DELETE"?"。記録がある在庫が含まれる場合は1件も削除しません。削除は元に戻せません。":"。棚卸・点検の対象だけ変更します。在庫と履歴は保持します。"}
             </p>
 
+            {bulkOperation==="DELETE" && (
+              <div className="mt-4 space-y-3 rounded-xl border p-3">
+                {previewBusy && <p>削除できる商品を確認しています…</p>}
+                {!previewBusy && !deletePreview && <p className="text-red-700">診断を取得できませんでした。戻って再度開いてください。</p>}
+                {deletePreview && <>
+                  <div className="grid grid-cols-2 gap-3 text-center">
+                    <div className="rounded-lg bg-emerald-50 p-3"><p className="text-sm">削除可能</p><strong className="text-2xl">{deletePreview.eligibleCount}件</strong></div>
+                    <div className="rounded-lg bg-amber-50 p-3"><p className="text-sm">履歴保護</p><strong className="text-2xl">{deletePreview.blockedCount}件</strong></div>
+                  </div>
+                  {deletePreview.blocked.length>0 && <div className="max-h-48 overflow-y-auto"><p className="font-bold">削除できない商品と理由</p>{deletePreview.blocked.map(item=><div key={item.id} className="mt-2 rounded-lg border p-2 text-sm"><strong>{item.name}</strong><p>{item.reasons.join("、")}</p></div>)}</div>}
+                  {deletePreview.eligible.length>0 && <details><summary className="cursor-pointer font-bold">削除可能な商品を表示（{deletePreview.eligibleCount}件）</summary><div className="max-h-32 overflow-y-auto text-sm">{deletePreview.eligible.map(item=><p key={item.id}>{item.name}</p>)}</div></details>}
+                  <label className="flex items-center gap-2 font-bold"><input type="checkbox" checked={onlyEligible} onChange={e=>{setOnlyEligible(e.target.checked);setConfirmed(false);}}/>削除できる商品だけ削除する</label>
+                  <p className="text-xs text-slate-600">対象は実行時に再検証されます。保護対象は残り、削除した商品は元に戻せません。</p>
+                </>}
+              </div>
+            )}
             <p className="mt-3 font-bold text-blue-800">Lot・期限・分類ごとに操作する場合は、商品詳細を開き、対象明細の「この在庫だけ」を使用してください。</p>
             <label className="mt-5 block">
               <span className="font-bold text-slate-800">
@@ -392,7 +433,7 @@ export default function ItemTable({ items, reload, isAdmin, filterKey }: Props) 
               <button
                 type="button"
                 onClick={() => void runBulkOperation()}
-                disabled={submitting}
+                disabled={submitting || (bulkOperation==="DELETE" && (!deletePreview || !deletePreview.eligibleCount || !onlyEligible || previewBusy))}
                 className={`rounded-xl px-5 py-3 font-bold text-white disabled:cursor-not-allowed disabled:bg-slate-300 ${
                   bulkOperation === "DELETE"
                     ? "bg-amber-500 hover:bg-amber-600"
