@@ -37,9 +37,37 @@ it("marks products as deleted without deleting history even if stocktake or list
  expect(db.item.deleteMany).not.toHaveBeenCalled();
  expect(db.adminActionLog.create.mock.calls[0][0].data.action).toBe("ITEM_BULK_SOFT_DELETE");
 });
-it("rejects removed archive and restore operations",async()=>{
+it("rejects legacy archive operations",async()=>{
  expect((await request("ARCHIVE"))?.status).toBe(400);
- expect((await request("RESTORE"))?.status).toBe(400);
+});
+it("restores deleted products without erasing inventory history",async()=>{
+ db.item.findMany.mockResolvedValue([{id:"item",name:"テスト",isArchived:true}]);
+ const response=await request("RESTORE","誤削除の復元");
+ expect(response?.status).toBe(200);
+ expect(db.item.updateMany).toHaveBeenCalledWith({
+  where:{id:{in:["item"]},isArchived:true},
+  data:{isArchived:false,archivedAt:null,archiveReason:null},
+ });
+ expect(db.item.deleteMany).not.toHaveBeenCalled();
+ expect(db.inventoryInstance.deleteMany).not.toHaveBeenCalled();
+ expect(db.adminActionLog.create.mock.calls[0][0].data.action).toBe("ITEM_BULK_RESTORE");
+});
+it("rejects duplicate deletion without touching history",async()=>{
+ db.item.findMany.mockResolvedValue([{id:"item",name:"テスト",isArchived:true}]);
+ expect((await request("DELETE","重複削除"))?.status).toBe(409);
+ expect(db.item.updateMany).not.toHaveBeenCalled();
+ expect(db.adminActionLog.create).not.toHaveBeenCalled();
+});
+it("previews active and deleted items without changing data",async()=>{
+ db.item.findMany.mockResolvedValue([
+  {id:"item",name:"有効商品",isArchived:false},
+  {id:"archived",name:"削除済み商品",isArchived:true},
+ ]);
+ const response=await POST(new NextRequest("http://localhost/api/items/bulk",{method:"POST",body:JSON.stringify({operation:"DELETE",preview:true,itemIds:["item","archived"]})}));
+ expect(response?.status).toBe(200);
+ expect(await response?.json()).toMatchObject({eligibleCount:1,blockedCount:1,blocked:[{id:"archived",reasons:["すでに削除済み"]}]});
+ expect(db.item.updateMany).not.toHaveBeenCalled();
+ expect(db.adminActionLog.create).not.toHaveBeenCalled();
 });
 it("restores inspection without touching the archived state",async()=>{await request("INCLUDE_INSPECTION");expect(db.item.updateMany.mock.calls[0][0].data).toEqual({inspectionExcluded:false,inspectionExclusionReason:null});});
 it("fails the entire operation when the audit cannot be saved",async()=>{db.adminActionLog.create.mockRejectedValue(new Error("audit unavailable"));expect((await request("EXCLUDE_INSPECTION"))?.status).toBe(409);});
