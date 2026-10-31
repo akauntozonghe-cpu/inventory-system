@@ -5,7 +5,7 @@ import { syncItemLinks } from "@/lib/item-links";
 import { unitValidationMessage } from "@/lib/unit";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { requireAdmin } from "@/lib/auth";
+import { requireAdmin, requireLogin, hasAdminAccess } from "@/lib/auth";
 import { createAdminActionLog } from "@/lib/error-report";
 import { janCodeValidationMessage, normalizeDisplayText, normalizeIdentifier, normalizeJanCode, normalizeOptionalText } from "@/lib/input-normalization";
 
@@ -91,9 +91,12 @@ function itemSnapshot(item: {
 }
 
 export async function GET(
-  _request: NextRequest,
+  request: NextRequest,
   { params }: Params
 ) {
+  const auth = requireLogin(request);
+  if (auth.response) return auth.response;
+  const canViewDeleted = hasAdminAccess(request);
   try {
     const { id } = await params;
 
@@ -117,6 +120,7 @@ export async function GET(
         createdAt: true,
         updatedAt: true,
         inventoryInstances: {
+          ...(canViewDeleted ? {} : { where: { status: { not: "廃止" } } }),
           select: {
             id: true,
             itemId: true,
@@ -153,7 +157,7 @@ export async function GET(
       },
     }),{isolationLevel:"RepeatableRead"});
 
-    if (!item) {
+    if (!item || (item.isArchived && !canViewDeleted)) {
       return NextResponse.json(
         {
           code: "ITEM_NOT_FOUND",
