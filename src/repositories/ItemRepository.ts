@@ -92,53 +92,24 @@ export class ItemRepository {
   }
 
   static async delete(id: string) {
-    const item = await prisma.item.findUnique({
-      where: { id },
-      select: {
-        id: true,
-        name: true,
-        janCode: true,
-        systemBarcode: true,
-        _count: {
-          select: {
-            inventoryInstances: true,
-          },
-        },
-      },
-    });
-
-    if (!item) {
-      throw new Error("削除する商品が見つかりません。");
-    }
-
-    if (item._count.inventoryInstances > 0) {
-      return {
-        deleted: false as const,
-        item: {
-          id: item.id,
-          name: item.name,
-          janCode: item.janCode,
-          systemBarcode: item.systemBarcode,
-        },
-        inventoryCount: item._count.inventoryInstances,
-      };
-    }
-
-    const deleted = await prisma.item.delete({
-      where: { id },
-      select: {
-        id: true,
-        name: true,
-        janCode: true,
-        systemBarcode: true,
-      },
-    });
-
-    return {
-      deleted: true as const,
-      item: deleted,
-      inventoryCount: 0,
-    };
+    // Compatibility API: the public action "delete" hides a product from
+    // operational views, but never destroys its audit or stocktake history.
+    return prisma.$transaction(async tx => {
+      const item = await tx.item.findUnique({
+        where: { id },
+        select: { id: true, name: true, janCode: true, systemBarcode: true, isArchived: true },
+      });
+      if (!item) throw new Error("削除する商品が見つかりません。");
+      if (item.isArchived) {
+        return { deleted: false as const, item, inventoryCount: 0 };
+      }
+      const changed = await tx.item.update({
+        where: { id, isArchived: false },
+        data: { isArchived: true, archivedAt: new Date(), archiveReason: "管理者による削除" },
+        select: { id: true, name: true, janCode: true, systemBarcode: true },
+      });
+      return { deleted: true as const, item: changed, inventoryCount: 0 };
+    }, { isolationLevel: "Serializable" });
   }
 
   static async search(keyword: string, options: ItemListOptions = {}) {
