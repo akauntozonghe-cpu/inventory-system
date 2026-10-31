@@ -462,111 +462,69 @@ export async function PUT(request: NextRequest) {
 
 export async function DELETE(request: NextRequest) {
   const auth = requireAdmin(request);
+  if (auth.response) return auth.response;
+  if (!auth.user) return NextResponse.json({ message: "管理者権限が必要です。" }, { status: 403 });
 
-  if (auth.response) {
-    return auth.response;
-  }
-
-  const adminUser = auth.user;
-
-  if (!adminUser) {
-    return NextResponse.json(
-      {
-        code: "AUTH_ADMIN_REQUIRED",
-        message: "管理者権限が必要です。",
-      },
-      { status: 403 }
-    );
+  const params = new URL(request.url).searchParams;
+  const id = params.get("id");
+  const expectedUpdatedAt = params.get("expectedUpdatedAt");
+  if (!id || !expectedUpdatedAt || !Number.isFinite(Date.parse(expectedUpdatedAt))) {
+    return NextResponse.json({ message: "削除前に最新の在庫明細を確認してください。" }, { status: 400 });
   }
 
   try {
-    const { searchParams } = new URL(request.url);
-    const id = searchParams.get("id");
-
-    if (!id) {
-      return NextResponse.json(
-        {
-          code: "INVENTORY_ID_REQUIRED",
-          message: "削除する在庫を指定してください。",
+    const result = await prisma.$transaction(async (tx) => {
+      const stock = await tx.inventoryInstance.findUnique({
+        where: { id },
+        include: {
+          item: { select: { id: true, name: true, janCode: true } },
+          histories: { select: { id: true, action: true } },
+          _count: { select: { stocktakeRecords: true, stocktakeTargets: true, inventoryEvents: true, marketplaceListings: true } },
         },
-        { status: 400 }
-      );
-    }
+      });
+      if (!stock) return "NOT_FOUND";
+      if (stock.updatedAt.getTime() !== Date.parse(expectedUpdatedAt)) return "CHANGED";
 
-    const inventory = await prisma.inventoryInstance.findUnique({
-      where: { id },
-      include: {
-        item: {
-          select: {
-            id: true,
-            name: true,
+      // Only a newly registered, otherwise untouched stock entry can be deleted.
+      // Never discard stocktake, transaction or listing evidence.
+      if (
+        stock._count.stocktakeRecords > 0 ||
+        stock._count.stocktakeTargets > 0 ||
+        stock._count.inventoryEvents > 0 ||
+        stock._count.marketplaceListings > 0 ||
+        stock.histories.some((entry) => entry.action !== "初回在庫登録")
+      ) return "IN_USE";
+
+      await tx.inventoryHistory.deleteMany({ where: { inventoryInstanceId: id, action: "初回在庫登録" } });
+      const deleted = await tx.inventoryInstance.deleteMany({ where: { id, updatedAt: stock.updatedAt } });
+      if (deleted.count !== 1) throw new Error("INVENTORY_CONFLICT");
+      await tx.adminActionLog.create({
+        data: {
+          adminUserId: auth.user!.id,
+          action: "INVENTORY_DELETE",
+          route: "/api/inventory",
+          detail: {
+            inventoryInstanceId: stock.id,
+            itemId: stock.itemId,
+            itemName: stock.item.name,
+            janCode: stock.item.janCode,
+            quantity: stock.quantity,
+            reason: "管理者による在庫明細の削除",
           },
         },
-        _count: {
-          select: {
-            histories: true,
-            stocktakeRecords: true,
-            stocktakeTargets: true,
-          },
-        },
-      },
-    });
+      });
+      return "DELETED";
+    }, { isolationLevel: "Serializable" });
 
-    if (!inventory) {
-      return NextResponse.json(
-        {
-          code: "INVENTORY_NOT_FOUND",
-          message: "在庫が見つかりません。",
-        },
-        { status: 404 }
-      );
-    }
-
-    const isProtected =
-      inventory._count.histories > 0 ||
-      inventory._count.stocktakeRecords > 0 ||
-      inventory._count.stocktakeTargets > 0;
-
-    if (isProtected) {
-      return NextResponse.json(
-        {
-          code: "INVENTORY_DELETE_AUDIT_PROTECTED",
-          message:
-            "履歴または棚卸記録がある在庫は削除できません。記録を残すため、数量修正またはステータス変更で対応してください。",
-        },
-        { status: 409 }
-      );
-    }
-
-    await prisma.inventoryInstance.delete({
-      where: { id },
-    });
-
-    await createAdminActionLog({
-      adminUserId: adminUser.id,
-      action: "INVENTORY_DELETE",
-      route: "/api/inventory",
-      detail: {
-        inventoryInstanceId: inventory.id,
-        itemId: inventory.item.id,
-        itemName: inventory.item.name,
-        quantity: inventory.quantity,
-      },
-    });
-
-    return NextResponse.json({
-      success: true,
-      message: "在庫を削除しました。",
-    });
+    if (result === "NOT_FOUND") return NextResponse.json({ message: "在庫が見つかりません。" }, { status: 404 });
+    if (result === "CHANGED") return NextResponse.json({ message: "在庫が更新されています。再読み込みしてください。" }, { status: 409 });
+    if (result === "IN_USE") return NextResponse.json({
+      code: "INVENTORY_DELETE_AUDIT_PROTECTED",
+      message: "棚卸・入出庫・出品・修正の記録がある在庫は削除できません。対象から外すか廃止してください。",
+    }, { status: 409 });
+    return NextResponse.json({ success: true, message: "在庫を削除しました。" });
   } catch (error) {
     console.error("DELETE /api/inventory", error);
-
-    return NextResponse.json(
-      {
-        code: "INVENTORY_DELETE_FAILED",
-        message: "在庫の削除に失敗しました。",
-      },
-      { status: 500 }
-    );
+    return NextResponse.json({ code: "INVENTORY_DELETE_FAILED", message: "在庫を削除できませんでした。最新の状態を確認してください。" }, { status: 409 });
   }
 }
