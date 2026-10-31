@@ -471,60 +471,38 @@ export async function DELETE(request: NextRequest) {
   if (!id || !expectedUpdatedAt || !Number.isFinite(Date.parse(expectedUpdatedAt))) {
     return NextResponse.json({ message: "削除前に最新の在庫明細を確認してください。" }, { status: 400 });
   }
-
   try {
-    const result = await prisma.$transaction(async (tx) => {
+    const result = await prisma.$transaction(async tx => {
       const stock = await tx.inventoryInstance.findUnique({
         where: { id },
-        include: {
-          item: { select: { id: true, name: true, janCode: true } },
-          histories: { select: { id: true, action: true } },
-          _count: { select: { stocktakeRecords: true, stocktakeTargets: true, inventoryEvents: true, marketplaceListings: true } },
-        },
+        include: { item: { select: { name: true, janCode: true } } },
       });
       if (!stock) return "NOT_FOUND";
+      if (stock.status === "廃止") return "ALREADY_DELETED";
       if (stock.updatedAt.getTime() !== Date.parse(expectedUpdatedAt)) return "CHANGED";
-
-      // Only a newly registered, otherwise untouched stock entry can be deleted.
-      // Never discard stocktake, transaction or listing evidence.
-      if (
-        stock._count.stocktakeRecords > 0 ||
-        stock._count.stocktakeTargets > 0 ||
-        stock._count.inventoryEvents > 0 ||
-        stock._count.marketplaceListings > 0 ||
-        stock.histories.some((entry) => entry.action !== "初回在庫登録")
-      ) return "IN_USE";
-
-      await tx.inventoryHistory.deleteMany({ where: { inventoryInstanceId: id, action: "初回在庫登録" } });
-      const deleted = await tx.inventoryInstance.deleteMany({ where: { id, updatedAt: stock.updatedAt } });
-      if (deleted.count !== 1) throw new Error("INVENTORY_CONFLICT");
+      const reason = "管理者による在庫明細削除";
+      const changed = await tx.inventoryInstance.updateMany({
+        where: { id, updatedAt: stock.updatedAt, status: { not: "廃止" } },
+        data: { status: "廃止", archivedFromStatus: stock.status, archivedAt: new Date(), archiveReason: reason },
+      });
+      if (changed.count !== 1) throw new Error("STOCK_CHANGED");
       await tx.adminActionLog.create({
         data: {
           adminUserId: auth.user!.id,
-          action: "INVENTORY_DELETE",
+          action: "INVENTORY_SOFT_DELETE",
           route: "/api/inventory",
-          detail: {
-            inventoryInstanceId: stock.id,
-            itemId: stock.itemId,
-            itemName: stock.item.name,
-            janCode: stock.item.janCode,
-            quantity: stock.quantity,
-            reason: "管理者による在庫明細の削除",
-          },
+          detail: { reason, inventoryInstanceId: id, itemId: stock.itemId, itemName: stock.item.name, janCode: stock.item.janCode, quantity: stock.quantity, previousStatus: stock.status },
         },
       });
       return "DELETED";
     }, { isolationLevel: "Serializable" });
 
     if (result === "NOT_FOUND") return NextResponse.json({ message: "在庫が見つかりません。" }, { status: 404 });
-    if (result === "CHANGED") return NextResponse.json({ message: "在庫が更新されています。再読み込みしてください。" }, { status: 409 });
-    if (result === "IN_USE") return NextResponse.json({
-      code: "INVENTORY_DELETE_AUDIT_PROTECTED",
-      message: "棚卸・入出庫・出品・修正の記録がある在庫は削除できません。対象から外すか廃止してください。",
-    }, { status: 409 });
-    return NextResponse.json({ success: true, message: "在庫を削除しました。" });
+    if (result === "ALREADY_DELETED") return NextResponse.json({ message: "すでに削除済みの在庫です。" }, { status: 409 });
+    if (result === "CHANGED") return NextResponse.json({ message: "他の端末で在庫が更新されました。読み込み直してください。" }, { status: 409 });
+    return NextResponse.json({ success: true, message: "在庫を削除済みにしました。過去の履歴は保持しています。" });
   } catch (error) {
     console.error("DELETE /api/inventory", error);
-    return NextResponse.json({ code: "INVENTORY_DELETE_FAILED", message: "在庫を削除できませんでした。最新の状態を確認してください。" }, { status: 409 });
+    return NextResponse.json({ message: "在庫を削除できませんでした。最新の状態を確認してください。" }, { status: 409 });
   }
 }
