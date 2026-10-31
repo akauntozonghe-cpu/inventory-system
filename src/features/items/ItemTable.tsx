@@ -24,7 +24,7 @@ type Props = {
   reload: () => void | Promise<void>;
 };
 
-const bulkLabels={ARCHIVE:"廃止",RESTORE:"復元",EXCLUDE_INSPECTION:"点検対象外に設定",INCLUDE_INSPECTION:"点検対象へ戻す"};
+const bulkLabels={DELETE:"削除",EXCLUDE_INSPECTION:"対象から外す",INCLUDE_INSPECTION:"対象に戻す"};
 type BulkOperation = keyof typeof bulkLabels;
 
 function getMessage(data: unknown, fallback: string) {
@@ -245,25 +245,11 @@ export default function ItemTable({ items, reload, isAdmin, filterKey }: Props) 
 
               {selectedItems.length > 0 && <button onClick={() => setSelectedIds([])} className="rounded-xl border px-3 py-2 font-bold">選択解除</button>}
               {isAdmin && (
-                <details className="rounded-xl border p-3"><summary className="cursor-pointer font-bold">高度な操作：選択したJANの全在庫を一括変更</summary><div className="mt-2 flex flex-wrap gap-2">
-                  <button disabled={!selectedItems.length} onClick={()=>openBulkDialog("EXCLUDE_INSPECTION")} className="rounded-xl border p-3 font-bold">点検対象外にする</button><button disabled={!selectedItems.length} onClick={()=>openBulkDialog("INCLUDE_INSPECTION")} className="rounded-xl border p-3 font-bold">点検対象に戻す</button><button
-                    type="button"
-                    disabled={selectedItems.length === 0}
-                    onClick={() => openBulkDialog("ARCHIVE")}
-                    className="rounded-xl bg-amber-500 px-4 py-3 font-bold text-white transition hover:bg-amber-600 disabled:cursor-not-allowed disabled:bg-slate-300"
-                  >
-                    選択したJANの全在庫を廃止
-                  </button>
-
-                  <button
-                    type="button"
-                    disabled={selectedItems.length === 0}
-                    onClick={() => openBulkDialog("RESTORE")}
-                    className="rounded-xl bg-emerald-600 px-4 py-3 font-bold text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:bg-slate-300"
-                  >
-                    選択したJANの全在庫を復元
-                  </button>
-                </div><p className="mt-2 text-sm text-slate-500">廃止しても在庫・棚卸履歴は残ります。</p></details>
+                <details className="rounded-xl border p-3"><summary className="cursor-pointer font-bold">選択した商品をまとめて操作</summary><div className="mt-2 flex flex-wrap gap-2">
+                  <button disabled={!selectedItems.length} onClick={()=>openBulkDialog("EXCLUDE_INSPECTION")} className="rounded-xl border p-3 font-bold">対象から外す</button>
+                  <button disabled={!selectedItems.length} onClick={()=>openBulkDialog("INCLUDE_INSPECTION")} className="rounded-xl border p-3 font-bold">対象に戻す</button>
+                  <button type="button" disabled={!selectedItems.length} onClick={()=>openBulkDialog("DELETE")} className="rounded-xl border border-red-300 p-3 font-bold text-red-700 disabled:opacity-50">選択した商品を削除</button>
+                </div><p className="mt-2 text-sm text-slate-500">削除できるのは履歴のない商品・初回登録のみの在庫です。履歴がある場合は対象から外してください。</p></details>
               )}
             </div>
           </div>
@@ -320,7 +306,7 @@ export default function ItemTable({ items, reload, isAdmin, filterKey }: Props) 
                       <p className="text-sm">分類：{[stock.majorCategory,stock.minorCategory].filter(Boolean).join(" ／ ") || "未設定"} ／ 場所：{stock.storageLocation?.name || "未設定"}</p>
                       <p className="mt-1 font-bold">{stock.quantity} {displayUnit(stock.unit,item.defaultUnit)} ／ {stock.status || "在庫"} ／ 点検：{stock.status === "廃止" || item.isArchived || (stock.inspectionExcluded ?? item.inspectionExcluded) ? "対象外" : "対象"}</p>
                       <p className="break-all text-xs text-slate-500">在庫No.：{stock.id}</p>
-                      <span className="mt-1 inline-block text-sm font-bold text-blue-700">この在庫の編集・廃止・点検設定 →</span>
+                      <span className="mt-1 inline-block text-sm font-bold text-blue-700">この在庫の編集・削除・対象外設定 →</span>
                     </Link>)}</div>
                     {item.isArchived && item.archiveReason && (
                       <p className="mt-4 rounded-xl bg-amber-50 px-3 py-2 text-sm text-amber-800">
@@ -342,7 +328,7 @@ export default function ItemTable({ items, reload, isAdmin, filterKey }: Props) 
           <section className="w-full max-w-lg rounded-2xl bg-white p-6 shadow-2xl">
             <p
               className={`text-sm font-black ${
-                bulkOperation === "ARCHIVE"
+                bulkOperation === "DELETE"
                   ? "text-amber-600"
                   : "text-emerald-600"
               }`}
@@ -356,7 +342,7 @@ export default function ItemTable({ items, reload, isAdmin, filterKey }: Props) 
 
             <p className="mt-3 text-slate-600">
               対象：{selectedItems.length}グループ（配下の全在庫明細）
-              {bulkOperation.includes("INSPECTION")?"。点検の対象だけ変更します。商品・在庫・棚卸の履歴は消しません。廃止商品は設定に関わらず点検対象外です。":bulkOperation==="ARCHIVE"?"。商品と在庫を通常の作業対象から外します。履歴と数量は保存します。":"。商品を通常の作業対象に戻します。在庫明細そのものが廃止の場合は引き続き対象外です。"}
+              {bulkOperation==="DELETE"?"。記録がある在庫が含まれる場合は1件も削除しません。削除は元に戻せません。":"。棚卸・点検の対象だけ変更します。在庫と履歴は保持します。"}
             </p>
 
             <p className="mt-3 font-bold text-blue-800">Lot・期限・分類ごとに操作する場合は、商品詳細を開き、対象明細の「この在庫だけ」を使用してください。</p>
@@ -408,7 +394,7 @@ export default function ItemTable({ items, reload, isAdmin, filterKey }: Props) 
                 onClick={() => void runBulkOperation()}
                 disabled={submitting}
                 className={`rounded-xl px-5 py-3 font-bold text-white disabled:cursor-not-allowed disabled:bg-slate-300 ${
-                  bulkOperation === "ARCHIVE"
+                  bulkOperation === "DELETE"
                     ? "bg-amber-500 hover:bg-amber-600"
                     : "bg-emerald-600 hover:bg-emerald-700"
                 }`}
