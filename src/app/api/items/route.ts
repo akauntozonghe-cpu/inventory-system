@@ -189,8 +189,8 @@ export async function DELETE(request: NextRequest) {
     if (!result.deleted) {
       return NextResponse.json(
         {
-          code: "ITEM_DELETE_HAS_INVENTORY",
-          message: `この商品には在庫が${result.inventoryCount}件紐づいているため削除できません。商品情報を更新するか、廃止して運用してください。`,
+          code: "ITEM_ALREADY_DELETED",
+          message: "この商品はすでに削除済みです。管理者画面で確認できます。",
           itemId: result.item.id,
           inventoryCount: result.inventoryCount,
         },
@@ -200,7 +200,7 @@ export async function DELETE(request: NextRequest) {
 
     await createAdminActionLog({
       adminUserId: adminUser.id,
-      action: "ITEM_DELETE",
+      action: "ITEM_SOFT_DELETE",
       route: "/api/items",
       detail: {
         itemId: result.item.id,
@@ -212,8 +212,8 @@ export async function DELETE(request: NextRequest) {
 
     return NextResponse.json({
       success: true,
-      code: "ITEM_DELETE_OK",
-      message: "未使用の商品を削除しました。",
+      code: "ITEM_SOFT_DELETE_OK",
+      message: "商品を削除済みにしました。関連する履歴は保存されています。",
       deletedItemId: result.item.id,
     });
   } catch (error) {
