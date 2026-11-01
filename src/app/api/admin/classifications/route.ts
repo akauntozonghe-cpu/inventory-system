@@ -1,7 +1,7 @@
 import {nextClassification} from "@/lib/classification-change";
 import {summarizeStock} from "@/lib/stock-state";
 import { renameClassificationMaster } from "@/lib/classification-links";
-import { ensureClassification } from "@/lib/item-links";
+import { ensureClassification, syncItemLinks } from "@/lib/item-links";
 import { normalizeDisplayText } from "@/lib/input-normalization";
 import { NextRequest, NextResponse } from "next/server";
 import { requireAdmin } from "@/lib/auth";
@@ -86,9 +86,10 @@ export async function POST(request: NextRequest) {
       if (!["MAJOR", "MINOR"].includes(kind) || !source || !target) return NextResponse.json({ code: "CLASSIFICATION_INPUT_INVALID", message: "変更元と変更先を指定してください。" }, { status: 400 });
       result = await prisma.$transaction(async (tx) => {
         if (kind === "MAJOR") {
-          const linkedItems = await tx.item.findMany({ where: { majorCategory: source }, select: { id: true } });
           const items = await tx.item.updateMany({ where: { majorCategory: source }, data: { majorCategory: target } });
-          const inventories = await tx.inventoryInstance.updateMany({ where: { OR: [{ majorCategory: source }, { itemId: { in: linkedItems.map((item) => item.id) } }] }, data: { majorCategory: target } });
+          // Rename only stock values that actually use the renamed label.
+          // A lot deliberately assigned another category must not change.
+          const inventories = await tx.inventoryInstance.updateMany({ where: { majorCategory: source }, data: { majorCategory: target } });
           await tx.itemRegistrationRequest.updateMany({ where: { majorCategory: source, status: "PENDING" }, data: { majorCategory: target } });
           await tx.stocktakeSession.updateMany({ where: { scopeType: "MAJOR_CATEGORY", scopeValue: source, status: { in: ["IN_PROGRESS", "PAUSED", "REVIEW", "CONFLICT"] } }, data: { scopeValue: target, scopeLabel: target } });
           const children = await tx.classification.findMany({ where: { kind: "MINOR", parentName: source } });
@@ -102,9 +103,17 @@ export async function POST(request: NextRequest) {
         if (source !== target && otherParents && activeScope) throw new Error("同名の小分類をまとめて棚卸中です。棚卸の完了後に小分類名を変更してください。");
         const where = { minorCategory: source, majorCategory: parentName };
         const nextMajor = targetParent || parentName;
-        const linkedItems = await tx.item.findMany({ where, select: { id: true } });
         const items = await tx.item.updateMany({ where, data: { minorCategory: target, majorCategory: nextMajor } });
-        const inventories = await tx.inventoryInstance.updateMany({ where: { OR: [where, { itemId: { in: linkedItems.map((item) => item.id) } }] }, data: { minorCategory: target, majorCategory: nextMajor } });
+        // Keep null/inherited and other independently configured lot categories.
+        const inherited = await tx.inventoryInstance.updateMany({
+          where: { minorCategory: source, majorCategory: null, item: { majorCategory: nextMajor } },
+          data: { minorCategory: target },
+        });
+        const explicitlyLinked = await tx.inventoryInstance.updateMany({
+          where: { minorCategory: source, majorCategory: parentName },
+          data: { minorCategory: target, majorCategory: nextMajor },
+        });
+        const inventories = { count: inherited.count + explicitlyLinked.count };
         await tx.itemRegistrationRequest.updateMany({ where: { ...where, status: "PENDING" }, data: { minorCategory: target, majorCategory: nextMajor } });
         if (!otherParents) await tx.stocktakeSession.updateMany({ where: { scopeType: "MINOR_CATEGORY", scopeValue: source, status: { in: ["IN_PROGRESS", "PAUSED", "REVIEW", "CONFLICT"] } }, data: { scopeValue: target, scopeLabel: target } });
         await ensureClassification(tx, nextMajor, null);
@@ -125,17 +134,22 @@ export async function POST(request: NextRequest) {
         const selected = await tx.item.findMany({ where: { id: { in: itemIds }, isArchived: false }, select: { id: true, majorCategory: true, minorCategory: true } });
         if (selected.length !== itemIds.length) throw new Error("CLASSIFICATION_ITEMS_CHANGED");
         if(Array.isArray(body.expectedClassifications)){const expected=body.expectedClassifications as Array<{id:string;majorCategory:string|null;minorCategory:string|null}>;if(selected.some(item=>!expected.some(row=>row.id===item.id&&row.majorCategory===item.majorCategory&&row.minorCategory===item.minorCategory)))throw new Error("CLASSIFICATION_ITEMS_CHANGED");}
-        const groups = new Map<string,{ids:string[];majorCategory:string|null;minorCategory:string|null}>();
+        // Preserve each lot's classification overrides while keeping legacy
+        // copies of the previous item classification synchronized.
         for (const item of selected) {
-          const next = nextClassification(item,{...(hasMajor?{majorCategory}:{}),...(hasMinor?{minorCategory}:{}),keepMinorCategory:body.keepMinorCategory===true});
-          const key = JSON.stringify(next);
-          const group = groups.get(key) ?? {...next,ids:[]};group.ids.push(item.id);groups.set(key,group);
-        }
-        // One update per destination classification, not repeated writes per item.
-        for (const {ids,majorCategory,minorCategory} of groups.values()) {
-          await ensureClassification(tx,majorCategory,minorCategory);
-          await tx.item.updateMany({where:{id:{in:ids}},data:{majorCategory,minorCategory}});
-          await tx.inventoryInstance.updateMany({where:{itemId:{in:ids}},data:{majorCategory,minorCategory}});
+          const next = nextClassification(item, {
+            ...(hasMajor ? { majorCategory } : {}),
+            ...(hasMinor ? { minorCategory } : {}),
+            keepMinorCategory: body.keepMinorCategory === true,
+          });
+          await tx.item.updateMany({
+            where: { id: item.id, isArchived: false, majorCategory: item.majorCategory, minorCategory: item.minorCategory },
+            data: next,
+          }).then(result => { if (result.count !== 1) throw new Error("CLASSIFICATION_ITEMS_CHANGED"); });
+          await syncItemLinks(tx, item.id,
+            { majorCategory: item.majorCategory, minorCategory: item.minorCategory, manufacturer: null, defaultUnit: null },
+            { majorCategory: next.majorCategory, minorCategory: next.minorCategory, manufacturer: null, defaultUnit: null },
+          );
         }
         await tx.adminActionLog.create({data:{adminUserId:auth.user!.id,action:"CLASSIFICATION_ASSIGN_ITEMS",route:"/admin/classifications",detail:{before:selected,after:selected.map(item=>({id:item.id,...nextClassification(item,{...(hasMajor?{majorCategory}:{}),...(hasMinor?{minorCategory}:{}),keepMinorCategory:body.keepMinorCategory===true})}))}}});
         return { updatedItems: selected.length, requestedItems: itemIds.length };
