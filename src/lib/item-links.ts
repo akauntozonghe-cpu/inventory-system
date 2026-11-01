@@ -1,6 +1,6 @@
 import type { Prisma } from "@prisma/client";
 
-export type CommonFields = {
+type CommonFields = {
   majorCategory: string | null;
   minorCategory: string | null;
   manufacturer: string | null;
@@ -8,58 +8,48 @@ export type CommonFields = {
 };
 
 /**
- * Item is the source of truth for shared catalog metadata.
- * - A null stock field inherits the current item value at read time.
- * - A stock field equal to the previous item value is a legacy copied/inherited value.
- * - A distinct stock value is an intentional per-lot override and is never overwritten.
- * All writes run inside the calling item's transaction, so screens cannot observe
- * a partially updated master/stock relation.
- *
- * Quantities, places, lots, expiry and historical stocktake snapshots are never touched.
+ * Item is the source of truth for shared product metadata.
+ * Update stock values that inherit from (null) or still match the previous shared
+ * value. Deliberate overrides, stocktake snapshots, transactions and deleted
+ * inventory remain unchanged.
  */
-export async function syncItemLinks(
-  tx: Prisma.TransactionClient,
-  id: string,
-  before: CommonFields,
-  after: CommonFields,
-) {
-  const fields = [
-    ["manufacturer", "manufacturer"],
-    ["majorCategory", "majorCategory"],
-    ["minorCategory", "minorCategory"],
-    ["defaultUnit", "unit"],
-  ] as const;
-
-  for (const [itemField, stockField] of fields) {
-    const oldValue = before[itemField];
-    const newValue = after[itemField];
-    if (oldValue === newValue || oldValue === null) continue;
-    // Null means inheritance; leave it null. Only legacy copies of old
-    // shared values are migrated, not independently configured stock fields.
+export async function syncItemLinks(tx: Prisma.TransactionClient, id: string, before: CommonFields, after: CommonFields) {
+  const active = { itemId: id, status: { not: "廃止" } };
+  if (before.manufacturer !== after.manufacturer) {
     await tx.inventoryInstance.updateMany({
-      where: { itemId: id, [stockField]: oldValue },
-      data: { [stockField]: newValue },
+      where: { ...active, OR: [{ manufacturer: before.manufacturer }, { manufacturer: null }] },
+      data: { manufacturer: after.manufacturer },
     });
   }
-
-  if (before.majorCategory !== after.majorCategory || before.minorCategory !== after.minorCategory) {
-    await ensureClassification(tx, after.majorCategory, after.minorCategory);
+  if (before.defaultUnit !== after.defaultUnit) {
+    await tx.inventoryInstance.updateMany({
+      where: { ...active, OR: [{ unit: before.defaultUnit }, { unit: null }, { unit: "0" }, { unit: "０" }] },
+      data: { unit: after.defaultUnit },
+    });
   }
+  if (before.majorCategory !== after.majorCategory) {
+    // Do not overwrite a stock's different major category.
+    await tx.inventoryInstance.updateMany({
+      where: { ...active, OR: [{ majorCategory: before.majorCategory }, { majorCategory: null }] },
+      data: { majorCategory: after.majorCategory },
+    });
+  }
+  if (before.minorCategory !== after.minorCategory) {
+    await tx.inventoryInstance.updateMany({
+      where: {
+        ...active,
+        OR: [{ minorCategory: before.minorCategory }, { minorCategory: null }],
+        // Only synchronize a minor category when the stock still belongs to
+        // the product's major category, not a deliberately different category.
+        majorCategory: after.majorCategory,
+      },
+      data: { minorCategory: after.minorCategory },
+    });
+  }
+  await ensureClassification(tx, after.majorCategory, after.minorCategory);
 }
 
-export async function ensureClassification(
-  tx: Prisma.TransactionClient,
-  major: string | null | undefined,
-  minor: string | null | undefined,
-) {
-  if (major) await tx.classification.upsert({
-    where: { kind_name_parentName: { kind: "MAJOR", name: major, parentName: "" } },
-    update: {},
-    create: { kind: "MAJOR", name: major, parentName: "" },
-  });
-  if (major && minor) await tx.classification.upsert({
-    where: { kind_name_parentName: { kind: "MINOR", name: minor, parentName: major } },
-    update: {},
-    create: { kind: "MINOR", name: minor, parentName: major },
-  });
+export async function ensureClassification(tx: Prisma.TransactionClient, major: string | null | undefined, minor: string | null | undefined) {
+  if (major) await tx.classification.upsert({ where: { kind_name_parentName: { kind: "MAJOR", name: major, parentName: "" } }, update: {}, create: { kind: "MAJOR", name: major, parentName: "" } });
+  if (major && minor) await tx.classification.upsert({ where: { kind_name_parentName: { kind: "MINOR", name: minor, parentName: major } }, update: {}, create: { kind: "MINOR", name: minor, parentName: major } });
 }
