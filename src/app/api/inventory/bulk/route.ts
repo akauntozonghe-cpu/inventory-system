@@ -81,7 +81,7 @@ export async function POST(request: NextRequest) {
 
       const changes: Array<{id:string;lotNo:string|null;before:Record<string,unknown>;after:Record<string,unknown>}> = [];
       for (const stock of targets) {
-        let patch: Prisma.InventoryInstanceUpdateManyMutationInput;
+        let patch: Prisma.InventoryInstanceUncheckedUpdateManyInput;
         let before: Record<string,unknown>;
         if (operation === "EXCLUDE_INSPECTION" || operation === "INCLUDE_INSPECTION") {
           const excluded = operation === "EXCLUDE_INSPECTION";
