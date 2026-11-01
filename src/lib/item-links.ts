@@ -1,6 +1,6 @@
 import type { Prisma } from "@prisma/client";
 
-type CommonFields = {
+export type CommonFields = {
   majorCategory: string | null;
   minorCategory: string | null;
   manufacturer: string | null;
@@ -8,48 +8,59 @@ type CommonFields = {
 };
 
 /**
- * Item is the source of truth for shared product metadata.
- * Update stock values that inherit from (null) or still match the previous shared
- * value. Deliberate overrides, stocktake snapshots, transactions and deleted
- * inventory remain unchanged.
+ * Item is authoritative for shared metadata; stock-specific overrides win.
+ * Null stock values continue to inherit at read-time.
+ * Values copied from a prior item master are migrated when that master changes.
+ * Never rewrite stocktake snapshots, quantities, movement logs or deleted stock.
  */
 export async function syncItemLinks(tx: Prisma.TransactionClient, id: string, before: CommonFields, after: CommonFields) {
-  const active = { itemId: id, status: { not: "廃止" } };
-  if (before.manufacturer !== after.manufacturer) {
+  const active = { itemId: id, status: { not: "廃止" } } as const;
+  if (before.manufacturer !== after.manufacturer && before.manufacturer !== null) {
     await tx.inventoryInstance.updateMany({
-      where: { ...active, OR: [{ manufacturer: before.manufacturer }, { manufacturer: null }] },
+      where: { ...active, manufacturer: before.manufacturer },
       data: { manufacturer: after.manufacturer },
     });
   }
-  if (before.defaultUnit !== after.defaultUnit) {
+  if (before.defaultUnit !== after.defaultUnit && before.defaultUnit !== null) {
     await tx.inventoryInstance.updateMany({
-      where: { ...active, OR: [{ unit: before.defaultUnit }, { unit: null }, { unit: "0" }, { unit: "０" }] },
+      where: { ...active, unit: before.defaultUnit },
       data: { unit: after.defaultUnit },
     });
   }
-  if (before.majorCategory !== after.majorCategory) {
-    // Do not overwrite a stock's different major category.
+  if (before.majorCategory !== after.majorCategory && before.majorCategory !== null) {
     await tx.inventoryInstance.updateMany({
-      where: { ...active, OR: [{ majorCategory: before.majorCategory }, { majorCategory: null }] },
+      where: { ...active, majorCategory: before.majorCategory },
       data: { majorCategory: after.majorCategory },
     });
   }
-  if (before.minorCategory !== after.minorCategory) {
+  if (before.minorCategory !== after.minorCategory && before.minorCategory !== null) {
     await tx.inventoryInstance.updateMany({
       where: {
         ...active,
-        OR: [{ minorCategory: before.minorCategory }, { minorCategory: null }],
-        // Only synchronize a minor category when the stock still belongs to
-        // the product's major category, not a deliberately different category.
-        majorCategory: after.majorCategory,
+        minorCategory: before.minorCategory,
+        OR: [
+          { majorCategory: before.majorCategory },
+          { majorCategory: after.majorCategory },
+          { majorCategory: null },
+        ],
       },
       data: { minorCategory: after.minorCategory },
     });
   }
-  await ensureClassification(tx, after.majorCategory, after.minorCategory);
+  if (before.majorCategory !== after.majorCategory || before.minorCategory !== after.minorCategory) {
+    await ensureClassification(tx, after.majorCategory, after.minorCategory);
+  }
 }
 
 export async function ensureClassification(tx: Prisma.TransactionClient, major: string | null | undefined, minor: string | null | undefined) {
-  if (major) await tx.classification.upsert({ where: { kind_name_parentName: { kind: "MAJOR", name: major, parentName: "" } }, update: {}, create: { kind: "MAJOR", name: major, parentName: "" } });
-  if (major && minor) await tx.classification.upsert({ where: { kind_name_parentName: { kind: "MINOR", name: minor, parentName: major } }, update: {}, create: { kind: "MINOR", name: minor, parentName: major } });
+  if (major) await tx.classification.upsert({
+    where: { kind_name_parentName: { kind: "MAJOR", name: major, parentName: "" } },
+    update: {},
+    create: { kind: "MAJOR", name: major, parentName: "" },
+  });
+  if (major && minor) await tx.classification.upsert({
+    where: { kind_name_parentName: { kind: "MINOR", name: minor, parentName: major } },
+    update: {},
+    create: { kind: "MINOR", name: minor, parentName: major },
+  });
 }
