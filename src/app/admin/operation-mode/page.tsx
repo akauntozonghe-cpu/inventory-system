@@ -14,6 +14,7 @@ type TestResult = { success: boolean; message: string; checks?: Array<{ title: s
 
 export default function OperationModePage() {
   const [mode, setMode] = useState("NORMAL");
+  const [savedMode,setSavedMode] = useState("NORMAL");
   const [message, setMessage] = useState("");
   const [intervalMinutes, setIntervalMinutes] = useState(360);
   const [notice, setNotice] = useState("");
@@ -22,14 +23,16 @@ export default function OperationModePage() {
   const [testing, setTesting] = useState(false);
   const [testResult, setTestResult] = useState<TestResult | null>(null);
 
-  useEffect(() => { void fetch("/api/admin/operation-mode", { cache: "no-store" }).then((r) => r.json()).then((data) => { setMode(data.mode === "INSPECTION" ? "TEST" : data.mode ?? "NORMAL"); setMessage(data.message ?? ""); setIntervalMinutes(data.autoCheckIntervalMinutes ?? 360); }).catch(() => setError("現在の運用モードを取得できませんでした。")); }, []);
+  useEffect(() => { void fetch("/api/admin/operation-mode", { cache: "no-store" }).then((r) => r.json()).then((data) => { setMode(data.mode === "INSPECTION" ? "TEST" : data.mode ?? "NORMAL");setSavedMode(data.mode === "INSPECTION" ? "TEST" : data.mode ?? "NORMAL"); setMessage(data.message ?? ""); setIntervalMinutes(data.autoCheckIntervalMinutes ?? 360); }).catch(() => setError("現在の運用モードを取得できませんでした。")); }, []);
 
   const save = async () => {
+    if(mode==="MAINTENANCE"&&savedMode!=="MAINTENANCE"&&!window.confirm("メンテナンスモードに切り替えると、一般利用者の通常業務が停止します。対象者への案内を確認して切り替えますか？")) return;
     setSaving(true); setError(""); setNotice("");
     try {
       const response = await fetch("/api/admin/operation-mode", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ mode, message, autoCheckIntervalMinutes: intervalMinutes }) });
       const data = await response.json();
       if (!response.ok) throw new Error(data.message || "更新できませんでした。");
+      setSavedMode(mode);
       setNotice("運用モードと自動点検間隔を更新しました。");
     } catch (e) { setError(e instanceof Error ? e.message : "更新できませんでした。"); }
     finally { setSaving(false); }
@@ -50,8 +53,8 @@ export default function OperationModePage() {
     <FeedbackToast title="設定エラー" tone="error" message={error} onClose={() => setError("")} />
     <FeedbackToast title="更新完了" tone="success" message={notice} onClose={() => setNotice("")} />
     <div className="mx-auto max-w-4xl">
-      <header className="flex flex-wrap items-center justify-between gap-4"><div><p className="text-sm font-black text-amber-700">OPERATION CONTROL</p><h1 className="mt-1 text-3xl font-black">運用モード設定</h1></div><Link href="/admin" className="rounded-xl bg-slate-800 px-5 py-3 font-black text-white">管理者メニューへ</Link></header>
-      <section className="mt-7 rounded-3xl bg-white p-6 shadow-sm">
+      <header className="flex flex-wrap items-center justify-between gap-4"><div><p className="text-sm font-black text-amber-700">OPERATION CONTROL</p><h1 className="mt-1 text-3xl font-black">運用モード設定</h1></div><Link href="/admin" className="rounded-xl bg-slate-800 px-5 py-3 font-black text-white">管理センターへ</Link></header>
+      <section className="mt-7 rounded-3xl bg-white p-6 shadow-sm"><p className="mb-4 rounded-xl bg-slate-100 p-3 text-sm font-bold">現在の運用：{choices.find(choice=>choice.mode===savedMode)?.title ?? savedMode} ／ 変更後：{choices.find(choice=>choice.mode===mode)?.title ?? mode}</p>
         <div className="grid gap-4 sm:grid-cols-3">{choices.map((choice) => <button key={choice.mode} type="button" onClick={() => setMode(choice.mode)} className={`rounded-2xl border-4 p-5 text-left ${mode === choice.mode ? "border-slate-950" : "border-transparent bg-slate-50"}`}><span className={`inline-block rounded-full px-3 py-1 text-xs font-black text-white ${choice.color}`}>{choice.title}</span><p className="mt-3 text-sm font-semibold text-slate-700">{choice.description}</p></button>)}</div>
         <label className="mt-6 block font-black">自動点検の間隔<select value={intervalMinutes} onChange={(e) => setIntervalMinutes(Number(e.target.value))} className="mt-2 w-full rounded-xl border border-slate-300 p-3"><option value={60}>1時間ごと</option><option value={360}>6時間ごと（推奨）</option><option value={1440}>1日ごと</option></select></label>
         <p className="mt-2 text-sm font-semibold text-slate-600">点検は運用モードとは別に自動実行され、異常時はエラーレポートと管理者通知を作成します。</p>
