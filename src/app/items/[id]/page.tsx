@@ -258,6 +258,10 @@ export default function ItemDetailPage() {
   const [bulkReason, setBulkReason] = useState("");
   const [bulkConfirm, setBulkConfirm] = useState(false);
   const [bulkBusy, setBulkBusy] = useState(false);
+  const [bulkOperation,setBulkOperation]=useState<"EXCLUDE_INSPECTION"|"INCLUDE_INSPECTION"|"DELETE"|"RESTORE"|"SET_LOCATION"|"SET_ALLOCATION"|"SET_EXPIRY_ALERT">("EXCLUDE_INSPECTION");
+  const [bulkLocation,setBulkLocation]=useState("");
+  const [bulkAllocation,setBulkAllocation]=useState<"home"|"flea_market"|"warehouse">("home");
+  const [bulkAlertDays,setBulkAlertDays]=useState(30);
 
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
@@ -599,21 +603,30 @@ export default function ItemDetailPage() {
   }
 
   const inventoryInstances = (item.inventoryInstances ?? []).filter(row=>!focusedInventory||row.id===focusedInventory);
-  const selectableStocks = (item.inventoryInstances ?? []).filter(stock=>stock.status !== "廃止");
+  const deletedInventories = inventoryInstances.filter(stock=>stock.status==="廃止");
+  const activeInventories = inventoryInstances.filter(stock=>stock.status!=="廃止");
+  const selectableStocks = (item.inventoryInstances ?? []).filter(stock=>bulkOperation==="RESTORE" ? stock.status==="廃止" : stock.status!=="廃止");
   const selectedStocks = selectableStocks.filter(stock=>selectedStockIds.includes(stock.id));
-  const bulkTargets = selectableStocks.filter(stock=>bulkScope === "selected" ? selectedStockIds.includes(stock.id) : !selectedStockIds.includes(stock.id));
+  const bulkTargets = selectableStocks.filter(stock=>bulkScope==="selected" ? selectedStockIds.includes(stock.id) : !selectedStockIds.includes(stock.id));
   const toggleStock = (id:string) => { setSelectedStockIds(current=>current.includes(id)?current.filter(x=>x!==id):[...current,id]); setBulkConfirm(false); };
-  const saveBulkExclusion = async () => {
+  const bulkLabels = {
+    EXCLUDE_INSPECTION:"棚卸対象から外す", INCLUDE_INSPECTION:"棚卸対象に戻す",
+    DELETE:"削除済みにする", RESTORE:"削除済みから復元",
+    SET_LOCATION:"保管場所を変更", SET_ALLOCATION:"在庫区分を変更", SET_EXPIRY_ALERT:"期限通知日数を変更"
+  } as const;
+  const saveBulkOperation = async () => {
     if (!item || bulkBusy || saving || bulkTargets.length===0 || !bulkConfirm || bulkReason.trim().length<2) return;
     setBulkBusy(true);setError("");setNotice("");
     try {
       const response=await fetch("/api/inventory/bulk",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({
-        itemId:item.id,scope:bulkScope,selectedIds:selectedStocks.map(stock=>stock.id),reason:bulkReason.trim(),
-        snapshots:(item.inventoryInstances??[]).map(stock=>({id:stock.id,expectedUpdatedAt:stock.updatedAt}))
+        itemId:item.id,operation:bulkOperation,scope:bulkScope,
+        selectedIds:selectedStocks.map(stock=>stock.id),reason:bulkReason.trim(),
+        snapshots:(item.inventoryInstances??[]).map(stock=>({id:stock.id,expectedUpdatedAt:stock.updatedAt})),
+        data:{storageLocationId:bulkLocation,allocationType:bulkAllocation,expirationAlertDays:bulkAlertDays}
       })});
       const data=await readJson(response);
       if(!response.ok)throw new Error(getMessage(data,"一括操作に失敗しました。"));
-      setNotice(getMessage(data,"棚卸対象から外しました。"));
+      setNotice(getMessage(data,"在庫を更新しました。"));
       setBulkReason("");setBulkConfirm(false);setSelectedStockIds([]);
       await loadItem(true);
     }catch(caught){setError(caught instanceof Error?caught.message:"一括操作に失敗しました。");}
@@ -834,44 +847,69 @@ export default function ItemDetailPage() {
                 この商品を削除
               </button>
             )}
-            {(accessUser?.role === "ADMIN" || adminMode.active) && !item.isArchived && selectableStocks.length > 0 && (
-              <section aria-label="在庫明細の一括操作" className="mt-4 rounded-xl border border-blue-200 bg-blue-50/60 p-3 sm:p-4">
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <h3 className="font-black text-slate-900">在庫明細をまとめて操作</h3>
-                  <span className="text-sm font-bold text-slate-600">{selectedStocks.length} / {selectableStocks.length}件選択</span>
-                </div>
-                <p className="mt-1 text-sm text-slate-600">下の在庫カードのチェックで選択します。操作対象はこの商品内だけです。</p>
-                <div className="mt-3 flex flex-wrap gap-2">
-                  <button type="button" onClick={()=>{setSelectedStockIds(selectableStocks.map(s=>s.id));setBulkConfirm(false);}} className="rounded-lg border bg-white px-3 py-2 text-sm font-bold">全件選択</button>
-                  <button type="button" onClick={()=>{setSelectedStockIds([]);setBulkConfirm(false);}} className="rounded-lg border bg-white px-3 py-2 text-sm font-bold">選択解除</button>
-                  <button type="button" onClick={()=>{setSelectedStockIds(selectableStocks.filter(s=>!selectedStockIds.includes(s.id)).map(s=>s.id));setBulkConfirm(false);}} className="rounded-lg border bg-white px-3 py-2 text-sm font-bold">選択反転</button>
-                </div>
-                <fieldset className="mt-4 space-y-2">
-                  <legend className="font-bold">操作対象</legend>
-                  <label className="flex items-center gap-2"><input type="radio" name="bulk-scope" checked={bulkScope==="selected"} onChange={()=>{setBulkScope("selected");setBulkConfirm(false);}}/>選択した在庫（{selectedStocks.length}件）</label>
-                  <label className="flex items-center gap-2"><input type="radio" name="bulk-scope" checked={bulkScope==="unselected"} onChange={()=>{setBulkScope("unselected");setBulkConfirm(false);}}/>選択していない在庫（{selectableStocks.length-selectedStocks.length}件）</label>
-                </fieldset>
-                <div className="mt-4 rounded-lg border bg-white p-3">
-                  <p className="font-bold">実行内容：棚卸対象から外す（{bulkTargets.length}件）</p>
-                  <p className="mt-1 text-xs text-slate-600">在庫と履歴は残ります。対象は保存直前にサーバーで再確認されます。</p>
-                  <div className="mt-2 max-h-40 space-y-1 overflow-auto text-sm">
-                    {bulkTargets.map(stock=><p key={stock.id} className="break-words">・Lot {stock.lotNo||"未設定"} ／ {stock.storageLocation?.name||"場所未設定"} ／ {stock.quantity}個</p>)}
-                    {!bulkTargets.length&&<p className="text-slate-500">対象がありません。</p>}
+            {(accessUser?.role==="ADMIN"||adminMode.active) && !item.isArchived && (item.inventoryInstances??[]).length>0 && (
+              <details className="mt-4 rounded-xl border border-blue-200 bg-blue-50/40" open={undefined}>
+                <summary className="cursor-pointer p-3 font-black text-slate-900 sm:p-4">在庫の一括管理 <span className="ml-2 text-sm font-medium text-slate-600">複数選択・対象切替・一括編集</span></summary>
+                <div className="border-t border-blue-100 p-3 sm:p-4">
+                  <div className="grid gap-3 md:grid-cols-2">
+                    <label className="block text-sm font-bold">操作内容
+                      <select value={bulkOperation} onChange={e=>{setBulkOperation(e.target.value as typeof bulkOperation);setSelectedStockIds([]);setBulkConfirm(false);}} className="mt-1 w-full rounded-lg border border-slate-300 bg-white p-3">
+                        {Object.entries(bulkLabels).map(([value,label])=><option key={value} value={value}>{label}</option>)}
+                      </select>
+                    </label>
+                    <fieldset className="rounded-lg border border-slate-200 bg-white p-3">
+                      <legend className="px-1 text-sm font-bold">操作範囲</legend>
+                      <label className="mr-4 inline-flex items-center gap-2 text-sm"><input type="radio" name="bulk-scope" checked={bulkScope==="selected"} onChange={()=>{setBulkScope("selected");setBulkConfirm(false);}}/>選択した在庫</label>
+                      <label className="inline-flex items-center gap-2 text-sm"><input type="radio" name="bulk-scope" checked={bulkScope==="unselected"} onChange={()=>{setBulkScope("unselected");setBulkConfirm(false);}}/>選択していない在庫</label>
+                    </fieldset>
                   </div>
+                  <p className="mt-3 text-sm text-slate-600">{bulkOperation==="RESTORE"?"下の「削除済み在庫」から選択します。":"通常の在庫カードのチェックで選択します。"} 同じ商品内だけが操作対象です。</p>
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    <button type="button" onClick={()=>{setSelectedStockIds(selectableStocks.map(s=>s.id));setBulkConfirm(false);}} className="rounded-lg border bg-white px-3 py-2 text-sm font-bold">全件選択</button>
+                    <button type="button" onClick={()=>{setSelectedStockIds([]);setBulkConfirm(false);}} className="rounded-lg border bg-white px-3 py-2 text-sm font-bold">選択解除</button>
+                    <button type="button" onClick={()=>{setSelectedStockIds(selectableStocks.filter(s=>!selectedStockIds.includes(s.id)).map(s=>s.id));setBulkConfirm(false);}} className="rounded-lg border bg-white px-3 py-2 text-sm font-bold">選択反転</button>
+                    <span className="self-center text-sm font-bold text-slate-700">{selectedStocks.length}/{selectableStocks.length}件選択</span>
+                  </div>
+                  {bulkOperation==="SET_LOCATION"&&<label className="mt-3 block text-sm font-bold">変更後の保管場所
+                    <select value={bulkLocation} onChange={e=>{setBulkLocation(e.target.value);setBulkConfirm(false);}} className="mt-1 w-full rounded-lg border bg-white p-3">
+                      <option value="">場所を選んでください</option>{locations.map(l=><option key={l.id} value={l.id}>{l.name}</option>)}
+                    </select>
+                  </label>}
+                  {bulkOperation==="SET_ALLOCATION"&&<label className="mt-3 block text-sm font-bold">変更後の在庫区分
+                    <select value={bulkAllocation} onChange={e=>{setBulkAllocation(e.target.value as typeof bulkAllocation);setBulkConfirm(false);}} className="mt-1 w-full rounded-lg border bg-white p-3">
+                      <option value="home">自宅</option><option value="warehouse">倉庫</option><option value="flea_market">フリーマーケット</option>
+                    </select>
+                  </label>}
+                  {bulkOperation==="SET_EXPIRY_ALERT"&&<label className="mt-3 block text-sm font-bold">期限通知までの日数（0～365日）
+                    <input type="number" min={0} max={365} value={bulkAlertDays} onChange={e=>{setBulkAlertDays(Number(e.target.value));setBulkConfirm(false);}} className="mt-1 w-full rounded-lg border bg-white p-3"/>
+                  </label>}
+                  <div className="mt-4 rounded-lg border border-slate-200 bg-white p-3">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <strong className="text-slate-900">実行前の確認：{bulkLabels[bulkOperation]}</strong>
+                      <span className="rounded-full bg-blue-100 px-3 py-1 text-sm font-black text-blue-800">{bulkTargets.length}件</span>
+                    </div>
+                    <p className="mt-1 text-xs text-slate-600">削除・復元しても棚卸・取引履歴は残ります。変更前後と操作理由を監査ログに記録します。</p>
+                    <div className="mt-2 max-h-44 space-y-1 overflow-auto text-sm">
+                      {bulkTargets.map(stock=><p key={stock.id} className="break-words border-b border-slate-100 py-1">Lot {stock.lotNo||"未設定"} ・ {stock.storageLocation?.name||"場所未設定"} ・ {stock.quantity} {displayUnit(stock.unit,item.defaultUnit)}</p>)}
+                      {!bulkTargets.length&&<p className="text-slate-500">操作する在庫はありません。</p>}
+                    </div>
+                  </div>
+                  <label className="mt-3 block text-sm font-bold">変更理由
+                    <textarea rows={2} maxLength={500} value={bulkReason} onChange={e=>{setBulkReason(e.target.value);setBulkConfirm(false);}} placeholder="例：保管場所の整理に伴う変更" className="mt-1 w-full rounded-lg border border-slate-300 bg-white p-3"/>
+                  </label>
+                  <label className="mt-3 flex items-center gap-2 text-sm font-bold"><input type="checkbox" checked={bulkConfirm} onChange={e=>setBulkConfirm(e.target.checked)}/>対象・操作内容・変更理由を確認しました</label>
+                  <button type="button" disabled={bulkBusy||saving||!bulkTargets.length||bulkReason.trim().length<2||!bulkConfirm||(bulkOperation==="SET_LOCATION"&&!bulkLocation)||(bulkOperation==="SET_EXPIRY_ALERT"&&(!Number.isInteger(bulkAlertDays)||bulkAlertDays<0||bulkAlertDays>365))} onClick={()=>void saveBulkOperation()} className="mt-3 w-full rounded-lg bg-blue-700 px-4 py-3 font-bold text-white disabled:cursor-not-allowed disabled:bg-slate-300 sm:w-auto">{bulkBusy?"更新中…":bulkTargets.length+"件を一括更新"}</button>
                 </div>
-                <label className="mt-3 block text-sm font-bold">変更理由<input value={bulkReason} onChange={e=>{setBulkReason(e.target.value);setBulkConfirm(false);}} maxLength={500} placeholder="例：今回の棚卸から除外" className="mt-1 w-full rounded-lg border border-slate-300 bg-white p-3"/></label>
-                <label className="mt-3 flex items-center gap-2 text-sm font-bold"><input type="checkbox" checked={bulkConfirm} onChange={e=>setBulkConfirm(e.target.checked)}/>対象と変更理由を確認しました</label>
-                <button type="button" disabled={bulkBusy||saving||!bulkTargets.length||bulkReason.trim().length<2||!bulkConfirm} onClick={()=>void saveBulkExclusion()} className="mt-3 w-full rounded-lg bg-blue-700 px-4 py-3 font-bold text-white disabled:cursor-not-allowed disabled:bg-slate-300 sm:w-auto">{bulkBusy?"保存中…":bulkTargets.length+"件を棚卸対象から外す"}</button>
-              </section>
+              </details>
             )}
             {focusedInventory&&<p className="my-4 rounded-xl bg-blue-50 p-3 font-bold">選んだ在庫だけを表示しています。Lot・保管場所を確認して、この明細を編集してください。<Link className="ml-3 underline" href={`/items/${item.id}`}>同じJANの全在庫を表示</Link></p>}
-            {inventoryInstances.length === 0 ? (
+            {activeInventories.length === 0 ? (
               <div className="mt-5 rounded-2xl bg-slate-100 p-7 text-center text-slate-600">
                 {focusedInventory ? "指定された在庫が見つかりません。同じJANの全在庫から対象を確認してください。" : "登録されている在庫はありません。"}
               </div>
             ) : (
               <div className="mt-5 space-y-4">
-                {inventoryInstances.map((inventory) => {
+                {activeInventories.map((inventory) => {
                   const editing = editingInventoryId === inventory.id;
 
                   return (
@@ -882,7 +920,7 @@ export default function ItemDetailPage() {
                     >
                       {(accessUser?.role === "ADMIN" || adminMode.active) && !item.isArchived && inventory.status !== "廃止" && (
                         <label className="mb-3 flex cursor-pointer items-center gap-3 rounded-lg bg-slate-50 p-3 text-sm font-bold text-slate-700">
-                          <input type="checkbox" checked={selectedStockIds.includes(inventory.id)} onChange={()=>toggleStock(inventory.id)} className="h-5 w-5 shrink-0"/>
+                          <input type="checkbox" disabled={bulkOperation==="RESTORE"} checked={selectedStockIds.includes(inventory.id)} onChange={()=>toggleStock(inventory.id)} className="h-5 w-5 shrink-0"/>
                           一括操作の対象として選択
                         </label>
                       )}
@@ -1235,6 +1273,21 @@ export default function ItemDetailPage() {
                   );
                 })}
               </div>
+            )}
+            {(accessUser?.role==="ADMIN"||adminMode.active) && deletedInventories.length>0 && (
+              <details className="mt-5 rounded-xl border border-amber-200 bg-amber-50/50">
+                <summary className="cursor-pointer p-4 font-bold text-amber-900">削除済み在庫を表示（{deletedInventories.length}件・管理者のみ）</summary>
+                <div className="space-y-2 border-t border-amber-200 p-3">
+                  <p className="text-sm text-amber-900">通常の棚卸・検索には表示されません。復元する場合は上の「在庫の一括管理」で操作内容を「削除済みから復元」にしてください。</p>
+                  {deletedInventories.map(stock=><div key={stock.id} className="flex flex-wrap items-center gap-3 rounded-lg border border-amber-200 bg-white p-3">
+                    <label className="flex min-w-0 flex-1 cursor-pointer items-center gap-3 text-sm font-bold">
+                      <input type="checkbox" disabled={bulkOperation!=="RESTORE"} checked={selectedStockIds.includes(stock.id)} onChange={()=>toggleStock(stock.id)} className="h-5 w-5 shrink-0"/>
+                      <span className="min-w-0 break-words">Lot：{stock.lotNo||"未設定"} ／ {stock.storageLocation?.name||"保管場所未設定"} ／ {stock.quantity} {displayUnit(stock.unit,item.defaultUnit)}</span>
+                    </label>
+                    <span className="rounded-full bg-amber-100 px-2 py-1 text-xs font-bold text-amber-900">削除済み</span>
+                  </div>)}
+                </div>
+              </details>
             )}
           </section>
         </div>
