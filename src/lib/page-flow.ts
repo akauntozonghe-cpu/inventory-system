@@ -4,7 +4,7 @@ export function pageParent(path: string): { href: string; label: string } {
   if (path.startsWith("/notifications/")) return { href:"/notifications",label:"通知一覧へ戻る" };
   if (path.startsWith("/items/")) return { href: "/items", label: "商品一覧へ戻る" };
   if (path.startsWith("/admin/marketplace/")) return { href: "/marketplace", label: "フリマへ戻る" };
-  if (["/import", "/reset"].includes(path)) return { href: "/admin", label: "管理センターへ戻る" };
+  if (["/add", "/import", "/reset"].includes(path)) return { href: "/admin", label: "管理センターへ戻る" };
   if (path.startsWith("/admin/")) return { href: "/admin", label: "管理センターへ戻る" };
   return { href: "/", label: "ホームへ戻る" };
 }
