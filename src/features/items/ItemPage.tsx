@@ -242,7 +242,7 @@ export default function ItemPage() {
 
 
   return (
-    <main className="min-h-screen bg-slate-100 p-4 sm:p-8">
+    <main className="min-h-screen bg-slate-100 px-3 py-4 sm:px-6 sm:py-6">
       <FeedbackToast
         message={error}
         tone="error"
@@ -256,18 +256,18 @@ export default function ItemPage() {
         autoCloseMs={5000}
       />
       <div className="mx-auto max-w-7xl">
-        <header className="mb-6 flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+        <header className="mb-5 flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
           <div>
             <p className="text-sm font-bold tracking-widest text-blue-600">
               INVENTORY OS
             </p>
 
-            <h1 className="mt-1 text-3xl font-black text-slate-900">
+            <h1 className="mt-1 text-2xl font-black text-slate-900 sm:text-3xl">
               商品・在庫・ラベル管理
             </h1>
 
             <p className="mt-2 text-slate-600">
-              通常在庫・フリマ準備・出品・発送の状態を、商品やロットと紐づけて確認できます。
+              商品を検索して、詳細から在庫・期限・保管場所を確認できます。
             </p>
           </div>
 
@@ -334,15 +334,15 @@ export default function ItemPage() {
         )}
 
 
-        <section className="rounded-2xl bg-white p-4 shadow-sm sm:p-5">
-          <div className="grid gap-3 lg:grid-cols-[1fr_auto_auto]">
+        <section aria-label="商品検索と絞り込み" className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
+          <div className="grid min-w-0 gap-3 lg:grid-cols-[minmax(0,1fr)_auto_auto]">
             <ImeInput
               aria-label="商品を検索"
               type="search"
               value={search}
               onChange={(event) => setSearch(event.target.value.normalize("NFKC"))}
               placeholder="商品名・JAN・システムJAN・メーカー・分類で検索"
-              className="w-full rounded-xl border border-slate-300 px-4 py-3 outline-none focus:border-blue-600"
+              className="min-w-0 w-full rounded-xl border border-slate-300 px-4 py-3 outline-none focus:border-blue-600"
             />
 
             <button
