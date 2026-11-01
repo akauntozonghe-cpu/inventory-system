@@ -58,7 +58,7 @@ export default function ClassificationsPage() {
   const openReview=(body:Record<string,unknown>)=>{setError("");const ids=body.itemIds as string[];const rows=data.items.filter(item=>ids.includes(item.id)).map(item=>({...item}));setReview({...body,rows,expectedClassifications:rows.map(({id,majorCategory,minorCategory})=>({id,majorCategory,minorCategory}))});};
   const selectionRef=useRef<string[]>([]);
   const index=useMemo(()=>productScanIndex(data.items),[data.items]);
-  useEffect(()=>{window.dispatchEvent(new CustomEvent("inventory:draft",{detail:{dirty:selectedItemIds.length>0}}));return()=>{window.dispatchEvent(new CustomEvent("inventory:draft",{detail:{dirty:false}}));};},[selectedItemIds]);
+  // Selecting existing products is not an unsaved edit. Confirmation is required only when committing an actual change.
   const missingSelected=useMemo(()=>{const ids=new Set(data.items.map(item=>item.id));return selectedItemIds.filter(id=>!ids.has(id));},[data.items,selectedItemIds]);
   const selectedSet=useMemo(()=>new Set(selectedItemIds),[selectedItemIds]);
   const updateSelection=(ids:string[])=>{selectionRef.current=ids;setSelectedItemIds(ids);};
