@@ -351,8 +351,8 @@ export default function ItemTable({ items, reload, isAdmin, archivedView = false
                     <dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-3 rounded-xl bg-slate-50 p-3 text-sm sm:grid-cols-3 lg:grid-cols-6">
                       <div className="min-w-0"><dt className="text-xs font-bold text-slate-500">メーカー</dt><dd className="mt-1 break-words font-bold text-slate-900">{item.manufacturer||"未設定"}</dd></div>
                       <div className="min-w-0"><dt className="text-xs font-bold text-slate-500">大分類・小分類</dt><dd className="mt-1 break-words font-bold text-slate-900">{[item.majorCategory,item.minorCategory].filter(Boolean).join(" / ")||"未設定"}</dd></div>
-                      <div className="min-w-0"><dt className="text-xs font-bold text-slate-500">在庫数量（単位別）</dt><dd className="mt-1 break-words font-bold text-slate-900">{quantitySummary}</dd></div>
-                      <div className="min-w-0"><dt className="text-xs font-bold text-slate-500">在庫明細</dt><dd className="mt-1 font-bold text-slate-900">{activeStocks.length}件</dd></div>
+                      <div className="min-w-0"><dt className="text-xs font-bold text-slate-500">{archivedView?"保存数量（参考）":"在庫数量（単位別）"}</dt><dd className="mt-1 break-words font-bold text-slate-900">{quantitySummary}</dd></div>
+                      <div className="min-w-0"><dt className="text-xs font-bold text-slate-500">{archivedView?"保存明細":"在庫明細"}</dt><dd className="mt-1 font-bold text-slate-900">{activeStocks.length}件</dd></div>
                       <div className="min-w-0"><dt className="text-xs font-bold text-slate-500">直近の使用期限</dt><dd className="mt-1 font-bold text-slate-900">{expiryDates[0]?.slice(0,10)||"未設定"}</dd></div>
                       <div className="min-w-0"><dt className="text-xs font-bold text-slate-500">保管場所</dt><dd className="mt-1 break-words font-bold text-slate-900">{locations.length ? locations.slice(0,2).join("・")+(locations.length>2?` ほか${locations.length-2}件`:"") : "未設定"}</dd></div>
                     </dl>
