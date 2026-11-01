@@ -102,6 +102,8 @@ export default function UserManagementPage() {
   const router = useRouter();
 
   const [users, setUsers] = useState<User[]>([]);
+  const [userSearch,setUserSearch] = useState("");
+  const [userStatus,setUserStatus] = useState<"ALL"|"ACTIVE"|"INACTIVE">("ALL");
   const [form, setForm] = useState<UserForm>(initialForm);
 
   const [loading, setLoading] = useState(true);
@@ -394,6 +396,12 @@ export default function UserManagementPage() {
     }
   };
 
+  const visibleUsers=users.filter(user=>{
+    const keyword=userSearch.normalize("NFKC").trim().toLowerCase();
+    return (!keyword || [user.displayName,user.username].some(value=>value.normalize("NFKC").toLowerCase().includes(keyword)))
+      && (userStatus==="ALL" || (userStatus==="ACTIVE" ? user.isActive : !user.isActive));
+  });
+  const activeUserCount=users.filter(user=>user.isActive).length;
   return (
     <main className="min-h-screen bg-slate-100 px-4 py-8 text-slate-900 sm:px-6 lg:px-8">
       <FeedbackToast message={error} tone="error" title="ユーザー操作エラー" onClose={() => setError("")} />
@@ -404,19 +412,19 @@ export default function UserManagementPage() {
               INVENTORY OS
             </p>
 
-            <h1 className="mt-1 text-3xl font-black">ユーザー管理</h1>
+            <h1 className="mt-1 text-3xl font-black">利用者・権限</h1>
 
             <p className="mt-2 text-slate-600">
-              利用者の追加・停止・パスワード再設定を行います。
+              利用者を探して、利用権限・有効/停止・パスワードを管理します。
             </p>
           </div>
 
           <button
             type="button"
-            onClick={() => router.push("/")}
+            onClick={() => router.push("/admin")}
             className="rounded-xl bg-slate-800 px-5 py-3 font-bold text-white transition hover:bg-slate-700"
           >
-            ホームへ戻る
+            管理センターへ戻る
           </button>
         </div>
 
@@ -427,7 +435,167 @@ export default function UserManagementPage() {
           </div>
         )}
 
-        <div className="grid gap-6 lg:grid-cols-[390px_1fr]">
+        <div className="grid min-w-0 gap-5 lg:grid-cols-[minmax(0,1fr)_350px]">
+          <section className="rounded-2xl bg-white p-6 shadow-sm">
+            <div className="flex items-center justify-between gap-4">
+              <div>
+                <h2 className="text-xl font-black">登録ユーザー</h2>
+
+                <p className="mt-1 text-sm text-slate-600">
+                  登録 {users.length}人 ／ 有効 {activeUserCount}人 ／ 停止 {users.length-activeUserCount}人
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => void loadUsers()}
+                disabled={loading}
+                className="rounded-xl border border-slate-300 px-4 py-2 text-sm font-bold transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                更新
+              </button>
+            </div>
+
+            <div className="mt-4 flex flex-col gap-2 sm:flex-row">
+              <label className="min-w-0 flex-1 text-sm font-bold">氏名・ログインIDで検索
+                <input type="search" value={userSearch} onChange={e=>setUserSearch(e.target.value)}
+                  placeholder="名前・ログインID" className="mt-1 min-h-11 w-full rounded-xl border border-slate-300 px-3 py-2 text-base"/>
+              </label>
+              <label className="text-sm font-bold">状態
+                <select value={userStatus} onChange={e=>setUserStatus(e.target.value as typeof userStatus)}
+                  className="mt-1 min-h-11 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 sm:w-36">
+                  <option value="ALL">すべて</option><option value="ACTIVE">有効</option><option value="INACTIVE">停止中</option>
+                </select>
+              </label>
+            </div>
+            <p role="status" className="mt-2 text-sm text-slate-600">表示中 {visibleUsers.length}人</p>
+            {loading ? (
+              <p className="py-10 text-center text-slate-500">
+                ユーザー一覧を読み込み中...
+              </p>
+            ) : visibleUsers.length === 0 ? (
+              <p className="py-10 text-center text-slate-500">
+                条件に合う利用者はいません。
+              </p>
+            ) : (
+              <div className="mt-5 space-y-3">
+                {visibleUsers.map((user) => {
+                  const busy = actionUserId === user.id;
+
+                  return (
+                    <article
+                      key={user.id}
+                      className="rounded-xl border border-slate-200 p-4"
+                    >
+                      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                        <div>
+                          <div className="flex flex-wrap items-center gap-2">
+                            <h3 className="text-lg font-black">
+                              {user.displayName}
+                            </h3>
+
+                            <span
+                              className={`rounded-full px-2.5 py-1 text-xs font-bold ${
+                                user.role === "ADMIN"
+                                  ? "bg-violet-100 text-violet-700"
+                                  : "bg-blue-100 text-blue-700"
+                              }`}
+                            >
+                              {user.role === "ADMIN" ? "全機能" : "標準利用"}
+                            </span>
+
+                            <span
+                              className={`rounded-full px-2.5 py-1 text-xs font-bold ${
+                                user.isActive
+                                  ? "bg-green-100 text-green-700"
+                                  : "bg-slate-200 text-slate-600"
+                              }`}
+                            >
+                              {user.isActive ? "有効" : "停止中"}
+                            </span>
+
+                            {user.mustChangePassword && (
+                              <span className="rounded-full bg-amber-100 px-2.5 py-1 text-xs font-bold text-amber-700">
+                                パスワード変更待ち
+                              </span>
+                            )}
+                          </div>
+
+                          <p className="mt-1 text-sm text-slate-600">
+                            ログインID：{user.username}
+                          </p>
+                        </div>
+
+                        <div className="flex flex-wrap gap-2">
+                          <button
+                            type="button"
+                            onClick={() => openPasswordReset(user)}
+                            disabled={busy || !user.isActive}
+                            className="rounded-xl bg-amber-500 px-4 py-2 text-sm font-bold text-white transition hover:bg-amber-600 disabled:cursor-not-allowed disabled:bg-slate-300"
+                          >
+                            パスワード再設定
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => openStatusChange(user)}
+                            disabled={busy}
+                            className={`rounded-xl px-4 py-2 text-sm font-bold text-white transition disabled:cursor-not-allowed disabled:bg-slate-300 ${
+                              user.isActive
+                                ? "bg-red-600 hover:bg-red-700"
+                                : "bg-green-600 hover:bg-green-700"
+                            }`}
+                          >
+                            {busy
+                              ? "処理中..."
+                              : user.isActive
+                                ? "停止する"
+                                : "有効化する"}
+                          </button>
+                        </div>
+                      </div>
+                      <details className="mt-4 border-t border-slate-200 pt-4">
+                        <summary className="cursor-pointer py-2 text-sm font-black text-slate-900">管理者が付与する日常業務の権限（{user.role==="ADMIN"?"すべて":user.featurePermissions.filter(feature=>FEATURE_KEYS.includes(feature)).length+"項目"}）</summary><p className="mt-1 text-xs text-slate-600">この設定は通常の利用権限です。一時管理者（10分間）とは別に、解除するまで継続します。編集権限の解除は次の保存操作から反映されます。新規棚卸には「棚卸作業」、販売設定には「フリマ作業」も必要です。</p>
+                        <div className="mt-3 rounded-xl bg-blue-50 p-3 text-sm"><p className="font-bold">棚卸中の編集を許可する場合</p><p>「棚卸作業」に加え、「商品情報の編集」「在庫明細の編集」を必要な範囲で選んでください。管理者への昇格は不要です。</p></div>
+                        <div className="mt-3 rounded-xl bg-slate-100 p-3 text-sm"><p className="font-bold">管理者専用（下の権限では許可されません）</p><p>利用者・権限管理、登録申請の承認、棚卸差異の確定反映・競合解消・終了後の再開、廃止・一括変更、データ取込・初期化・復旧、システム設定。</p></div>
+                        {user.role === "ADMIN" ? (
+                          <p className="mt-2 text-sm font-bold text-violet-700">
+                            すべての機能を利用できます。
+                          </p>
+                        ) : (
+                          <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                            {FEATURE_KEYS.map((feature) => (
+                              <label
+                                key={feature}
+                                className="flex cursor-pointer items-start gap-3 rounded-xl border border-slate-200 p-3 hover:bg-slate-50"
+                              >
+                                <ImeInput
+                                  type="checkbox"
+                                  checked={user.featurePermissions.includes(feature)}
+                                  disabled={busy || !user.isActive}
+                                  onChange={() => void updatePermissions(user, feature)}
+                                  className="mt-1 h-5 w-5 accent-blue-600"
+                                />
+                                <span>
+                                  <span className="block text-sm font-black text-slate-900">
+                                    {FEATURE_LABELS[feature].title}
+                                  </span>
+                                  <span className="mt-1 block text-xs font-semibold text-slate-600">
+                                    {FEATURE_LABELS[feature].description}
+                                  </span>
+                                </span>
+                              </label>
+                            ))}
+                          </div>
+                        )}
+                      </details>
+                    </article>
+                  );
+                })}
+              </div>
+            )}
+          </section>
+
           <section className="rounded-2xl bg-white p-6 shadow-sm">
             <h2 className="text-xl font-black">新しいユーザーを登録</h2>
 
@@ -556,153 +724,6 @@ export default function UserManagementPage() {
                 {saving ? "登録中..." : "ユーザーを登録する"}
               </button>
             </form>
-          </section>
-
-          <section className="rounded-2xl bg-white p-6 shadow-sm">
-            <div className="flex items-center justify-between gap-4">
-              <div>
-                <h2 className="text-xl font-black">登録ユーザー</h2>
-
-                <p className="mt-1 text-sm text-slate-600">
-                  停止中のユーザーはログインできません。
-                </p>
-              </div>
-
-              <button
-                type="button"
-                onClick={() => void loadUsers()}
-                disabled={loading}
-                className="rounded-xl border border-slate-300 px-4 py-2 text-sm font-bold transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                更新
-              </button>
-            </div>
-
-            {loading ? (
-              <p className="py-10 text-center text-slate-500">
-                ユーザー一覧を読み込み中...
-              </p>
-            ) : users.length === 0 ? (
-              <p className="py-10 text-center text-slate-500">
-                登録されているユーザーはいません。
-              </p>
-            ) : (
-              <div className="mt-5 space-y-3">
-                {users.map((user) => {
-                  const busy = actionUserId === user.id;
-
-                  return (
-                    <article
-                      key={user.id}
-                      className="rounded-xl border border-slate-200 p-4"
-                    >
-                      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-                        <div>
-                          <div className="flex flex-wrap items-center gap-2">
-                            <h3 className="text-lg font-black">
-                              {user.displayName}
-                            </h3>
-
-                            <span
-                              className={`rounded-full px-2.5 py-1 text-xs font-bold ${
-                                user.role === "ADMIN"
-                                  ? "bg-violet-100 text-violet-700"
-                                  : "bg-blue-100 text-blue-700"
-                              }`}
-                            >
-                              {user.role === "ADMIN" ? "全機能" : "標準利用"}
-                            </span>
-
-                            <span
-                              className={`rounded-full px-2.5 py-1 text-xs font-bold ${
-                                user.isActive
-                                  ? "bg-green-100 text-green-700"
-                                  : "bg-slate-200 text-slate-600"
-                              }`}
-                            >
-                              {user.isActive ? "有効" : "停止中"}
-                            </span>
-
-                            {user.mustChangePassword && (
-                              <span className="rounded-full bg-amber-100 px-2.5 py-1 text-xs font-bold text-amber-700">
-                                パスワード変更待ち
-                              </span>
-                            )}
-                          </div>
-
-                          <p className="mt-1 text-sm text-slate-600">
-                            ログインID：{user.username}
-                          </p>
-                        </div>
-
-                        <div className="flex flex-wrap gap-2">
-                          <button
-                            type="button"
-                            onClick={() => openPasswordReset(user)}
-                            disabled={busy || !user.isActive}
-                            className="rounded-xl bg-amber-500 px-4 py-2 text-sm font-bold text-white transition hover:bg-amber-600 disabled:cursor-not-allowed disabled:bg-slate-300"
-                          >
-                            パスワード再設定
-                          </button>
-
-                          <button
-                            type="button"
-                            onClick={() => openStatusChange(user)}
-                            disabled={busy}
-                            className={`rounded-xl px-4 py-2 text-sm font-bold text-white transition disabled:cursor-not-allowed disabled:bg-slate-300 ${
-                              user.isActive
-                                ? "bg-red-600 hover:bg-red-700"
-                                : "bg-green-600 hover:bg-green-700"
-                            }`}
-                          >
-                            {busy
-                              ? "処理中..."
-                              : user.isActive
-                                ? "停止する"
-                                : "有効化する"}
-                          </button>
-                        </div>
-                      </div>
-                      <details className="mt-4 border-t border-slate-200 pt-4">
-                        <summary className="cursor-pointer py-2 text-sm font-black text-slate-900">管理者が付与する日常業務の権限（{user.role==="ADMIN"?"すべて":user.featurePermissions.filter(feature=>FEATURE_KEYS.includes(feature)).length+"項目"}）</summary><p className="mt-1 text-xs text-slate-600">この設定は通常の利用権限です。一時管理者（10分間）とは別に、解除するまで継続します。編集権限の解除は次の保存操作から反映されます。新規棚卸には「棚卸作業」、販売設定には「フリマ作業」も必要です。</p>
-                        <div className="mt-3 rounded-xl bg-blue-50 p-3 text-sm"><p className="font-bold">棚卸中の編集を許可する場合</p><p>「棚卸作業」に加え、「商品情報の編集」「在庫明細の編集」を必要な範囲で選んでください。管理者への昇格は不要です。</p></div>
-                        <div className="mt-3 rounded-xl bg-slate-100 p-3 text-sm"><p className="font-bold">管理者専用（下の権限では許可されません）</p><p>利用者・権限管理、登録申請の承認、棚卸差異の確定反映・競合解消・終了後の再開、廃止・一括変更、データ取込・初期化・復旧、システム設定。</p></div>
-                        {user.role === "ADMIN" ? (
-                          <p className="mt-2 text-sm font-bold text-violet-700">
-                            すべての機能を利用できます。
-                          </p>
-                        ) : (
-                          <div className="mt-3 grid gap-2 sm:grid-cols-2">
-                            {FEATURE_KEYS.map((feature) => (
-                              <label
-                                key={feature}
-                                className="flex cursor-pointer items-start gap-3 rounded-xl border border-slate-200 p-3 hover:bg-slate-50"
-                              >
-                                <ImeInput
-                                  type="checkbox"
-                                  checked={user.featurePermissions.includes(feature)}
-                                  disabled={busy || !user.isActive}
-                                  onChange={() => void updatePermissions(user, feature)}
-                                  className="mt-1 h-5 w-5 accent-blue-600"
-                                />
-                                <span>
-                                  <span className="block text-sm font-black text-slate-900">
-                                    {FEATURE_LABELS[feature].title}
-                                  </span>
-                                  <span className="mt-1 block text-xs font-semibold text-slate-600">
-                                    {FEATURE_LABELS[feature].description}
-                                  </span>
-                                </span>
-                              </label>
-                            ))}
-                          </div>
-                        )}
-                      </details>
-                    </article>
-                  );
-                })}
-              </div>
-            )}
           </section>
         </div>
       </div>
