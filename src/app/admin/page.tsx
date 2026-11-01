@@ -1,388 +1,156 @@
 "use client";
+
+import { useMemo, useState } from "react";
+import { AlertTriangle, ArrowUpRight, CheckCircle2, ClipboardList, Database, Search, Settings2, ShieldCheck, Users, X } from "lucide-react";
 import DeviceNotifications from "@/components/pwa/DeviceNotifications";
 import InstallPanel from "@/components/pwa/InstallPanel";
-
+import { useAppAccess } from "@/components/auth/AppAccessProvider";
 import Link from "@/components/auth/PermissionLink";
-import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import {
+  destructiveDestinations,
+  filterManagementSections,
+  managementDestination,
+  managementSections,
+  managementShortcuts,
+  type ManagementDestination,
+} from "@/lib/management-navigation";
 
-type CurrentUser = {
-  id: string;
-  username: string;
-  displayName: string;
-  role: "ADMIN" | "WORKER";
-};
+const sectionIcons = {
+  work: ClipboardList,
+  catalog: Database,
+  people: Users,
+  system: ShieldCheck,
+} as const;
 
-type MenuItem = {
-  href: string;
-  icon: string;
-  title: string;
-  description: string;
-  color: string;
-};
-
-function isCurrentUser(value: unknown): value is CurrentUser {
-  if (!value || typeof value !== "object") {
-    return false;
-  }
-
-  const candidate = value as Record<string, unknown>;
-
+function DestinationCard({ destination }: { destination: ManagementDestination }) {
   return (
-    typeof candidate.id === "string" &&
-    typeof candidate.username === "string" &&
-    typeof candidate.displayName === "string" &&
-    (candidate.role === "ADMIN" || candidate.role === "WORKER")
+    <Link
+      href={destination.href}
+      className="group flex min-w-0 items-start justify-between gap-3 rounded-xl border border-slate-200 bg-white p-4 transition hover:border-blue-400 hover:bg-blue-50/40 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-700"
+    >
+      <div className="min-w-0">
+        <h3 className="break-words font-black text-slate-900">{destination.title}</h3>
+        <p className="mt-1 break-words text-sm leading-6 text-slate-600">{destination.description}</p>
+      </div>
+      <ArrowUpRight size={19} className="mt-1 shrink-0 text-slate-400 transition group-hover:text-blue-700" aria-hidden />
+    </Link>
   );
 }
-
-async function readJson(response: Response): Promise<unknown> {
-  const text = await response.text();
-
-  if (!text.trim()) {
-    return null;
-  }
-
-  try {
-    return JSON.parse(text) as unknown;
-  } catch {
-    return null;
-  }
-}
-
-function getMessage(value: unknown, fallback: string) {
-  if (
-    value &&
-    typeof value === "object" &&
-    "message" in value &&
-    typeof value.message === "string"
-  ) {
-    return value.message;
-  }
-
-  return fallback;
-}
-
-const stocktakeMenus: MenuItem[] = [
-  {
-    href: "/admin/stocktake",
-    icon: "📋",
-    title: "棚卸管理",
-    description:
-      "全体の棚卸を確認し、中断・競合・確認待ち・終了済みの状態を管理します。",
-    color: "bg-violet-600",
-  },
-  {
-    href: "/stocktake/history",
-    icon: "🕘",
-    title: "棚卸履歴",
-    description:
-      "過去の棚卸結果、差異、担当者、実施日時を確認できます。",
-    color: "bg-sky-600",
-  },
-];
-
-const inventoryMenus: MenuItem[] = [
-  { href: "/import", icon: "⇧", title: "在庫データの取り込み", description: "zaico CSVのJAN重複確認・一括登録・確認待ちの処理を行います。", color: "bg-indigo-600" },
-  {
-    href: "/marketplace",
-    icon: "🛍️",
-    title: "フリマ販売",
-    description: "出品候補、出品中、売却、在庫減算、CSV連携をまとめて管理します。",
-    color: "bg-pink-600",
-  },
-  {
-    href: "/admin/activity",
-    icon: "📅",
-    title: "作業ジャーナル",
-    description: "日付・商品・担当者で作業履歴を探し、コンパクトな日報を印刷します。",
-    color: "bg-rose-600",
-  },
-  {
-    href: "/items",
-    icon: "🏷️",
-    title: "商品・在庫一覧",
-    description:
-      "商品情報、JAN、システムJAN、分類、保管場所、在庫情報を確認・編集します。",
-    color: "bg-emerald-600",
-  },
-  {
-    href: "/add",
-    icon: "＋",
-    title: "商品・在庫を登録",
-    description:
-      "新しい商品や在庫を登録します。JANがない商品にはシステムJANを発行できます。",
-    color: "bg-orange-500",
-  },
-  {
-    href: "/admin/classifications",
-    icon: "🗂️",
-    title: "分類・保管場所の整理",
-    description: "大分類・小分類・保管場所の追加、名称変更、統合、在庫移動を一括管理します。",
-    color: "bg-indigo-700",
-  },
-];
-
-const systemMenus: MenuItem[] = [
-  {
-    href: "/reset",
-    icon: "⚠️",
-    title: "データ初期化",
-    description: "初期化が必要な場合に対象を確認して実行します。",
-    color: "bg-red-700",
-  },
-  {
-    href: "/admin/operation-mode",
-    icon: "🛠️",
-    title: "運用モード設定",
-    description: "通常・テスト・メンテナンスを切り替え、自動点検間隔と利用者案内を設定します。",
-    color: "bg-amber-600",
-  },
-  {
-    href: "/admin/recovery",
-    icon: "🩺",
-    title: "システム点検",
-    description:
-      "自動点検と手動点検で、DB・権限・棚卸状態・データ整合性を確認します。",
-    color: "bg-cyan-600",
-  },
-  {
-    href: "/admin/export",
-    icon: "⇩",
-    title: "バックアップ・CSV出力",
-    description:
-      "商品・在庫・棚卸履歴・監査ログをCSVとして端末へ保存します。",
-    color: "bg-lime-600",
-  },
-  {
-    href: "/admin/users",
-    icon: "👥",
-    title: "ユーザー管理",
-    description:
-      "ユーザー登録、権限変更、有効・無効化、パスワード再設定を行います。",
-    color: "bg-blue-600",
-  },
-  {
-    href: "/admin/error-reports",
-    icon: "⚠️",
-    title: "エラー・復旧レポート",
-    description:
-      "自動復旧できなかったエラー、操作ログ、対応状況を確認します。",
-    color: "bg-red-600",
-  },
-  {
-    href: "/account/password",
-    icon: "🔐",
-    title: "自分のパスワード変更",
-    description:
-      "現在ログインしている管理者自身のパスワードを変更します。",
-    color: "bg-slate-700",
-  },
-];
 
 export default function AdminPage() {
-  const router = useRouter();
+  const {user,ready}=useAppAccess();
+  const [query,setQuery]=useState("");
+  const searched=useMemo(()=>filterManagementSections(query),[query]);
+  const matchCount=searched.reduce((sum,section)=>sum+section.destinations.length,0);
+  const totalCount=managementSections.reduce((sum,section)=>sum+section.destinations.length,0);
+  const canManage=user?.role==="ADMIN";
 
-  const [user, setUser] = useState<CurrentUser | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
-
-  useEffect(() => {
-    let cancelled = false;
-
-    async function loadUser() {
-      try {
-        setLoading(true);
-        setError("");
-
-        const response = await fetch("/api/auth/me", {
-          cache: "no-store",
-        });
-
-        const data = await readJson(response);
-
-        if (response.status === 401) {
-          router.replace("/login?next=/admin");
-          return;
-        }
-
-        const candidate =
-          data &&
-          typeof data === "object" &&
-          "user" in data &&
-          data.user &&
-          typeof data.user === "object"
-            ? data.user
-            : data;
-
-        if (!response.ok || !isCurrentUser(candidate)) {
-          throw new Error(
-            getMessage(data, "ログイン情報を確認できませんでした。")
-          );
-        }
-
-        if (candidate.role !== "ADMIN") {
-          router.replace("/");
-          return;
-        }
-
-        if (!cancelled) {
-          setUser(candidate);
-        }
-      } catch (caught) {
-        if (!cancelled) {
-          setError(
-            caught instanceof Error
-              ? caught.message
-              : "管理者情報を取得できませんでした。"
-          );
-        }
-      } finally {
-        if (!cancelled) {
-          setLoading(false);
-        }
-      }
-    }
-
-    void loadUser();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [router]);
-
-  if (loading) {
-    return (
-      <main className="grid min-h-screen place-items-center bg-slate-100 p-5">
-        <p className="font-bold text-slate-600">
-          管理者情報を確認しています…
-        </p>
-      </main>
-    );
+  if(!ready){
+    return <main className="mx-auto max-w-6xl p-6" role="status"><p className="rounded-xl bg-white p-6 font-bold">管理権限を確認しています…</p></main>;
+  }
+  if(!canManage){
+    return <main className="mx-auto max-w-xl p-4 sm:p-8">
+      <section className="rounded-2xl border border-slate-200 bg-white p-6">
+        <h1 className="text-2xl font-black">管理者権限が必要です</h1>
+        <p className="mt-3 text-slate-600">管理センターは管理者のみ利用できます。通常の検索・棚卸はホームから行えます。</p>
+        <Link href="/" className="mt-5 inline-flex rounded-xl bg-blue-700 px-4 py-3 font-bold text-white">ホームに戻る</Link>
+      </section>
+    </main>;
   }
 
-  if (error) {
-    return (
-      <main className="grid min-h-screen place-items-center bg-slate-100 p-5">
-        <section className="w-full max-w-md rounded-3xl bg-white p-6 shadow-sm">
-          <p className="text-sm font-black text-red-600">ADMIN_AUTH_ERROR</p>
-
-          <h1 className="mt-1 text-2xl font-black text-slate-950">
-            管理者画面を開けませんでした
-          </h1>
-
-          <p className="mt-4 rounded-2xl bg-red-50 p-4 text-sm leading-6 text-red-800">
-            {error}
-          </p>
-
-          <div className="mt-5 flex gap-3">
-            <button
-              type="button"
-              onClick={() => window.location.reload()}
-              className="rounded-xl bg-blue-600 px-4 py-3 font-bold text-white hover:bg-blue-700"
-            >
-              再読み込み
-            </button>
-
-
-          </div>
-        </section>
-      </main>
-    );
-  }
-
-  if (!user) {
-    return null;
-  }
-
-  return (
-    <main className="min-h-screen bg-slate-100 px-4 py-6 text-slate-900 sm:px-6 sm:py-10">
-      <div className="mx-auto max-w-7xl">
-        <details className="my-4 rounded-2xl border bg-white p-4"><summary className="cursor-pointer py-2 font-bold">端末の通知・使用許可と配信設定</summary><DeviceNotifications/></details><InstallPanel />
-        <header className="flex flex-col gap-5 sm:flex-row sm:items-start sm:justify-between">
-          <div>
-            <p className="text-sm font-black tracking-[0.14em] text-violet-600">
-              SYSTEM CONTROL
-            </p>
-
-            <h1 className="mt-1 text-3xl font-black tracking-tight sm:text-4xl">
-              システム管理
-            </h1>
-
-            <p className="mt-2 max-w-2xl leading-6 text-slate-600">
-              棚卸、商品・在庫、ユーザー、エラー、システム状態を管理する画面です。
-              日常の棚卸作業はホーム画面から開始してください。
+  return <main className="min-h-screen bg-slate-100 px-3 py-4 text-slate-950 sm:px-6 sm:py-7">
+    <div className="mx-auto max-w-6xl">
+      <header className="rounded-2xl border border-slate-200 bg-white p-5 sm:p-6">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="min-w-0">
+            <p className="text-xs font-bold tracking-widest text-blue-700">INVENTORY OS</p>
+            <h1 className="mt-1 text-2xl font-black tracking-tight sm:text-3xl">管理センター</h1>
+            <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-600">
+              何を管理したいか選んでください。商品・棚卸・利用者・システムの設定を目的別にまとめています。
             </p>
           </div>
+          <span className="inline-flex max-w-full items-center gap-2 rounded-full bg-slate-100 px-3 py-2 text-sm font-bold text-slate-700">
+            <CheckCircle2 size={16} aria-hidden />
+            {user.baseRole && user.baseRole!=="ADMIN" ? "一時管理者モード" : "管理者として操作中"}
+          </span>
+        </div>
+        <label htmlFor="management-search" className="mt-5 block text-sm font-bold">管理機能を探す</label>
+        <div className="relative mt-2">
+          <Search size={20} aria-hidden className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-500"/>
+          <input id="management-search" type="search" value={query} onChange={event=>setQuery(event.target.value)}
+            placeholder="例：商品削除、権限、棚卸、エラー、CSV"
+            className="min-h-12 w-full rounded-xl border border-slate-300 bg-white py-3 pl-11 pr-12 text-base outline-none focus:border-blue-700 focus:ring-2 focus:ring-blue-100"/>
+          {query && <button type="button" onClick={()=>setQuery("")} aria-label="管理機能の検索を解除する"
+            className="absolute right-2 top-1/2 grid h-9 w-9 -translate-y-1/2 place-items-center rounded-lg hover:bg-slate-100"><X size={19} aria-hidden/></button>}
+        </div>
+        <p role="status" className="mt-2 text-sm text-slate-600">{query.trim()? `${matchCount}件の管理機能が見つかりました` : `${totalCount}件の管理機能を4つの分野に整理しています`}</p>
+      </header>
 
-          <div className="flex flex-wrap items-center gap-3">
-            <div className="rounded-2xl bg-white px-4 py-3 shadow-sm">
-              <p className="text-xs font-bold text-slate-500">
-                ログイン中
-              </p>
-
-              <p className="font-black text-slate-950">{user.displayName}</p>
-            </div>
-
-
+      {!query.trim() && <>
+        <section aria-labelledby="quick-management-title" className="mt-6">
+          <div className="flex flex-wrap items-baseline justify-between gap-2">
+            <h2 id="quick-management-title" className="text-lg font-black">よく使う管理操作</h2>
+            <p className="text-sm text-slate-600">それぞれの管理画面へ移動します</p>
           </div>
-        </header>
-
-        <section className="mt-7 rounded-3xl border border-amber-200 bg-amber-50 p-5">
-          <h2 className="font-black text-amber-950">
-            重要な変更について
-          </h2>
-
-          <p className="mt-2 text-sm leading-6 text-amber-900">
-            商品情報、在庫情報、ユーザー、棚卸状態を変更する操作は監査ログへ記録されます。
-            日常作業で不要な場合は、この画面を閉じてホーム画面から作業してください。
-          </p>
+          <div className="mt-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+            {managementShortcuts.map(href=>{const destination=managementDestination(href);return destination
+              ? <DestinationCard key={href} destination={destination}/>
+              : null;})}
+          </div>
         </section>
+        <nav aria-label="管理機能の分野に移動" className="mt-7 flex flex-wrap gap-2">
+          {managementSections.map(section=><a key={section.id} href={`#manage-${section.id}`}
+            className="rounded-full border border-slate-300 bg-white px-4 py-2 text-sm font-bold text-slate-700 hover:border-blue-500 hover:text-blue-800">{section.title}</a>)}
+        </nav>
+      </>}
 
-        <MenuSection title="棚卸管理" menus={stocktakeMenus} />
-        <MenuSection title="商品・在庫管理" menus={inventoryMenus} />
-        <MenuSection title="システム・運用管理" menus={systemMenus} />
-      </div>
-    </main>
-  );
-}
-
-function MenuSection({
-  title,
-  menus,
-}: {
-  title: string;
-  menus: MenuItem[];
-}) {
-  return (
-    <section className="mt-10">
-      <h2 className="text-xl font-black text-slate-950">{title}</h2>
-
-      <div className="mt-4 grid gap-5 sm:grid-cols-2 xl:grid-cols-3">
-        {menus.map((menu) => (
-          <Link key={menu.href} href={menu.href} className="group">
-            <article className="h-full rounded-3xl bg-white p-6 shadow-sm transition duration-200 group-hover:-translate-y-1 group-hover:shadow-lg">
-              <div
-                className={`flex h-14 w-14 items-center justify-center rounded-2xl text-2xl font-black text-white ${menu.color}`}
-              >
-                {menu.icon}
+      <div className="mt-5 space-y-6">
+        {searched.map(section=>{
+          const Icon=sectionIcons[section.id as keyof typeof sectionIcons]??Settings2;
+          return <section id={`manage-${section.id}`} key={section.id} aria-labelledby={`manage-title-${section.id}`}
+            className="scroll-mt-20 rounded-2xl border border-slate-200 bg-slate-50 p-4 sm:p-5">
+            <div className="flex items-start gap-3">
+              <div className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-white text-blue-700 ring-1 ring-slate-200">
+                <Icon size={20} aria-hidden/>
               </div>
-
-              <h3 className="mt-5 text-xl font-black text-slate-950">
-                {menu.title}
-              </h3>
-
-              <p className="mt-2 leading-6 text-slate-600">
-                {menu.description}
-              </p>
-
-              <p className="mt-5 text-sm font-bold text-blue-600">
-                開く →
-              </p>
-            </article>
-          </Link>
-        ))}
+              <div className="min-w-0">
+                <h2 id={`manage-title-${section.id}`} className="text-lg font-black">{section.title}</h2>
+                <p className="mt-1 text-sm leading-6 text-slate-600">{section.description}</p>
+              </div>
+            </div>
+            <div className="mt-4 grid gap-3 sm:grid-cols-2">
+              {section.destinations.map(destination=><DestinationCard key={destination.href} destination={destination}/>)}
+            </div>
+          </section>;
+        })}
+        {matchCount===0 && <section className="rounded-xl border border-slate-200 bg-white p-6 text-center">
+          <p className="font-bold">該当する管理機能がありません</p>
+          <p className="mt-2 text-sm text-slate-600">「棚卸」「商品」「権限」「出力」などの言葉で検索してください。</p>
+          <button type="button" onClick={()=>setQuery("")} className="mt-4 rounded-lg border px-4 py-2 font-bold">すべて表示</button>
+        </section>}
       </div>
-    </section>
-  );
+
+      <section className="mt-7 rounded-2xl border border-slate-200 bg-white p-4 sm:p-5">
+        <details>
+          <summary className="cursor-pointer py-1 font-black">端末設定・通知・アプリのインストール</summary>
+          <p className="mt-2 text-sm text-slate-600">端末固有の設定です。商品や棚卸データの変更とは分けています。</p>
+          <div className="mt-3 space-y-4"><DeviceNotifications/><InstallPanel/></div>
+        </details>
+      </section>
+
+      <section aria-labelledby="danger-zone-title" className="mt-7 rounded-2xl border border-red-200 bg-white p-4 sm:p-5">
+        <details>
+          <summary id="danger-zone-title" className="cursor-pointer font-black text-red-800">
+            <span className="inline-flex items-center gap-2"><AlertTriangle size={19} aria-hidden/>注意が必要な操作</span>
+          </summary>
+          <p className="mt-3 text-sm leading-6 text-slate-700">通常の商品の削除・整理では、データ初期化を使用しないでください。初期化は独立した操作です。</p>
+          <div className="mt-4 grid gap-3 sm:grid-cols-2">{destructiveDestinations.map(destination=>
+            <Link href={destination.href} key={destination.href} className="block rounded-xl border border-red-200 bg-red-50 p-4 hover:border-red-500">
+              <h3 className="font-black text-red-900">{destination.title}</h3>
+              <p className="mt-1 text-sm leading-6 text-red-900">{destination.description}</p>
+            </Link>)}</div>
+        </details>
+      </section>
+    </div>
+  </main>;
 }
