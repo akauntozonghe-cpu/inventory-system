@@ -142,10 +142,11 @@ export async function POST(request: NextRequest) {
             ...(hasMinor ? { minorCategory } : {}),
             keepMinorCategory: body.keepMinorCategory === true,
           });
-          await tx.item.updateMany({
+          const updated = await tx.item.updateMany({
             where: { id: item.id, isArchived: false, majorCategory: item.majorCategory, minorCategory: item.minorCategory },
             data: next,
-          }).then(result => { if (result.count !== 1) throw new Error("CLASSIFICATION_ITEMS_CHANGED"); });
+          });
+          if (updated.count !== 1) throw new Error("CLASSIFICATION_ITEMS_CHANGED");
           await syncItemLinks(tx, item.id,
             { majorCategory: item.majorCategory, minorCategory: item.minorCategory, manufacturer: null, defaultUnit: null },
             { majorCategory: next.majorCategory, minorCategory: next.minorCategory, manufacturer: null, defaultUnit: null },
