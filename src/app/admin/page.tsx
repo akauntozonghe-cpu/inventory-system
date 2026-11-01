@@ -40,8 +40,10 @@ function DestinationCard({ destination }: { destination: ManagementDestination }
 export default function AdminPage() {
   const {user,ready}=useAppAccess();
   const [query,setQuery]=useState("");
+  const [activeSection,setActiveSection]=useState<string|null>(null);
   const searched=useMemo(()=>filterManagementSections(query),[query]);
   const matchCount=searched.reduce((sum,section)=>sum+section.destinations.length,0);
+  const visibleSections=query.trim()?searched:activeSection==="all"?searched:activeSection?searched.filter(section=>section.id===activeSection):[];
   const totalCount=managementSections.reduce((sum,section)=>sum+section.destinations.length,0);
   const canManage=user?.role==="ADMIN";
 
@@ -98,14 +100,31 @@ export default function AdminPage() {
               : null;})}
           </div>
         </section>
-        <nav aria-label="管理機能の分野に移動" className="mt-7 flex flex-wrap gap-2">
-          {managementSections.map(section=><a key={section.id} href={`#manage-${section.id}`}
-            className="rounded-full border border-slate-300 bg-white px-4 py-2 text-sm font-bold text-slate-700 hover:border-blue-500 hover:text-blue-800">{section.title}</a>)}
-        </nav>
+        <section aria-labelledby="category-choice-title" className="mt-7">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <h2 id="category-choice-title" className="text-lg font-black">管理したい分野を選ぶ</h2>
+            <button type="button" onClick={()=>setActiveSection(activeSection==="all"?null:"all")}
+              className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-bold hover:bg-slate-50">
+              {activeSection==="all"?"すべて閉じる":"全機能をまとめて見る"}
+            </button>
+          </div>
+          <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            {managementSections.map(section=>{
+              const Icon=sectionIcons[section.id as keyof typeof sectionIcons]??Settings2;
+              const pressed=activeSection===section.id;
+              return <button type="button" key={section.id} aria-pressed={pressed}
+                onClick={()=>setActiveSection(pressed?null:section.id)}
+                className={`min-w-0 rounded-xl border p-4 text-left transition focus-visible:outline-2 focus-visible:outline-blue-700 ${pressed?"border-blue-600 bg-blue-50 ring-1 ring-blue-600":"border-slate-200 bg-white hover:border-blue-400"}`}>
+                <div className="flex items-center gap-2"><Icon size={20} aria-hidden className="shrink-0 text-blue-700"/><strong className="break-words text-sm">{section.title}</strong></div>
+                <p className="mt-2 text-xs leading-5 text-slate-600">{section.description}</p>
+              </button>;
+            })}
+          </div>
+        </section>
       </>}
 
       <div className="mt-5 space-y-6">
-        {searched.map(section=>{
+        {visibleSections.map(section=>{
           const Icon=sectionIcons[section.id as keyof typeof sectionIcons]??Settings2;
           return <section id={`manage-${section.id}`} key={section.id} aria-labelledby={`manage-title-${section.id}`}
             className="scroll-mt-20 rounded-2xl border border-slate-200 bg-slate-50 p-4 sm:p-5">
@@ -123,6 +142,7 @@ export default function AdminPage() {
             </div>
           </section>;
         })}
+        {!query.trim()&&!activeSection && <p className="rounded-xl border border-slate-200 bg-white p-4 text-center text-sm text-slate-600">管理したい分野を上から選ぶか、管理機能を検索してください。</p>}
         {matchCount===0 && <section className="rounded-xl border border-slate-200 bg-white p-6 text-center">
           <p className="font-bold">該当する管理機能がありません</p>
           <p className="mt-2 text-sm text-slate-600">「棚卸」「商品」「権限」「出力」などの言葉で検索してください。</p>
