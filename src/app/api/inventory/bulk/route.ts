@@ -108,7 +108,7 @@ export async function POST(request: NextRequest) {
           data:patch
         });
         if (updated.count !== 1) throw new Error("STOCK_CHANGED");
-        changes.push({id:stock.id,lotNo:stock.lotNo,before,after:patch as Record<string,unknown>});
+        changes.push({id:stock.id,lotNo:stock.lotNo,before,after:JSON.parse(JSON.stringify(patch)) as Record<string,unknown>});
       }
       await tx.adminActionLog.create({data:{
         adminUserId:actorId,action:"INVENTORY_BULK_"+operation,route:"/api/inventory/bulk",
