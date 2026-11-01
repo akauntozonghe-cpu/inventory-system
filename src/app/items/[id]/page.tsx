@@ -253,6 +253,12 @@ export default function ItemDetailPage() {
   const [locations, setLocations] = useState<StorageLocation[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [selectedStockIds, setSelectedStockIds] = useState<string[]>([]);
+  const [bulkScope, setBulkScope] = useState<"selected" | "unselected">("selected");
+  const [bulkReason, setBulkReason] = useState("");
+  const [bulkConfirm, setBulkConfirm] = useState(false);
+  const [bulkBusy, setBulkBusy] = useState(false);
+
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
 
@@ -593,6 +599,26 @@ export default function ItemDetailPage() {
   }
 
   const inventoryInstances = (item.inventoryInstances ?? []).filter(row=>!focusedInventory||row.id===focusedInventory);
+  const selectableStocks = (item.inventoryInstances ?? []).filter(stock=>stock.status !== "廃止");
+  const selectedStocks = selectableStocks.filter(stock=>selectedStockIds.includes(stock.id));
+  const bulkTargets = selectableStocks.filter(stock=>bulkScope === "selected" ? selectedStockIds.includes(stock.id) : !selectedStockIds.includes(stock.id));
+  const toggleStock = (id:string) => { setSelectedStockIds(current=>current.includes(id)?current.filter(x=>x!==id):[...current,id]); setBulkConfirm(false); };
+  const saveBulkExclusion = async () => {
+    if (!item || bulkBusy || saving || bulkTargets.length===0 || !bulkConfirm || bulkReason.trim().length<2) return;
+    setBulkBusy(true);setError("");setNotice("");
+    try {
+      const response=await fetch("/api/inventory/bulk",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({
+        itemId:item.id,scope:bulkScope,selectedIds:selectedStocks.map(stock=>stock.id),reason:bulkReason.trim(),
+        snapshots:(item.inventoryInstances??[]).map(stock=>({id:stock.id,expectedUpdatedAt:stock.updatedAt}))
+      })});
+      const data=await readJson(response);
+      if(!response.ok)throw new Error(getMessage(data,"一括操作に失敗しました。"));
+      setNotice(getMessage(data,"棚卸対象から外しました。"));
+      setBulkReason("");setBulkConfirm(false);setSelectedStockIds([]);
+      await loadItem(true);
+    }catch(caught){setError(caught instanceof Error?caught.message:"一括操作に失敗しました。");}
+    finally{setBulkBusy(false);}
+  };
 
   return (
     <main className="min-h-screen bg-slate-100 px-3 py-4 pb-20 sm:px-6 sm:py-6 sm:pb-24">
@@ -808,6 +834,36 @@ export default function ItemDetailPage() {
                 この商品を削除
               </button>
             )}
+            {(accessUser?.role === "ADMIN" || adminMode.active) && !item.isArchived && selectableStocks.length > 0 && (
+              <section aria-label="在庫明細の一括操作" className="mt-4 rounded-xl border border-blue-200 bg-blue-50/60 p-3 sm:p-4">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <h3 className="font-black text-slate-900">在庫明細をまとめて操作</h3>
+                  <span className="text-sm font-bold text-slate-600">{selectedStocks.length} / {selectableStocks.length}件選択</span>
+                </div>
+                <p className="mt-1 text-sm text-slate-600">下の在庫カードのチェックで選択します。操作対象はこの商品内だけです。</p>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <button type="button" onClick={()=>{setSelectedStockIds(selectableStocks.map(s=>s.id));setBulkConfirm(false);}} className="rounded-lg border bg-white px-3 py-2 text-sm font-bold">全件選択</button>
+                  <button type="button" onClick={()=>{setSelectedStockIds([]);setBulkConfirm(false);}} className="rounded-lg border bg-white px-3 py-2 text-sm font-bold">選択解除</button>
+                  <button type="button" onClick={()=>{setSelectedStockIds(selectableStocks.filter(s=>!selectedStockIds.includes(s.id)).map(s=>s.id));setBulkConfirm(false);}} className="rounded-lg border bg-white px-3 py-2 text-sm font-bold">選択反転</button>
+                </div>
+                <fieldset className="mt-4 space-y-2">
+                  <legend className="font-bold">操作対象</legend>
+                  <label className="flex items-center gap-2"><input type="radio" name="bulk-scope" checked={bulkScope==="selected"} onChange={()=>{setBulkScope("selected");setBulkConfirm(false);}}/>選択した在庫（{selectedStocks.length}件）</label>
+                  <label className="flex items-center gap-2"><input type="radio" name="bulk-scope" checked={bulkScope==="unselected"} onChange={()=>{setBulkScope("unselected");setBulkConfirm(false);}}/>選択していない在庫（{selectableStocks.length-selectedStocks.length}件）</label>
+                </fieldset>
+                <div className="mt-4 rounded-lg border bg-white p-3">
+                  <p className="font-bold">実行内容：棚卸対象から外す（{bulkTargets.length}件）</p>
+                  <p className="mt-1 text-xs text-slate-600">在庫と履歴は残ります。対象は保存直前にサーバーで再確認されます。</p>
+                  <div className="mt-2 max-h-40 space-y-1 overflow-auto text-sm">
+                    {bulkTargets.map(stock=><p key={stock.id} className="break-words">・Lot {stock.lotNo||"未設定"} ／ {stock.storageLocation?.name||"場所未設定"} ／ {stock.quantity}個</p>)}
+                    {!bulkTargets.length&&<p className="text-slate-500">対象がありません。</p>}
+                  </div>
+                </div>
+                <label className="mt-3 block text-sm font-bold">変更理由<input value={bulkReason} onChange={e=>{setBulkReason(e.target.value);setBulkConfirm(false);}} maxLength={500} placeholder="例：今回の棚卸から除外" className="mt-1 w-full rounded-lg border border-slate-300 bg-white p-3"/></label>
+                <label className="mt-3 flex items-center gap-2 text-sm font-bold"><input type="checkbox" checked={bulkConfirm} onChange={e=>setBulkConfirm(e.target.checked)}/>対象と変更理由を確認しました</label>
+                <button type="button" disabled={bulkBusy||saving||!bulkTargets.length||bulkReason.trim().length<2||!bulkConfirm} onClick={()=>void saveBulkExclusion()} className="mt-3 w-full rounded-lg bg-blue-700 px-4 py-3 font-bold text-white disabled:cursor-not-allowed disabled:bg-slate-300 sm:w-auto">{bulkBusy?"保存中…":bulkTargets.length+"件を棚卸対象から外す"}</button>
+              </section>
+            )}
             {focusedInventory&&<p className="my-4 rounded-xl bg-blue-50 p-3 font-bold">選んだ在庫だけを表示しています。Lot・保管場所を確認して、この明細を編集してください。<Link className="ml-3 underline" href={`/items/${item.id}`}>同じJANの全在庫を表示</Link></p>}
             {inventoryInstances.length === 0 ? (
               <div className="mt-5 rounded-2xl bg-slate-100 p-7 text-center text-slate-600">
@@ -824,6 +880,12 @@ export default function ItemDetailPage() {
                       id={`inventory-${inventory.id}`}
                       className="min-w-0 rounded-xl border border-slate-200 bg-white p-3 sm:p-5"
                     >
+                      {(accessUser?.role === "ADMIN" || adminMode.active) && !item.isArchived && inventory.status !== "廃止" && (
+                        <label className="mb-3 flex cursor-pointer items-center gap-3 rounded-lg bg-slate-50 p-3 text-sm font-bold text-slate-700">
+                          <input type="checkbox" checked={selectedStockIds.includes(inventory.id)} onChange={()=>toggleStock(inventory.id)} className="h-5 w-5 shrink-0"/>
+                          一括操作の対象として選択
+                        </label>
+                      )}
                       {editing && inventoryForm ? (
                         <form
                           data-guard-unsaved
