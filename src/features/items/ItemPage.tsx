@@ -230,7 +230,7 @@ export default function ItemPage() {
     }
   }, [filteredItems, sort]);
 
-  const normalItems = sortedItems.filter(item=>!item.isArchived);
+  const normalItems = sortedItems.filter(item=>!item.isArchived).map(item=>({...item,inventoryInstances:item.inventoryInstances.filter(stock=>stock.status!=="廃止")}));
   const deletedItems = sortedItems.filter(item=>item.isArchived);
   const activeItemCount = items.filter((item) => !item.isArchived).length;
   const archivedItemCount = items.filter((item) => item.isArchived).length;
