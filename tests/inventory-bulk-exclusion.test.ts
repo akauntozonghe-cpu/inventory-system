@@ -1,0 +1,18 @@
+import {beforeEach, expect, it, vi} from "vitest";
+import {NextRequest,NextResponse} from "next/server";
+const state=vi.hoisted(()=>({admin:true}));
+const db=vi.hoisted(()=>({$transaction:vi.fn(),item:{findUnique:vi.fn()},inventoryInstance:{findMany:vi.fn(),updateMany:vi.fn()},adminActionLog:{create:vi.fn()}}));
+vi.mock("@/lib/prisma",()=>({prisma:db}));
+vi.mock("@/lib/auth",()=>({requireAdmin:()=>state.admin?{user:{id:"admin",role:"ADMIN"},response:null}:{user:null,response:NextResponse.json({code:"ADMIN_REQUIRED"},{status:403})},getAdminElevation:()=>null}));
+import {POST} from "../src/app/api/inventory/bulk/route";
+const date="2026-11-01T09:00:00.000Z";
+const stocks=["a","b","c"].map(id=>({id,itemId:"item",updatedAt:new Date(date),status:"在庫中",inspectionExcluded:false,inspectionExclusionReason:null,lotNo:id,storageLocationId:null}));
+const call=(options:Record<string,unknown>={})=>POST(new NextRequest("http://localhost/api/inventory/bulk",{method:"POST",body:JSON.stringify({itemId:"item",scope:"selected",selectedIds:["a"],reason:"棚卸対象を整理",snapshots:stocks.map(x=>({id:x.id,expectedUpdatedAt:date})),...options})}));
+beforeEach(()=>{vi.resetAllMocks();state.admin=true;db.$transaction.mockImplementation(fn=>fn(db));db.item.findUnique.mockResolvedValue({id:"item",isArchived:false,name:"商品"});db.inventoryInstance.findMany.mockResolvedValue(stocks);db.inventoryInstance.updateMany.mockResolvedValue({count:1});db.adminActionLog.create.mockResolvedValue({});});
+it("requires administrator authorization before querying database",async()=>{state.admin=false;expect((await call()).status).toBe(403);expect(db.$transaction).not.toHaveBeenCalled();});
+it("updates only selected inventory and records before/after in audit",async()=>{const res=await call();expect(res.status).toBe(200);expect((await res.json()).affectedCount).toBe(1);expect(db.inventoryInstance.updateMany).toHaveBeenCalledTimes(1);expect(db.inventoryInstance.updateMany.mock.calls[0][0].where).toMatchObject({id:"a",itemId:"item"});expect(db.adminActionLog.create.mock.calls[0][0].data).toMatchObject({action:"INVENTORY_BULK_EXCLUDE_INSPECTION",detail:{targetIds:["a"]}});});
+it("unselected scope excludes only unchecked rows from same item",async()=>{expect((await call({scope:"unselected"})).status).toBe(200);expect(db.inventoryInstance.updateMany.mock.calls.map(c=>c[0].where.id)).toEqual(["b","c"]);});
+it("rejects stale versions before any write",async()=>{db.inventoryInstance.findMany.mockResolvedValue(stocks.map((s,i)=>i===1?{...s,updatedAt:new Date("2026-11-01T10:00:00.000Z")}:s));expect((await call()).status).toBe(409);expect(db.inventoryInstance.updateMany).not.toHaveBeenCalled();});
+it("rejects modified inventory set before any write",async()=>{db.inventoryInstance.findMany.mockResolvedValue(stocks.slice(0,2));expect((await call()).status).toBe(409);expect(db.inventoryInstance.updateMany).not.toHaveBeenCalled();});
+it("rejects duplicate and out-of-scope IDs",async()=>{expect((await call({selectedIds:["a","a"]})).status).toBe(400);expect((await call({selectedIds:["other"]})).status).toBe(400);});
+it("rejects deleted items and rolls back",async()=>{db.item.findUnique.mockResolvedValue({id:"item",isArchived:true,name:"商品"});expect((await call()).status).toBe(409);expect(db.inventoryInstance.updateMany).not.toHaveBeenCalled();});
