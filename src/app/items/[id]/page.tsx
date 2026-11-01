@@ -665,7 +665,7 @@ export default function ItemDetailPage() {
 
         <section aria-label="JANの在庫明細" className="mb-4 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
           <ProductIdentity item={item}/>
-          <p className="mt-2 font-bold">独立した在庫 {item.inventoryInstances.length}件</p>
+          <p className="mt-2 font-bold">通常の在庫 {item.inventoryInstances.filter(stock=>stock.status!=="廃止").length}件{(accessUser?.role==="ADMIN"||adminMode.active)&&item.inventoryInstances.some(stock=>stock.status==="廃止") ? ` ／ 削除済み ${item.inventoryInstances.filter(stock=>stock.status==="廃止").length}件` : ""}</p>
           <p className="text-sm text-slate-600">在庫はロット・期限・保管場所ごとに個別管理されます。</p>
         </section>
         <FeedbackToast
@@ -905,7 +905,7 @@ export default function ItemDetailPage() {
             {focusedInventory&&<p className="my-4 rounded-xl bg-blue-50 p-3 font-bold">選んだ在庫だけを表示しています。Lot・保管場所を確認して、この明細を編集してください。<Link className="ml-3 underline" href={`/items/${item.id}`}>同じJANの全在庫を表示</Link></p>}
             {activeInventories.length === 0 ? (
               <div className="mt-5 rounded-2xl bg-slate-100 p-7 text-center text-slate-600">
-                {focusedInventory ? "指定された在庫が見つかりません。同じJANの全在庫から対象を確認してください。" : "登録されている在庫はありません。"}
+                {focusedInventory ? "指定された在庫が見つかりません。同じJANの全在庫から対象を確認してください。" : "通常の在庫明細はありません。削除済みデータがある場合は管理者用の一覧で確認できます。"}
               </div>
             ) : (
               <div className="mt-5 space-y-4">
