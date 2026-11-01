@@ -296,7 +296,7 @@ export default function ItemTable({ items, reload, isAdmin, archivedView = false
 
         </div>}
         <Pagination {...pagination} />
-        <div aria-label="商品検索結果" className="grid grid-cols-1 items-start gap-3 md:grid-cols-2 2xl:grid-cols-3">
+        <div aria-label="商品検索結果" className="grid grid-cols-1 items-start gap-3 md:grid-cols-2 xl:grid-cols-3">
           {pagination.visible.map(item=>(
             <ItemCompactCard key={item.id} item={item}
               selected={selectedIdSet.has(item.id)}
