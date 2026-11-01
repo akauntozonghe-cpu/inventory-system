@@ -20,6 +20,7 @@ import type { Item } from "./types";
 type Props = {
   items: Item[];
   isAdmin: boolean;
+  archivedView?: boolean;
   filterKey: string;
   reload: () => void | Promise<void>;
 };
@@ -59,7 +60,7 @@ async function readJson(response: Response): Promise<unknown> {
   }
 }
 
-export default function ItemTable({ items, reload, isAdmin, filterKey }: Props) {
+export default function ItemTable({ items, reload, isAdmin, archivedView = false, filterKey }: Props) {
   const {can} = useAppAccess();
   const pagination = usePagedItems(items, filterKey);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
@@ -214,9 +215,9 @@ export default function ItemTable({ items, reload, isAdmin, filterKey }: Props) 
   if (items.length === 0) {
     return (
       <section className="rounded-2xl bg-white p-10 text-center shadow-sm">
-        <p className="font-bold text-slate-700">該当する商品がありません。</p>
+        <p className="font-bold text-slate-700">{archivedView ? "削除済みの商品はありません。" : "該当する商品がありません。"}</p>
         <p className="mt-2 text-sm text-slate-500">
-          検索条件・分類の絞り込み・削除済み表示を確認してください。
+          {archivedView ? "削除済み商品は管理者専用の一覧にまとめられます。" : "検索条件・分類・在庫状態を変更してみてください。"}
         </p>
       </section>
     );
@@ -224,7 +225,7 @@ export default function ItemTable({ items, reload, isAdmin, filterKey }: Props) 
 
   return (
     <>
-      {can("LABEL_PRINT")&&printIds&&<LabelPrintDialog labels={items.filter(item=>printIds.includes(item.id)).map(item=>({id:item.id,itemId:item.id,name:item.name,barcode:item.janCode||item.systemBarcode}))} canEdit={isAdmin} onRefresh={reload} onClose={()=>setPrintIds(null)} onComplete={()=>setSelectedIds([])}/>}
+      {!archivedView&&can("LABEL_PRINT")&&printIds&&<LabelPrintDialog labels={items.filter(item=>printIds.includes(item.id)).map(item=>({id:item.id,itemId:item.id,name:item.name,barcode:item.janCode||item.systemBarcode}))} canEdit={isAdmin} onRefresh={reload} onClose={()=>setPrintIds(null)} onComplete={()=>setSelectedIds([])}/>}
       <section className="space-y-4">
         {(isAdmin || can("LABEL_PRINT")) && <div className="rounded-2xl border bg-white p-3">
 
@@ -259,7 +260,7 @@ export default function ItemTable({ items, reload, isAdmin, filterKey }: Props) 
             )}
 
             <div className="flex flex-wrap gap-2">
-              {can("LABEL_PRINT") && <button
+              {!archivedView&&can("LABEL_PRINT") && <button
                 type="button"
                 onClick={printSelected}
                 disabled={selectedItems.length === 0}
@@ -271,11 +272,12 @@ export default function ItemTable({ items, reload, isAdmin, filterKey }: Props) 
               {selectedItems.length > 0 && <button onClick={() => setSelectedIds([])} className="rounded-xl border px-3 py-2 font-bold">選択解除</button>}
               {isAdmin && (
                 <details className="rounded-xl border p-3"><summary className="cursor-pointer font-bold">選択した商品をまとめて操作</summary><div className="mt-2 flex flex-wrap gap-2">
-                  <button disabled={!selectedItems.length} onClick={()=>openBulkDialog("EXCLUDE_INSPECTION")} className="rounded-xl border p-3 font-bold">対象から外す</button>
-                  <button disabled={!selectedItems.length} onClick={()=>openBulkDialog("INCLUDE_INSPECTION")} className="rounded-xl border p-3 font-bold">対象に戻す</button>
-                  <button type="button" disabled={!selectedItems.length} onClick={()=>openBulkDialog("DELETE")} className="rounded-xl border border-red-300 p-3 font-bold text-red-700 disabled:opacity-50">選択した商品を削除</button>
-                  {selectedItems.some(item => item.isArchived) && <button type="button" onClick={()=>void openBulkDialog("RESTORE")} className="rounded-xl border border-emerald-300 p-3 font-bold text-emerald-700">削除済みを復元</button>}
-                </div><p className="mt-2 text-sm text-slate-500">削除しても在庫・棚卸・取引の履歴は保持されます。管理者は削除済み商品を確認・復元できます。</p></details>
+                  {!archivedView ? <>
+                    <button disabled={!selectedItems.length} onClick={()=>void openBulkDialog("EXCLUDE_INSPECTION")} className="rounded-xl border px-3 py-2 text-sm font-bold">棚卸対象から外す</button>
+                    <button disabled={!selectedItems.length} onClick={()=>void openBulkDialog("INCLUDE_INSPECTION")} className="rounded-xl border px-3 py-2 text-sm font-bold">棚卸対象に戻す</button>
+                    <button disabled={!selectedItems.length} onClick={()=>void openBulkDialog("DELETE")} className="rounded-xl border border-red-300 px-3 py-2 text-sm font-bold text-red-700 disabled:opacity-50">選択した商品を削除</button>
+                  </> : <button disabled={!selectedItems.length} type="button" onClick={()=>void openBulkDialog("RESTORE")} className="rounded-xl border border-emerald-300 bg-emerald-50 px-4 py-2 font-bold text-emerald-800 disabled:opacity-50">選択した商品を復元</button>}
+                </div><p className="mt-2 text-sm text-slate-500">{archivedView ? "選択した削除済み商品をまとめて復元できます。" : "削除しても在庫・棚卸・取引の履歴は残り、管理者が復元できます。"}</p></details>
               )}
             </div>
           </div>
@@ -285,9 +287,17 @@ export default function ItemTable({ items, reload, isAdmin, filterKey }: Props) 
 
         </div>}
         <Pagination {...pagination} />
-        <div className="grid gap-4 md:grid-cols-2">
+        <div className="space-y-3">
           {pagination.visible.map((item) => {
-
+            const summaries = new Map<string,number>();
+            for (const stock of item.inventoryInstances.filter(s=>s.status!=="廃止")) {
+              const unit=displayUnit(stock.unit,item.defaultUnit);
+              summaries.set(unit,(summaries.get(unit)??0)+stock.quantity);
+            }
+            const quantitySummary=[...summaries].map(([unit,qty])=>`${qty.toLocaleString("ja-JP")} ${unit}`).join(" / ") || "在庫なし";
+            const locations=[...new Set(item.inventoryInstances.map(s=>s.storageLocation?.name).filter((s):s is string=>Boolean(s)))];
+            const expiryDates=item.inventoryInstances.filter(s=>s.status!=="廃止"&&s.expirationDate).map(s=>s.expirationDate!).sort();
+            const activeStocks=item.inventoryInstances.filter(s=>s.status!=="廃止");
             return (
               <article
                 key={item.id}
@@ -326,13 +336,21 @@ export default function ItemTable({ items, reload, isAdmin, filterKey }: Props) 
                     </div>
 
                     <div className="flex items-start gap-3">{item.photos?.[0]&&<Image unoptimized width={120} height={100} src={"/api/items/"+item.id+"/photos/"+item.photos[0].id+"?thumbnail=1"} alt={item.name+"の写真"} className="h-16 w-20 shrink-0 rounded-lg bg-slate-50 object-contain"/>}<div className="min-w-0 flex-1"><InventoryStatusBadges item={item} stocks={item.inventoryInstances}/><ProductIdentity item={item}/></div></div>
+                    <dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-3 rounded-xl bg-slate-50 p-3 text-sm sm:grid-cols-3 lg:grid-cols-6">
+                      <div className="min-w-0"><dt className="text-xs font-bold text-slate-500">メーカー</dt><dd className="mt-1 break-words font-bold text-slate-900">{item.manufacturer||"未設定"}</dd></div>
+                      <div className="min-w-0"><dt className="text-xs font-bold text-slate-500">大分類・小分類</dt><dd className="mt-1 break-words font-bold text-slate-900">{[item.majorCategory,item.minorCategory].filter(Boolean).join(" / ")||"未設定"}</dd></div>
+                      <div className="min-w-0"><dt className="text-xs font-bold text-slate-500">在庫数量（単位別）</dt><dd className="mt-1 break-words font-bold text-slate-900">{quantitySummary}</dd></div>
+                      <div className="min-w-0"><dt className="text-xs font-bold text-slate-500">在庫明細</dt><dd className="mt-1 font-bold text-slate-900">{activeStocks.length}件</dd></div>
+                      <div className="min-w-0"><dt className="text-xs font-bold text-slate-500">直近の使用期限</dt><dd className="mt-1 font-bold text-slate-900">{expiryDates[0]?.slice(0,10)||"未設定"}</dd></div>
+                      <div className="min-w-0"><dt className="text-xs font-bold text-slate-500">保管場所</dt><dd className="mt-1 break-words font-bold text-slate-900">{locations.length ? locations.slice(0,2).join("・")+(locations.length>2?` ほか${locations.length-2}件`:"") : "未設定"}</dd></div>
+                    </dl>
                     <div className="mt-4 flex flex-wrap items-center justify-between gap-2 border-t border-slate-100 pt-3">
-                      <span className="rounded-lg bg-slate-100 px-3 py-1.5 text-sm font-bold text-slate-700">在庫明細 {item.inventoryInstances.length}件</span>
+                      <span className="rounded-lg bg-slate-100 px-3 py-1.5 text-sm font-bold text-slate-700">在庫を確認</span>
                       <Link href={`/items/${item.id}`} prefetch={false} className="rounded-lg bg-blue-600 px-3 py-2 text-sm font-bold text-white hover:bg-blue-700">詳細を見る</Link>
                     </div>
                     {item.inventoryInstances.length > 0 && (
                       <details className="group mt-3 rounded-xl border border-slate-200 bg-slate-50">
-                        <summary className="cursor-pointer px-3 py-3 text-sm font-bold text-slate-700 hover:bg-slate-100">ロット・期限・保管場所を確認する（{item.inventoryInstances.length}件）</summary>
+                        <summary className="cursor-pointer px-3 py-3 text-sm font-bold text-slate-700 hover:bg-slate-100">ロット別の明細を見る（{item.inventoryInstances.length}件）</summary>
                         <div className="max-h-80 space-y-2 overflow-y-auto border-t p-2">
                           {item.inventoryInstances.map(stock=>(
                             <Link key={stock.id} href={`/items/${item.id}?inventoryId=${encodeURIComponent(stock.id)}`} className="block min-w-0 rounded-lg border border-slate-200 bg-white p-3 hover:border-blue-300 hover:bg-blue-50">
