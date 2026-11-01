@@ -230,6 +230,8 @@ export default function ItemPage() {
     }
   }, [filteredItems, sort]);
 
+  const normalItems = sortedItems.filter(item=>!item.isArchived);
+  const deletedItems = sortedItems.filter(item=>item.isArchived);
   const activeItemCount = items.filter((item) => !item.isArchived).length;
   const archivedItemCount = items.filter((item) => item.isArchived).length;
 
@@ -322,13 +324,13 @@ export default function ItemPage() {
                   }}
                   className="h-5 w-5"
                 />
-                削除済みを表示（管理者のみ）
+                削除済みの管理一覧を取得
               </label>
             </div>
 
             <p className="mt-3 text-sm text-indigo-800">
               通常商品：{activeItemCount}件
-              {showArchived && ` ／ 削除済み：${archivedItemCount}件`}
+              {showArchived && ` ／ 削除済み：${archivedItemCount}件（下の専用一覧へ）`}
             </p>
           </details>
         )}
@@ -412,12 +414,35 @@ export default function ItemPage() {
               商品一覧を読み込んでいます…
             </div>
           ) : (
-            <ItemTable
-              items={sortedItems}
-              isAdmin={isAdmin}
-              filterKey={JSON.stringify([search, majorCategory, sort, todayOnly, registeredDate, showArchived,stockFilter])}
-              reload={async()=>{await fetchItems(true);}}
-            />
+            <>
+              <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                <h2 className="text-lg font-black text-slate-900">商品一覧</h2>
+                <span className="rounded-full bg-white px-3 py-1.5 text-sm font-bold text-slate-600">検索結果 {normalItems.length}件</span>
+              </div>
+              <ItemTable
+                items={normalItems}
+                isAdmin={isAdmin}
+                filterKey={JSON.stringify([search, majorCategory, sort, todayOnly, registeredDate, showArchived,stockFilter,"active"])}
+                reload={async()=>{await fetchItems(true);}}
+              />
+              {isAdmin && showArchived && (
+                <section aria-label="削除済み商品の管理" className="mt-7 rounded-2xl border border-amber-200 bg-amber-50/40 p-3 sm:p-5">
+                  <details>
+                    <summary className="cursor-pointer text-lg font-black text-amber-950">削除済み商品をまとめて確認（{deletedItems.length}件）</summary>
+                    <p className="mt-2 text-sm text-amber-900">削除済みは通常の検索・棚卸対象から除外されています。この一覧は管理者のみ表示できます。</p>
+                    <div className="mt-4">
+                      <ItemTable
+                        items={deletedItems}
+                        isAdmin={isAdmin}
+                        archivedView
+                        filterKey={JSON.stringify([search,majorCategory,sort,todayOnly,registeredDate,"deleted"])}
+                        reload={async()=>{await fetchItems(true);}}
+                      />
+                    </div>
+                  </details>
+                </section>
+              )}
+            </>
           )}
         </section>
       </div>
