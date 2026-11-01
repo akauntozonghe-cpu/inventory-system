@@ -1,4 +1,5 @@
 import {inspectionInventoryWhere} from "@/lib/product-scope";
+import {inventoryCategoryWhere} from "@/lib/inventory-category";
 import { NextRequest, NextResponse } from "next/server";
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
@@ -71,15 +72,11 @@ export async function POST(request: NextRequest) {
     }
 
     if (scopeType === "MAJOR_CATEGORY") {
-      where.item = {
-        majorCategory: scopeValue,
-      };
+      Object.assign(where, inventoryCategoryWhere("majorCategory", scopeValue));
     }
 
     if (scopeType === "MINOR_CATEGORY") {
-      where.item = {
-        minorCategory: scopeValue,
-      };
+      Object.assign(where, inventoryCategoryWhere("minorCategory", scopeValue));
     }
 
     const result = await prisma.$transaction(async (tx) => {
