@@ -159,7 +159,7 @@ export default function ItemPage() {
       const category = item.majorCategory?.trim() ?? "";
 
       const matchesCategory =
-        !majorCategory || (item.inventoryInstances.length ? item.inventoryInstances.some(stock => (stock.majorCategory ?? category) === majorCategory) : category === majorCategory);
+        !majorCategory || category === majorCategory || item.inventoryInstances.some(stock => (stock.majorCategory ?? category) === majorCategory);
 
       const searchableText = [
         item.id, item.name,
@@ -303,7 +303,7 @@ export default function ItemPage() {
           </div>
         </header>
 
-        <p role="status" className="mb-3 text-sm font-bold text-slate-700">{syncFailed ? "同期できていません。表示は前回取得時点です。通信回復後に再取得します。" : "他端末の登録・在庫変更を自動取得（通信時間＋約1秒）。"}</p>
+        {syncFailed && <p role="alert" className="mb-3 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm font-bold text-amber-900">最新情報を取得できませんでした。通信回復後に再取得します。</p>}
         {isAdmin && (
           <details className="mb-5 rounded-2xl border border-indigo-200 bg-indigo-50 p-3"><summary className="cursor-pointer font-bold">削除済み商品の管理</summary>
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
