@@ -57,7 +57,7 @@ export async function POST(request: NextRequest) {
     const active = items.filter(item => !item.isArchived);
     if (active.length !== items.length) throw new Error("ITEMS_DELETED");
     const newValue = value.normalize("NFKC").trim() || null;
-    const data = { [field]: newValue };
+    const data = action === "SET_MANUFACTURER" ? {manufacturer:newValue} : action === "SET_MAJOR_CATEGORY" ? {majorCategory:newValue} : action === "SET_MINOR_CATEGORY" ? {minorCategory:newValue} : {defaultUnit:newValue};
     const changed = await tx.item.updateMany({ where: { id: { in: ids }, isArchived: false }, data });
     if (changed.count !== ids.length) throw new Error("ITEMS_CHANGED");
     const actor = (auth.user!.baseRole ?? auth.user!.role) === "ADMIN" ? auth.user!.id : getAdminElevation(request)?.adminUserId;
