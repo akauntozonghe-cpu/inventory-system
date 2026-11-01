@@ -25,7 +25,7 @@ type Props = {
   reload: () => void | Promise<void>;
 };
 
-const bulkLabels={DELETE:"削除",RESTORE:"復元",EXCLUDE_INSPECTION:"対象から外す",INCLUDE_INSPECTION:"対象に戻す"};
+const bulkLabels={DELETE:"削除",RESTORE:"復元",EXCLUDE_INSPECTION:"対象から外す",INCLUDE_INSPECTION:"対象に戻す",SET_MANUFACTURER:"メーカーを変更",SET_MAJOR_CATEGORY:"大分類を変更",SET_MINOR_CATEGORY:"小分類を変更",SET_UNIT:"既定単位を変更"};
 type BulkOperation = keyof typeof bulkLabels;
 type DeletePreview = { eligible: {id:string;name:string}[]; blocked: {id:string;name:string;reasons:string[]}[]; eligibleCount:number; blockedCount:number };
 
@@ -70,6 +70,7 @@ export default function ItemTable({ items, reload, isAdmin, archivedView = false
     null
   );
   const [reason, setReason] = useState("");
+  const [bulkValue,setBulkValue]=useState("");
   const [confirmed, setConfirmed] = useState(false);
   const [deletePreview,setDeletePreview] = useState<DeletePreview|null>(null);
   const [previewBusy,setPreviewBusy] = useState(false);
@@ -117,6 +118,7 @@ export default function ItemTable({ items, reload, isAdmin, archivedView = false
     setBulkOperation(null);
     setDeletePreview(null);
     setReason("");
+    setBulkValue("");
     setConfirmed(false);
   };
 
@@ -177,6 +179,7 @@ export default function ItemTable({ items, reload, isAdmin, archivedView = false
           operation: bulkOperation,
           itemIds: selectedItems.map((item) => item.id),
           reason: reason.trim(),
+          ...(bulkOperation.startsWith("SET_")?{value:bulkValue}:{}),
         }),
       });
 
@@ -275,6 +278,14 @@ export default function ItemTable({ items, reload, isAdmin, archivedView = false
                   {!archivedView ? <>
                     <button disabled={!selectedItems.length} onClick={()=>void openBulkDialog("EXCLUDE_INSPECTION")} className="rounded-xl border px-3 py-2 text-sm font-bold">棚卸対象から外す</button>
                     <button disabled={!selectedItems.length} onClick={()=>void openBulkDialog("INCLUDE_INSPECTION")} className="rounded-xl border px-3 py-2 text-sm font-bold">棚卸対象に戻す</button>
+                    <details className="w-full rounded-lg border border-slate-200 bg-slate-50 p-2">
+                      <summary className="cursor-pointer px-2 py-1 text-sm font-bold text-slate-800">商品共通情報をまとめて編集</summary>
+                      <div className="mt-2 flex flex-wrap gap-2">
+                        {(["SET_MANUFACTURER","SET_MAJOR_CATEGORY","SET_MINOR_CATEGORY","SET_UNIT"] as const).map(operation=>
+                          <button key={operation} type="button" disabled={!selectedItems.length} onClick={()=>void openBulkDialog(operation)} className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-bold disabled:opacity-50">{bulkLabels[operation]}</button>
+                        )}
+                      </div>
+                    </details>
                     <button disabled={!selectedItems.length} onClick={()=>void openBulkDialog("DELETE")} className="rounded-xl border border-red-300 px-3 py-2 text-sm font-bold text-red-700 disabled:opacity-50">選択した商品を削除</button>
                   </> : <button disabled={!selectedItems.length} type="button" onClick={()=>void openBulkDialog("RESTORE")} className="rounded-xl border border-emerald-300 bg-emerald-50 px-4 py-2 font-bold text-emerald-800 disabled:opacity-50">選択した商品を復元</button>}
                 </div><p className="mt-2 text-sm text-slate-500">{archivedView ? "選択した削除済み商品をまとめて復元できます。" : "削除しても在庫・棚卸・取引の履歴は残り、管理者が復元できます。"}</p></details>
@@ -399,7 +410,7 @@ export default function ItemTable({ items, reload, isAdmin, archivedView = false
 
             <p className="mt-3 text-slate-600">
               対象：{selectedItems.length}グループ（配下の全在庫明細）
-              {bulkOperation==="DELETE"?"。履歴と在庫データは消さず、通常の検索・棚卸から除外します。管理者は後から復元できます。":bulkOperation==="RESTORE"?"。削除済み商品だけ復元します。個別に削除済みの在庫は復元されません。":"。棚卸・点検の対象だけ変更します。在庫と履歴は保持します。"}
+              {bulkOperation==="DELETE"?"。履歴と在庫データは消さず、通常の検索・棚卸から除外します。管理者は後から復元できます。":bulkOperation==="RESTORE"?"。削除済み商品だけ復元します。個別に削除済みの在庫は復元されません。":bulkOperation.startsWith("SET_")?"。商品マスタの共通情報を同じ値に変更します。個別の在庫情報は保持します。":"。棚卸・点検の対象だけ変更します。在庫と履歴は保持します。"}
             </p>
 
             {bulkOperation==="DELETE" && (
@@ -418,6 +429,11 @@ export default function ItemTable({ items, reload, isAdmin, archivedView = false
               </div>
             )}
             <p className="mt-3 font-bold text-blue-800">Lot・期限・分類ごとに操作する場合は、商品詳細を開き、対象明細の「この在庫だけ」を使用してください。</p>
+            {bulkOperation.startsWith("SET_") && <label className="mt-4 block text-sm font-bold text-slate-800">
+              {bulkLabels[bulkOperation]}：新しい値
+              <input type="text" value={bulkValue} maxLength={200} onChange={e=>{setBulkValue(e.target.value);setConfirmed(false);}} placeholder="変更後の値を入力（空欄で未設定に戻す）" className="mt-2 w-full rounded-xl border border-slate-300 p-3"/>
+              <span className="mt-1 block text-xs font-normal text-slate-500">選択した商品マスタの共通項目だけ変更します。ロットごとの個別設定はそのまま保持します。</span>
+            </label>}
             <label className="mt-5 block">
               <span className="font-bold text-slate-800">
                 変更理由
