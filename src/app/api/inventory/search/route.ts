@@ -1,4 +1,5 @@
 import { inventoryCategoryWhere } from "@/lib/inventory-category";
+import { inspectionInventoryWhere } from "@/lib/product-scope";
 import { NextRequest, NextResponse } from "next/server";
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
@@ -107,7 +108,7 @@ export async function GET(request: NextRequest) {
     if ((exact && normalizedKeyword) || session.status === "IN_PROGRESS") {
       // 棚卸開始後に登録・変更された商品も、読取時点の最新DBから対象へ反映する。
       const currentInventories = await withDatabaseRetry(() => prisma.inventoryInstance.findMany({
-        where: { status: { not: "廃止" }, item: { isArchived: false }, AND: [scopeWhere],
+        where: { AND: [inspectionInventoryWhere, scopeWhere],
           ...(inventoryInstanceId ? { id: inventoryInstanceId } : {}),
           ...(!exact ? { stocktakeTargets: { none: { sessionId } } } : {}),
         },
@@ -225,17 +226,17 @@ export async function GET(request: NextRequest) {
       });
     }
 
+    // Active stocktake screens read the current linked item/stock state.
+    // Completed sessions retain their recorded target snapshots for audit.
+    const isActiveSession = ["IN_PROGRESS", "PAUSED", "REVIEW", "CONFLICT"].includes(session.status);
+    const currentFilters: Prisma.InventoryInstanceWhereInput[] = isActiveSession
+      ? [inspectionInventoryWhere, scopeWhere, ...inventoryFilters]
+      : inventoryFilters;
     const where: Prisma.StocktakeTargetWhereInput = {
       sessionId,
-      ...(inventoryFilters.length > 0
-        ? {
-            inventoryInstance: {
-              is: {
-                AND: inventoryFilters,
-              },
-            },
-          }
-        : {}),
+      ...(currentFilters.length ? {
+        inventoryInstance: { is: { AND: currentFilters } },
+      } : {}),
     };
 
     const targets = await withDatabaseRetry(() => prisma.stocktakeTarget.findMany({
