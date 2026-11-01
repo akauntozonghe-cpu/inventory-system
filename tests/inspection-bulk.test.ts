@@ -77,14 +77,14 @@ it.each([
  ["SET_MAJOR_CATEGORY","majorCategory","飲料"],
  ["SET_MINOR_CATEGORY","minorCategory","コーヒー"],
  ["SET_UNIT","defaultUnit","本"],
-] as const)("bulk-edits %s without touching stock instances",async(operation,field,value)=>{
+] as const)("bulk-edits %s and synchronizes inherited stock fields",async(operation,field,value)=>{
  db.item.findMany.mockResolvedValue([{id:"item",name:"商品",isArchived:false,manufacturer:"旧",majorCategory:"旧",minorCategory:"旧",defaultUnit:"個"}]);
  const response=await POST(new NextRequest("http://localhost/api/items/bulk",{method:"POST",body:JSON.stringify({operation,itemIds:["item"],reason:"管理情報を整理",value})}));
  expect(response.status).toBe(200);
  expect(db.item.updateMany).toHaveBeenCalledWith({where:{id:"item",isArchived:false},data:{[field]:value}});
  const stockField=field==="defaultUnit"?"unit":field;
  expect(db.inventoryInstance.updateMany).toHaveBeenCalledWith(expect.objectContaining({
-  where:expect.objectContaining({itemId:"item",[stockField]:"旧"}),
+  where:expect.objectContaining({itemId:"item",status:{not:"廃止"},[stockField]:field==="defaultUnit"?"個":"旧"}),
   data:{[stockField]:value},
  }));
  expect(db.inventoryHistory.deleteMany).not.toHaveBeenCalled();
