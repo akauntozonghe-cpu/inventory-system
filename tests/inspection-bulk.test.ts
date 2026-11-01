@@ -71,3 +71,23 @@ it("previews active and deleted items without changing data",async()=>{
 });
 it("restores inspection without touching the archived state",async()=>{await request("INCLUDE_INSPECTION");expect(db.item.updateMany.mock.calls[0][0].data).toEqual({inspectionExcluded:false,inspectionExclusionReason:null});});
 it("fails the entire operation when the audit cannot be saved",async()=>{db.adminActionLog.create.mockRejectedValue(new Error("audit unavailable"));expect((await request("EXCLUDE_INSPECTION"))?.status).toBe(409);});
+
+it.each([
+ ["SET_MANUFACTURER","manufacturer","新メーカー"],
+ ["SET_MAJOR_CATEGORY","majorCategory","飲料"],
+ ["SET_MINOR_CATEGORY","minorCategory","コーヒー"],
+ ["SET_UNIT","defaultUnit","本"],
+] as const)("bulk-edits %s without touching stock instances",async(operation,field,value)=>{
+ db.item.findMany.mockResolvedValue([{id:"item",name:"商品",isArchived:false,manufacturer:"旧",majorCategory:"旧",minorCategory:"旧",defaultUnit:"個"}]);
+ const response=await POST(new NextRequest("http://localhost/api/items/bulk",{method:"POST",body:JSON.stringify({operation,itemIds:["item"],reason:"管理情報を整理",value})}));
+ expect(response.status).toBe(200);
+ expect(db.item.updateMany).toHaveBeenCalledWith({where:{id:{in:["item"]},isArchived:false},data:{[field]:value}});
+ expect(db.inventoryInstance.updateMany).not.toHaveBeenCalled();
+ expect(db.adminActionLog.create.mock.calls[0][0].data.action).toBe("ITEM_BULK_"+operation);
+});
+it("rejects bulk metadata changes on deleted groups",async()=>{
+ db.item.findMany.mockResolvedValue([{id:"item",name:"削除済み",isArchived:true}]);
+ const response=await POST(new NextRequest("http://localhost/api/items/bulk",{method:"POST",body:JSON.stringify({operation:"SET_MANUFACTURER",itemIds:["item"],reason:"管理情報を整理",value:"新メーカー"})}));
+ expect(response.status).toBe(400);
+ expect(db.item.updateMany).not.toHaveBeenCalled();
+});
