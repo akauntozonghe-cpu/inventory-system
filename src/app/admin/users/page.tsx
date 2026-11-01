@@ -527,7 +527,9 @@ export default function UserManagementPage() {
                           </p>
                         </div>
 
-                        <div className="flex flex-wrap gap-2">
+                        <details className="min-w-0 rounded-xl border border-slate-200 bg-slate-50 p-2">
+                          <summary className="cursor-pointer px-2 py-2 text-sm font-bold text-slate-800">アカウントを管理</summary>
+                          <div className="mt-2 flex flex-wrap gap-2 border-t border-slate-200 pt-3">
                           <button
                             type="button"
                             onClick={() => openPasswordReset(user)}
@@ -553,7 +555,8 @@ export default function UserManagementPage() {
                                 ? "停止する"
                                 : "有効化する"}
                           </button>
-                        </div>
+                          </div>
+                        </details>
                       </div>
                       <details className="mt-4 border-t border-slate-200 pt-4">
                         <summary className="cursor-pointer py-2 text-sm font-black text-slate-900">管理者が付与する日常業務の権限（{user.role==="ADMIN"?"すべて":user.featurePermissions.filter(feature=>FEATURE_KEYS.includes(feature)).length+"項目"}）</summary><p className="mt-1 text-xs text-slate-600">この設定は通常の利用権限です。一時管理者（10分間）とは別に、解除するまで継続します。変更した利用機能はその場で保存されます。編集権限の解除は次の保存操作から反映されます。新規棚卸には「棚卸作業」、販売設定には「フリマ作業」も必要です。</p>
