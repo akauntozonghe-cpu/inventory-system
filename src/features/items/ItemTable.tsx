@@ -275,7 +275,7 @@ export default function ItemTable({ items, reload, isAdmin, filterKey }: Props) 
                   <button disabled={!selectedItems.length} onClick={()=>openBulkDialog("INCLUDE_INSPECTION")} className="rounded-xl border p-3 font-bold">対象に戻す</button>
                   <button type="button" disabled={!selectedItems.length} onClick={()=>openBulkDialog("DELETE")} className="rounded-xl border border-red-300 p-3 font-bold text-red-700 disabled:opacity-50">選択した商品を削除</button>
                   {selectedItems.some(item => item.isArchived) && <button type="button" onClick={()=>void openBulkDialog("RESTORE")} className="rounded-xl border border-emerald-300 p-3 font-bold text-emerald-700">削除済みを復元</button>}
-                </div><p className="mt-2 text-sm text-slate-500">削除できるのは履歴のない商品・初回登録のみの在庫です。履歴がある場合は対象から外してください。</p></details>
+                </div><p className="mt-2 text-sm text-slate-500">削除しても在庫・棚卸・取引の履歴は保持されます。管理者は削除済み商品を確認・復元できます。</p></details>
               )}
             </div>
           </div>
@@ -291,7 +291,7 @@ export default function ItemTable({ items, reload, isAdmin, filterKey }: Props) 
             return (
               <article
                 key={item.id}
-                className={`relative rounded-2xl bg-white p-4 shadow-sm ring-1 transition hover:ring-blue-400 focus-within:ring-2 focus-within:ring-blue-600 ${
+                className={`relative min-w-0 rounded-2xl bg-white p-4 shadow-sm ring-1 transition hover:ring-blue-400 focus-within:ring-2 focus-within:ring-blue-600 sm:p-5 ${
                   item.isArchived
                     ? "ring-amber-300"
                     : "ring-slate-200"
@@ -326,14 +326,27 @@ export default function ItemTable({ items, reload, isAdmin, filterKey }: Props) 
                     </div>
 
                     <div className="flex items-start gap-3">{item.photos?.[0]&&<Image unoptimized width={120} height={100} src={"/api/items/"+item.id+"/photos/"+item.photos[0].id+"?thumbnail=1"} alt={item.name+"の写真"} className="h-16 w-20 shrink-0 rounded-lg bg-slate-50 object-contain"/>}<div className="min-w-0 flex-1"><InventoryStatusBadges item={item} stocks={item.inventoryInstances}/><ProductIdentity item={item}/></div></div>
-                    <p className="mt-3 font-bold">個別の在庫 {item.inventoryInstances.length}件</p>
-                    <div className="mt-2 space-y-2">{item.inventoryInstances.map(stock=><Link key={stock.id} href={`/items/${item.id}?inventoryId=${encodeURIComponent(stock.id)}`} className="block rounded-xl border border-slate-200 p-3 hover:bg-blue-50">
-                      <p className="font-bold">Lot：{stock.lotNo || "未設定"} ／ 期限：{stock.expirationDate ? stock.expirationDate.slice(0,10) : stock.expirationManagementStatus === "NO_EXPIRY" ? "期限なし" : "未設定"}</p>
-                      <p className="text-sm">分類：{[stock.majorCategory,stock.minorCategory].filter(Boolean).join(" ／ ") || "未設定"} ／ 場所：{stock.storageLocation?.name || "未設定"}</p>
-                      <p className="mt-1 font-bold">{stock.quantity} {displayUnit(stock.unit,item.defaultUnit)} ／ {stock.status === "廃止" ? "削除済み" : stock.status || "在庫"} ／ 点検：{stock.status === "廃止" || item.isArchived || (stock.inspectionExcluded ?? item.inspectionExcluded) ? "対象外" : "対象"}</p>
-                      <p className="break-all text-xs text-slate-500">在庫No.：{stock.id}</p>
-                      <span className="mt-1 inline-block text-sm font-bold text-blue-700">この在庫の編集・削除・対象外設定 →</span>
-                    </Link>)}</div>
+                    <div className="mt-4 flex flex-wrap items-center justify-between gap-2 border-t border-slate-100 pt-3">
+                      <span className="rounded-lg bg-slate-100 px-3 py-1.5 text-sm font-bold text-slate-700">在庫明細 {item.inventoryInstances.length}件</span>
+                      <Link href={`/items/${item.id}`} prefetch={false} className="rounded-lg bg-blue-600 px-3 py-2 text-sm font-bold text-white hover:bg-blue-700">詳細を見る</Link>
+                    </div>
+                    {item.inventoryInstances.length > 0 && (
+                      <details className="group mt-3 rounded-xl border border-slate-200 bg-slate-50">
+                        <summary className="cursor-pointer px-3 py-3 text-sm font-bold text-slate-700 hover:bg-slate-100">ロット・期限・保管場所を確認する（{item.inventoryInstances.length}件）</summary>
+                        <div className="max-h-80 space-y-2 overflow-y-auto border-t p-2">
+                          {item.inventoryInstances.map(stock=>(
+                            <Link key={stock.id} href={`/items/${item.id}?inventoryId=${encodeURIComponent(stock.id)}`} className="block min-w-0 rounded-lg border border-slate-200 bg-white p-3 hover:border-blue-300 hover:bg-blue-50">
+                              <div className="flex flex-wrap items-center justify-between gap-2">
+                                <strong className="break-words text-sm text-slate-900">Lot：{stock.lotNo || "未設定"}</strong>
+                                <span className="text-sm font-bold text-blue-700">{stock.quantity} {displayUnit(stock.unit,item.defaultUnit)}</span>
+                              </div>
+                              <p className="mt-1 break-words text-sm text-slate-600">期限：{stock.expirationDate ? stock.expirationDate.slice(0,10) : stock.expirationManagementStatus === "NO_EXPIRY" ? "期限なし" : "未設定"} ／ 場所：{stock.storageLocation?.name || "未設定"}</p>
+                              <p className="mt-1 text-xs text-slate-500">{stock.status === "廃止" ? "削除済み" : stock.status || "在庫"}・{stock.status === "廃止" || item.isArchived || (stock.inspectionExcluded ?? item.inspectionExcluded) ? "棚卸対象外" : "棚卸対象"}</p>
+                            </Link>
+                          ))}
+                        </div>
+                      </details>
+                    )}
                     {item.isArchived && item.archiveReason && (
                       <p className="mt-4 rounded-xl bg-amber-50 px-3 py-2 text-sm text-amber-800">
                         削除理由：{item.archiveReason}
