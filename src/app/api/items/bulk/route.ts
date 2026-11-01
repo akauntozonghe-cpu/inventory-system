@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { requireAdmin, getAdminElevation } from "@/lib/auth";
+import { syncItemLinks } from "@/lib/item-links";
 
 const labels = { DELETE: "削除", RESTORE: "復元", EXCLUDE_INSPECTION: "棚卸・点検対象外に設定", INCLUDE_INSPECTION: "棚卸・点検対象に復帰", SET_MANUFACTURER: "メーカーを変更", SET_MAJOR_CATEGORY: "大分類を変更", SET_MINOR_CATEGORY: "小分類を変更", SET_UNIT: "既定単位を変更" } as const;
 export async function POST(request: NextRequest) {
@@ -58,8 +59,28 @@ export async function POST(request: NextRequest) {
     if (active.length !== items.length) throw new Error("ITEMS_DELETED");
     const newValue = value.normalize("NFKC").trim() || null;
     const data = action === "SET_MANUFACTURER" ? {manufacturer:newValue} : action === "SET_MAJOR_CATEGORY" ? {majorCategory:newValue} : action === "SET_MINOR_CATEGORY" ? {minorCategory:newValue} : {defaultUnit:newValue};
-    const changed = await tx.item.updateMany({ where: { id: { in: ids }, isArchived: false }, data });
-    if (changed.count !== ids.length) throw new Error("ITEMS_CHANGED");
+    // Preserve the distinction between shared catalog values and explicit
+    // per-lot overrides. Update the item and its inherited stock references
+    // within this same transaction.
+    if (ids.length > 150) throw new Error("BULK_SYNC_LIMIT");
+    let changedCount = 0;
+    for (const item of items) {
+      const updated = await tx.item.updateMany({ where: { id: item.id, isArchived: false }, data });
+      if (updated.count !== 1) throw new Error("ITEMS_CHANGED");
+      const after = {
+        manufacturer: action === "SET_MANUFACTURER" ? newValue : item.manufacturer,
+        majorCategory: action === "SET_MAJOR_CATEGORY" ? newValue : item.majorCategory,
+        minorCategory: action === "SET_MINOR_CATEGORY" ? newValue : item.minorCategory,
+        defaultUnit: action === "SET_UNIT" ? newValue : item.defaultUnit,
+      };
+      if (after.minorCategory && !after.majorCategory) throw new Error("CATEGORY_PARENT_REQUIRED");
+      await syncItemLinks(tx, item.id, {
+        manufacturer: item.manufacturer, majorCategory: item.majorCategory,
+        minorCategory: item.minorCategory, defaultUnit: item.defaultUnit,
+      }, after);
+      changedCount++;
+    }
+    const changed = { count: changedCount };
     const actor = (auth.user!.baseRole ?? auth.user!.role) === "ADMIN" ? auth.user!.id : getAdminElevation(request)?.adminUserId;
     if (!actor) throw new Error("ADMIN_REQUIRED");
     await tx.adminActionLog.create({ data: { adminUserId: actor, action: "ITEM_BULK_" + action, route: "/items", detail: { reason, changes: items.map(item => ({ id: item.id, before: item[field], after: newValue })), requestedBy: auth.user!.id } } });
@@ -76,6 +97,7 @@ export async function POST(request: NextRequest) {
   return NextResponse.json(result);
  } catch (error) {
   if (error instanceof Error && error.message === "DELETE_PROTECTED") return NextResponse.json({ code: "DELETE_PROTECTED", message: "削除できない商品が含まれています。削除前の確認画面を更新してください。" }, { status: 409 });
+  if (error instanceof Error && ["CATEGORY_PARENT_REQUIRED","BULK_SYNC_LIMIT"].includes(error.message)) return NextResponse.json({code:error.message,message:error.message==="BULK_SYNC_LIMIT"?"一度に変更する商品は150件以内にしてください。":"小分類を設定する場合は大分類が必要です。"}, {status:400});
   if (error instanceof Error && (error.message === "VALUE_INVALID" || error.message === "ITEMS_DELETED")) return NextResponse.json({ code: error.message, message: "変更値または削除済みの商品が含まれています。対象を確認してください。" }, { status: 400 });
   if (error instanceof Error && error.message === "NOTHING_TO_RESTORE") return NextResponse.json({ code: "NOTHING_TO_RESTORE", message: "選択商品に復元する削除済みデータはありません。" }, { status: 409 });
   if (error instanceof Error && error.message === "NOTHING_ELIGIBLE") return NextResponse.json({ code: "NOTHING_ELIGIBLE", message: "削除可能な商品はありません。" }, { status: 409 });
