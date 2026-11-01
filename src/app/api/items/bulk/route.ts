@@ -53,7 +53,7 @@ export async function POST(request: NextRequest) {
     const value = input?.value;
     const limits = { SET_MANUFACTURER: 200, SET_MAJOR_CATEGORY: 100, SET_MINOR_CATEGORY: 100, SET_UNIT: 30 };
     if (typeof value !== "string" || value.trim().length > limits[action]) throw new Error("VALUE_INVALID");
-    const field = { SET_MANUFACTURER: "manufacturer", SET_MAJOR_CATEGORY: "majorCategory", SET_MINOR_CATEGORY: "minorCategory", SET_UNIT: "defaultUnit" }[action];
+    const field = ({ SET_MANUFACTURER: "manufacturer", SET_MAJOR_CATEGORY: "majorCategory", SET_MINOR_CATEGORY: "minorCategory", SET_UNIT: "defaultUnit" } as const)[action];
     const active = items.filter(item => !item.isArchived);
     if (active.length !== items.length) throw new Error("ITEMS_DELETED");
     const newValue = value.normalize("NFKC").trim() || null;
