@@ -68,8 +68,8 @@ const adminMenus: Menu[] = [
   {
     href: "/admin",
     icon: Settings2,
-    title: "システム設定",
-    description: "利用者、商品・在庫、エラー、棚卸全体を整えます。",
+    title: "管理センター",
+    description: "棚卸・商品・利用者・保守を目的別に探して管理します。",
     accent: "from-slate-700 to-slate-900",
   },
   {
