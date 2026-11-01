@@ -595,8 +595,8 @@ export default function ItemDetailPage() {
   const inventoryInstances = (item.inventoryInstances ?? []).filter(row=>!focusedInventory||row.id===focusedInventory);
 
   return (
-    <main className="min-h-screen bg-slate-100 p-4 pb-24 sm:p-5">
-      <p role="status" className="mx-auto mb-3 max-w-6xl text-sm font-bold">{syncFailed ? "同期できていません。表示は前回取得時点です。" : "在庫情報を自動更新中（通信時間＋約1秒）。編集中の入力は保持します。"}</p>
+    <main className="min-h-screen bg-slate-100 px-3 py-4 pb-20 sm:px-6 sm:py-6 sm:pb-24">
+      {syncFailed && <p role="alert" className="mx-auto mb-3 max-w-6xl rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm font-bold text-amber-900">同期できていません。表示は前回取得時点です。通信状況を確認してください。</p>}
       <div className="mx-auto max-w-6xl">
         <header className="mb-4 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
           <div>
@@ -604,12 +604,12 @@ export default function ItemDetailPage() {
               商品詳細
             </p>
 
-            <h1 className="mt-1 break-words text-3xl font-black text-slate-950 sm:text-4xl">
+            <h1 className="mt-1 break-words text-2xl font-black leading-tight text-slate-950 sm:text-3xl">
               {item.name}
             </h1>
 
             <p className="mt-2 text-sm text-slate-600">
-              対象の明細を選んで編集・削除・棚卸対象の設定を行えます。
+              商品情報と在庫明細を分けて表示しています。操作したい在庫を選んでください。
             </p>
           </div>
 
@@ -624,10 +624,10 @@ export default function ItemDetailPage() {
           </div>
         </header>
 
-        <section aria-label="JANの在庫明細" className="mb-4 rounded-xl bg-white p-4">
+        <section aria-label="JANの在庫明細" className="mb-4 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
           <ProductIdentity item={item}/>
           <p className="mt-2 font-bold">独立した在庫 {item.inventoryInstances.length}件</p>
-          <p className="text-sm text-slate-600">同じJANの在庫を一覧にしています。分類・Lot・期限・保管場所・点検設定は各明細で管理します。</p>
+          <p className="text-sm text-slate-600">在庫はロット・期限・保管場所ごとに個別管理されます。</p>
         </section>
         <FeedbackToast
           message={notice}
@@ -787,14 +787,14 @@ export default function ItemDetailPage() {
             initialSystemJan={item.systemBarcode} onUpdated={()=>loadItem(true)}
           />}</section>}
 
-          <section className="rounded-3xl bg-white p-5 shadow-sm sm:p-7">
+          <section className="min-w-0 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6">
             <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
               <div>
                 <h2 className="text-xl font-black text-slate-950">
                   在庫詳細
                 </h2>
                 <p className="mt-1 text-sm text-slate-600">
-                  各枠が独立した在庫です。「削除」と「対象から外す」を選べます。履歴がある明細は削除せず、対象外にして記録を保持します。
+                  在庫ごとに数量・期限・保管場所を確認できます。削除しても過去の履歴は保持されます。
                 </p>
               </div>
 
@@ -822,7 +822,7 @@ export default function ItemDetailPage() {
                     <article
                       key={inventory.id}
                       id={`inventory-${inventory.id}`}
-                      className="rounded-2xl border border-slate-200 p-4 sm:p-5"
+                      className="min-w-0 rounded-xl border border-slate-200 bg-white p-3 sm:p-5"
                     >
                       {editing && inventoryForm ? (
                         <form
