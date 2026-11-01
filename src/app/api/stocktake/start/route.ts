@@ -1,5 +1,5 @@
 import { inventoryCategoryWhere } from "@/lib/inventory-category";
-import {activeInventoryWhere} from "@/lib/product-scope";
+import {inspectionInventoryWhere} from "@/lib/product-scope";
 import { randomUUID } from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { Prisma } from "@prisma/client";
@@ -104,7 +104,7 @@ export async function POST(request: NextRequest) {
      * 今後は何件あっても新規作成可能。
      */
 
-    const inventoryWhere: Prisma.InventoryInstanceWhereInput = {...activeInventoryWhere};
+    const inventoryWhere: Prisma.InventoryInstanceWhereInput = { AND: [inspectionInventoryWhere] };
 
     if (
       selectedScopeType === "LOCATION" &&
@@ -121,14 +121,14 @@ export async function POST(request: NextRequest) {
       selectedScopeType === "MAJOR_CATEGORY" &&
       selectedScopeValue
     ) {
-      inventoryWhere.AND = [inventoryCategoryWhere("majorCategory", selectedScopeValue)];
+      inventoryWhere.AND = [inspectionInventoryWhere, inventoryCategoryWhere("majorCategory", selectedScopeValue)];
     }
 
     if (
       selectedScopeType === "MINOR_CATEGORY" &&
       selectedScopeValue
     ) {
-      inventoryWhere.AND = [inventoryCategoryWhere("minorCategory", selectedScopeValue)];
+      inventoryWhere.AND = [inspectionInventoryWhere, inventoryCategoryWhere("minorCategory", selectedScopeValue)];
     }
 
     const inventories =
