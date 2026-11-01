@@ -31,14 +31,14 @@ export default function ItemCompactCard({item,selected,canSelect,archivedView,on
   return <article className={`min-w-0 overflow-hidden rounded-xl border bg-white shadow-sm transition hover:border-blue-300 hover:shadow-md ${selected?"border-blue-500 ring-1 ring-blue-400":item.isArchived?"border-amber-300":"border-slate-200"}`}>
     <div className="p-3 sm:p-4">
       <div className="flex min-w-0 items-start gap-2.5">
-        {canSelect && <input type="checkbox" aria-label={`${item.name}を選択`} checked={selected} onChange={onToggle} className="mt-2 h-5 w-5 shrink-0 cursor-pointer accent-blue-700"/>}
+        {canSelect && <label className="grid h-11 w-11 shrink-0 cursor-pointer place-items-center rounded-lg hover:bg-slate-100" title={`${item.name}を選択`}><input type="checkbox" aria-label={`${item.name}を選択`} checked={selected} onChange={onToggle} className="h-5 w-5 cursor-pointer accent-blue-700"/></label>}
         <div className="grid h-14 w-14 shrink-0 place-items-center overflow-hidden rounded-lg bg-slate-50">
           {item.photos?.[0]
             ? <Image unoptimized width={56} height={56} alt={`${item.name}の写真`} src={`/api/items/${item.id}/photos/${item.photos[0].id}?thumbnail=1`} className="h-14 w-14 object-contain"/>
             : <span aria-hidden className="text-2xl text-slate-300">▣</span>}
         </div>
         <div className="min-w-0 flex-1">
-          <Link href={`/items/${item.id}`} className="line-clamp-2 break-words text-sm font-black leading-5 text-slate-950 underline-offset-2 hover:text-blue-700 hover:underline sm:text-base">{item.name}</Link>
+          <h2 className="min-w-0"><Link href={`/items/${item.id}`} className="line-clamp-2 break-words text-sm font-black leading-5 text-slate-950 underline-offset-2 hover:text-blue-700 hover:underline sm:text-base">{item.name}</Link></h2>
           <p className="mt-1 truncate font-mono text-xs text-slate-500" title={code}>{code}</p>
           {item.isArchived && <span className="mt-1 inline-block rounded-md bg-amber-100 px-2 py-0.5 text-xs font-bold text-amber-900">削除済み</span>}
         </div>
