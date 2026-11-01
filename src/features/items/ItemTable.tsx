@@ -130,6 +130,7 @@ export default function ItemTable({ items, reload, isAdmin, archivedView = false
     setError("");
     setMessage("");
     setReason("");
+    setBulkValue("");
     setConfirmed(false);
     setBulkOperation(operation);
     setDeletePreview(null);
