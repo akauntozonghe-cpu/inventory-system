@@ -32,8 +32,12 @@ export async function GET(request: NextRequest) {
       prisma.item.count({ where: { ...inspectionItemWhere, OR: [{ minorCategory: null }, { minorCategory: "" }] } }),
       prisma.inventoryInstance.count({ where: { ...inspectionInventoryWhere, storageLocationId: null } })]);
 
+    // Show shared catalog values when a stock entry inherits them (null).
+    // Preserve explicit per-lot classification overrides.
     const entries = inventories.map((inventory) => ({
       ...inventory,
+      majorCategory: inventory.majorCategory ?? inventory.item.majorCategory,
+      minorCategory: inventory.minorCategory ?? inventory.item.minorCategory,
       effectiveDate: expirationEffectiveDate(inventory.expirationDate),
       assessment: assessExpiry(inventory.expirationDate, inventory.expirationAlertDays, today),
     })).sort((a, b) => {
