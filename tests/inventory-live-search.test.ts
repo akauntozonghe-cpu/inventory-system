@@ -1,5 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
+import { inspectionInventoryWhere } from "../src/lib/product-scope";
+import { inventoryCategoryWhere } from "../src/lib/inventory-category";
 const db = vi.hoisted(() => ({
   stocktakeSession: { findUnique: vi.fn() },
   inventoryInstance: { findMany: vi.fn() },
@@ -47,9 +49,8 @@ describe("live stocktake search", () => {
   it("limits database retrieval to the session's classification", async () => {
     db.stocktakeSession.findUnique.mockResolvedValue({ id: "session", operatorUserId: "worker", status: "IN_PROGRESS", scopeType: "MAJOR_CATEGORY", scopeValue: "食品" });
     await GET(new NextRequest("http://localhost/api/inventory/search?sessionId=session&exact=true&filter=ALL&q=4901234567890"));
-    expect(db.inventoryInstance.findMany.mock.calls[0][0].where.AND).toEqual([
-      { OR: [{ majorCategory: "食品" }, { majorCategory: null, item: { is: { majorCategory: "食品" } } }] },
-    ]);
+    expect(db.inventoryInstance.findMany.mock.calls[0][0].where.AND).toEqual([inspectionInventoryWhere, inventoryCategoryWhere("majorCategory", "食品")]);
+    expect(db.stocktakeTarget.findMany.mock.calls[0][0].where.inventoryInstance.is.AND).toContainEqual(inspectionInventoryWhere);
   });
   it("同じJANの別ロットを正常な複数候補として返し、管理No.を混同しない", async () => {
     const lots = [{ ...inventory, id: "lot-a", lotNo: "A" }, { ...inventory, id: "lot-b", lotNo: "B" }];
