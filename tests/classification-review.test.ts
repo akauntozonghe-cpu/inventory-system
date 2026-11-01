@@ -6,11 +6,12 @@ import {POST} from "../src/app/api/admin/classifications/route";
 const before={id:"p1",majorCategory:"食品",minorCategory:"飲料"};
 const body={action:"ASSIGN_ITEMS",itemIds:["p1"],majorCategory:"備品",keepMinorCategory:true,expectedClassifications:[before]};
 const request=(value:unknown)=>new NextRequest("http://localhost/api/admin/classifications",{method:"POST",body:JSON.stringify(value)});
-beforeEach(()=>{vi.resetAllMocks();db.$transaction.mockImplementation(async fn=>fn(db));db.item.findMany.mockResolvedValue([before]);});
+beforeEach(()=>{vi.resetAllMocks();db.$transaction.mockImplementation(async fn=>fn(db));db.item.findMany.mockResolvedValue([before]);db.item.updateMany.mockResolvedValue({count:1});db.inventoryInstance.updateMany.mockResolvedValue({count:1});db.classification.upsert.mockResolvedValue({});db.adminActionLog.create.mockResolvedValue({});});
 it("updates the same major/minor on the product and its inventory atomically",async()=>{
  expect((await POST(request(body)))?.status).toBe(200);
- expect(db.item.updateMany).toHaveBeenCalledWith({where:{id:{in:["p1"]}},data:{majorCategory:"備品",minorCategory:"飲料"}});
- expect(db.inventoryInstance.updateMany).toHaveBeenCalledWith({where:{itemId:{in:["p1"]}},data:{majorCategory:"備品",minorCategory:"飲料"}});
+ expect(db.item.updateMany).toHaveBeenCalledWith({where:{id:"p1",isArchived:false,majorCategory:"食品",minorCategory:"飲料"},data:{majorCategory:"備品",minorCategory:"飲料"}});
+ expect(db.inventoryInstance.updateMany).toHaveBeenCalledWith({where:{itemId:"p1",status:{not:"廃止"},majorCategory:"食品"},data:{majorCategory:"備品"}});
+ expect(db.inventoryInstance.updateMany).toHaveBeenCalledTimes(1);
  expect(db.classification.upsert).toHaveBeenCalledWith(expect.objectContaining({create:{kind:"MINOR",name:"飲料",parentName:"備品"}}));
  expect(db.adminActionLog.create).toHaveBeenCalledWith(expect.objectContaining({data:expect.objectContaining({action:"CLASSIFICATION_ASSIGN_ITEMS"})}));
  expect(db.$transaction).toHaveBeenCalledWith(expect.any(Function),expect.objectContaining({isolationLevel:"Serializable"}));
