@@ -782,7 +782,7 @@ export default function ItemDetailPage() {
               </fieldset></form>
             </Modal>
           ) : (
-            <details className="rounded-xl bg-white p-4"><summary className="cursor-pointer font-bold">JAN共通の商品名・写真・登録時の既定値</summary>
+            <details open className="rounded-xl border border-slate-200 bg-white p-4"><summary className="cursor-pointer font-bold">商品共通情報（写真・メーカー・分類・単位）</summary>
               <div className="mt-3 grid grid-cols-[100px_minmax(0,1fr)] items-start gap-3"><ProductPhotos itemId={item.id} canEdit={canEditItem} compact/><div className="min-w-0"><div className="flex flex-wrap items-center justify-between gap-2"><h2 className="text-xl font-black text-slate-950">商品情報</h2>{canEditItem&&<button onClick={startItemEdit} className="rounded-lg bg-blue-700 px-3 py-2 font-bold text-white">商品情報を編集</button>}</div><InventoryStatusBadges item={item} stocks={inventoryInstances}/><ProductIdentity item={item}/>
 
               <dl className="mt-3 grid grid-cols-2 gap-3 lg:grid-cols-3">
@@ -830,7 +830,7 @@ export default function ItemDetailPage() {
             <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
               <div>
                 <h2 className="text-xl font-black text-slate-950">
-                  在庫詳細
+                  在庫明細
                 </h2>
                 <p className="mt-1 text-sm text-slate-600">
                   在庫ごとに数量・期限・保管場所を確認できます。削除しても過去の履歴は保持されます。
@@ -838,7 +838,7 @@ export default function ItemDetailPage() {
               </div>
 
               <span className="rounded-full bg-slate-100 px-4 py-2 text-sm font-bold text-slate-700">
-                {inventoryInstances.length} 件
+                通常 {activeInventories.length} 件
               </span>
             </div>
 
@@ -1169,12 +1169,13 @@ export default function ItemDetailPage() {
                           </div>
                         </form>
                       ) : (
-                        <div className="space-y-4">
+                        <div className="space-y-3">
                           <div>
                             <div className="flex flex-wrap items-center gap-2">
-                              <h3 className="text-lg font-black text-slate-950">
-                                {inventory.storageLocation?.name ?? "保管場所未設定"}
+                              <h3 className="break-words text-lg font-black text-slate-950">
+                                Lot：{inventory.lotNo || "未設定"}
                               </h3>
+                              <span className="rounded-lg bg-slate-100 px-3 py-1 text-sm font-bold text-slate-700">{inventory.storageLocation?.name || "保管場所未設定"}</span>
 
                               <span
                                 className={`rounded-full px-3 py-1 text-sm font-bold ${
@@ -1187,7 +1188,14 @@ export default function ItemDetailPage() {
                               </span>
                             </div>
 
-                            <dl className="mt-4 grid gap-3 text-sm sm:grid-cols-2 lg:grid-cols-4">
+                            <div className="mt-3 grid gap-2 rounded-xl bg-slate-50 p-3 text-sm sm:grid-cols-3">
+                              <p><span className="block text-xs font-bold text-slate-500">使用期限</span><strong>{!inventory.expirationDate && inventory.expirationManagementStatus==="NO_EXPIRY" ? "期限なし" : formatDate(inventory.expirationDate)}</strong></p>
+                              <p><span className="block text-xs font-bold text-slate-500">棚卸対象</span><strong>{inventory.inspectionExcluded ?? item.inspectionExcluded ? "対象外" : "対象"}</strong></p>
+                              <p><span className="block text-xs font-bold text-slate-500">在庫区分</span><strong>{allocationLabel(inventory.allocationType)}</strong></p>
+                            </div>
+                            <details className="mt-3 rounded-lg border border-slate-200">
+                              <summary className="cursor-pointer px-3 py-2 text-sm font-bold text-slate-700">分類・管理番号・更新日時などを表示</summary>
+                              <dl className="grid gap-3 border-t border-slate-100 p-3 text-sm sm:grid-cols-2 lg:grid-cols-3">
                               <div>
                                 <dt className="font-bold text-slate-500">この在庫の分類</dt>
                                 <dd className="mt-1 text-slate-800">{[inventory.majorCategory, inventory.minorCategory].filter(Boolean).join(" ／ ") || "未設定"}</dd>
@@ -1231,7 +1239,8 @@ export default function ItemDetailPage() {
                                   {formatDate(inventory.updatedAt)}
                                 </dd>
                               </div>
-                            </dl>
+                              </dl>
+                            </details>
                           </div>
 
                           <StockStateSummary stocks={[inventory]} defaultUnit={item.defaultUnit} itemId={item.id} inventoryId={inventory.id}/>
@@ -1256,7 +1265,10 @@ export default function ItemDetailPage() {
                             )}
 
                             <Link href={`/history?inventoryId=${encodeURIComponent(inventory.id)}`} className="rounded-xl border p-3 font-bold">この在庫の数量履歴</Link>
-                            <InventoryLifecycle stock={inventory} groupExcluded={item.inspectionExcluded === true} canManage={accessUser?.role === "ADMIN" || adminMode.active} onSaved={() => loadItem(true)} onDelete={inventory.status === "廃止" ? undefined : () => void deleteInventory(inventory)} deleting={saving}/>
+                            <details className="w-full rounded-xl border border-slate-200 bg-slate-50">
+                              <summary className="cursor-pointer px-4 py-3 text-sm font-black text-slate-800">この在庫の管理操作（編集・対象外・削除）</summary>
+                              <div className="flex flex-wrap items-center gap-2 border-t border-slate-200 p-3">
+                                <InventoryLifecycle stock={inventory} groupExcluded={item.inspectionExcluded === true} canManage={accessUser?.role === "ADMIN" || adminMode.active} onSaved={() => loadItem(true)} onDelete={inventory.status === "廃止" ? undefined : () => void deleteInventory(inventory)} deleting={saving}/>
                             {canEditInventory && (
                               <button
                                 type="button"
@@ -1266,6 +1278,8 @@ export default function ItemDetailPage() {
                                 在庫情報を編集
                               </button>
                             )}
+                              </div>
+                            </details>
                           </div>
                         </div>
                       )}
