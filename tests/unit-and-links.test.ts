@@ -11,15 +11,23 @@ describe("shared product information", () => {
     expect(`${1}${displayUnit("0")}`).toBe("1（単位未設定）");
     expect(`${1}${displayUnit("0", "個")}`).toBe("1個");
   });
-  it("preserves stock classifications while updating inherited units without converting quantities", async () => {
+  it("updates inherited units and categories without changing quantities or explicit per-lot overrides", async () => {
     const update = vi.fn();
     const tx = { inventoryInstance: { updateMany: update }, classification: { upsert: vi.fn() } } as unknown as Prisma.TransactionClient;
     const before = { majorCategory: "旧分類", minorCategory: null, manufacturer: "会社", defaultUnit: "個" };
     await syncItemLinks(tx, "item", before, { ...before, majorCategory: "新分類", defaultUnit: "本" });
-    expect(update).toHaveBeenCalledTimes(1);
-    expect(update.mock.calls[0][0].data).toEqual({ unit: "本" });
-    expect(update.mock.calls[0][0].where.OR).not.toContainEqual({ unit: "箱" });
-    expect(update.mock.calls[0][0].where.OR).toContainEqual({ unit: "0" });
+    expect(update).toHaveBeenCalledTimes(2);
+    expect(update).toHaveBeenCalledWith({
+      where: { itemId: "item", status: { not: "廃止" }, unit: "個" },
+      data: { unit: "本" },
+    });
+    expect(update).toHaveBeenCalledWith({
+      where: { itemId: "item", status: { not: "廃止" }, majorCategory: "旧分類" },
+      data: { majorCategory: "新分類" },
+    });
+    expect(update.mock.calls.every(([call]) =>
+      Object.keys(call.data).every(field => ["unit", "majorCategory"].includes(field))
+    )).toBe(true);
   });
   it("does not touch lot units when only the product name is edited", async () => {
     const update = vi.fn();
