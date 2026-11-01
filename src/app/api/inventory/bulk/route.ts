@@ -13,7 +13,7 @@ export async function POST(request: NextRequest) {
   const scope = body?.scope;
   const selectedIds: string[] = Array.isArray(body?.selectedIds) ? body.selectedIds : [];
   const snapshots: Target[] = Array.isArray(body?.snapshots) ? body.snapshots : [];
-  if (!itemId || !["selected", "unselected"].includes(scope) || !selectedIds.length ||
+  if (!itemId || !["selected", "unselected"].includes(scope) || (scope === "selected" && !selectedIds.length) ||
       selectedIds.length > 1000 || new Set(selectedIds).size !== selectedIds.length ||
       selectedIds.some(id => typeof id !== "string" || !id) ||
       !snapshots.length || snapshots.length > 1000 ||
