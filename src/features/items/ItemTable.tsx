@@ -9,7 +9,7 @@ import Modal from "@/components/common/Modal";
 import Link from "@/components/auth/PermissionLink";
 import { useEffect, useMemo, useState } from "react";
 import dynamic from "next/dynamic";
-const LabelPrintDialog=dynamic(()=>import("@/components/LabelPrintDialog"),{ssr:false});
+const BulkProductLabelDialog=dynamic(()=>import("@/components/BulkProductLabelDialog"),{ssr:false});
 
 import type { Item } from "./types";
 import ItemCompactCard from "./ItemCompactCard";
@@ -226,7 +226,9 @@ export default function ItemTable({ items, reload, isAdmin, archivedView = false
 
   return (
     <>
-      {!archivedView&&can("LABEL_PRINT")&&printIds&&<LabelPrintDialog labels={items.filter(item=>printIds.includes(item.id)).map(item=>({id:item.id,itemId:item.id,name:item.name,barcode:item.janCode||item.systemBarcode}))} canEdit={isAdmin} onRefresh={reload} onClose={()=>setPrintIds(null)} onComplete={()=>setSelectedIds([])}/>}
+      {!archivedView&&can("LABEL_PRINT")&&printIds&&<BulkProductLabelDialog
+        labels={items.filter(item=>printIds.includes(item.id)).map(item=>({id:item.id,name:item.name,barcode:item.janCode||item.systemBarcode}))}
+        onClose={()=>setPrintIds(null)} onComplete={()=>setSelectedIds([])}/>}
       <section className="space-y-4">
         {(isAdmin || can("LABEL_PRINT")) && <div className="rounded-2xl border bg-white p-3">
 
