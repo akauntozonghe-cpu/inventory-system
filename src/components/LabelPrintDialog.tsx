@@ -90,7 +90,7 @@ export default function LabelPrintDialog({ labels, onClose, onComplete, onRefres
                 })));
                 html = productQrPrintDocument(
                     rendered.flatMap(row => Array.from({length:repeat},() => row)),
-                    productMode,layout,scale,profile,true
+                    productMode === "QR" ? "QR" : "BOTH",layout,scale,profile,true
                 );
             } else {
                 html = barcodePrintDocument(targets.flatMap(row => Array.from({ length: repeat }, () => ({ name: row.name, barcode: row.barcode! }))), layout, scale, includeName, profile);
