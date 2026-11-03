@@ -369,10 +369,10 @@ export default function StocktakePage() {
   }, [filter, loadItems, loadProgress, majorCategory, minorCategory, pendingCount]);
 
   const refresh = useCallback(async () => {
-    await Promise.all([
-      loadProgress(),
-      loadItems(keyword, filter, majorCategory),
-    ]);
+    // The inventory query may enroll recently registered lots into this session.
+    // Load progress only after enrollment, so the displayed counts are current.
+    await loadItems(keyword, filter, majorCategory);
+    await loadProgress();
   }, [filter, keyword, loadItems, loadProgress, majorCategory, minorCategory]);
 
   const syncSelectedItem = useCallback(async () => {
@@ -399,11 +399,12 @@ export default function StocktakePage() {
 
   const syncInBackground = useCallback(async () => {
     const results = await Promise.allSettled([
-      loadProgress(),
       loadItems(keyword, filter, majorCategory, true),
       syncSelectedItem(),
     ]);
-    if (results.some((result) => result.status === "rejected")) throw new Error("同期失敗");
+    const [progressResult] = await Promise.allSettled([loadProgress()]);
+    if (progressResult.status === "rejected" || results.some(result => result.status === "rejected"))
+      throw new Error("同期失敗");
     setLastSyncedAt(new Date());
   }, [filter, keyword, loadItems, loadProgress, majorCategory, minorCategory, syncSelectedItem]);
 
