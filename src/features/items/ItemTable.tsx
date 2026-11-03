@@ -267,7 +267,7 @@ export default function ItemTable({ items, reload, isAdmin, archivedView = false
                 disabled={selectedItems.length === 0}
                 className="rounded-xl bg-slate-800 px-4 py-3 font-bold text-white transition hover:bg-slate-950 disabled:cursor-not-allowed disabled:bg-slate-300"
               >
-                {`選択した${selectedItems.length}件を印刷`}
+                {`選択した${selectedItems.length}商品をJAN・QR一括印刷`}
               </button>}
 
               {selectedItems.length > 0 && <button onClick={() => setSelectedIds([])} className="rounded-xl border px-3 py-2 font-bold">選択解除</button>}
@@ -291,7 +291,7 @@ export default function ItemTable({ items, reload, isAdmin, archivedView = false
             </div>
           </div>
 
-          <p role="status" className="mt-2 text-sm text-slate-600">選択 {selectedItems.length}件</p>
+          <p role="status" className="mt-2 text-sm text-slate-600">選択 {selectedItems.length}商品{!archivedView&&can("LABEL_PRINT")?" ／ JANのみ・商品QRのみ・JAN＋QRを選んでまとめて印刷できます。":""}</p>
         </div>
 
         </div>}
