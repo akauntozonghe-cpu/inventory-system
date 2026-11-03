@@ -70,7 +70,8 @@ export async function GET(request: NextRequest) {
       if(!inSession && !scopeMatches) reasons.push("今回の棚卸範囲（分類・場所）に含まれない");
       if(!inSession && scopeMatches) reasons.push(running?"この棚卸にまだ登録されていない（棚卸画面の再読込で追加）":"この棚卸には未登録（現在の状態では自動追加しない）");
       const excluded=stock.item.isArchived||stock.status==="廃止"||Boolean(stock.inspectionExcluded??stock.item.inspectionExcluded);
-      const visible=inSession && !excluded && (!["IN_PROGRESS","PAUSED","REVIEW","CONFLICT"].includes(session.status)||true);
+      const activeSession=["IN_PROGRESS","PAUSED","REVIEW","CONFLICT"].includes(session.status);
+      const visible=inSession && (!activeSession || !excluded);
       return {
         id:stock.id,itemId:stock.item.id,itemName:stock.item.name,
         janCode:stock.item.janCode,lotNo:stock.lotNo,location:stock.storageLocation?.name??null,
