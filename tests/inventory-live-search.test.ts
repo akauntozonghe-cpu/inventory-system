@@ -40,6 +40,35 @@ describe("live stocktake search", () => {
     expect(db.stocktakeTarget.findMany.mock.calls[0][0].where.inventoryInstance.is.AND).toContainEqual({ storageLocationId: "shelf" });
     expect(db.stocktakeTarget.findMany.mock.calls[0][0].where.sessionId).toBe("session");
   });
+  it("does not silently truncate the visible inventory list to 1000 entries", async () => {
+    await GET(new NextRequest("http://localhost/api/inventory/search?sessionId=session&filter=ALL"));
+    const options = db.stocktakeTarget.findMany.mock.calls[0][0];
+    expect(options.take).toBeUndefined();
+    expect(options.where.sessionId).toBe("session");
+  });
+  it("keeps enrolled inventory visible after the lot is moved to another location", async () => {
+    db.stocktakeSession.findUnique.mockResolvedValue({
+      id:"session",operatorUserId:"worker",status:"IN_PROGRESS",scopeType:"LOCATION",scopeValue:"棚A",
+    });
+    await GET(new NextRequest("http://localhost/api/inventory/search?sessionId=session&filter=ALL"));
+    expect(db.inventoryInstance.findMany.mock.calls[0][0].where.AND).toContainEqual({
+      storageLocation:{is:{name:"棚A"}},
+    });
+    const enrolledQuery=db.stocktakeTarget.findMany.mock.calls[0][0];
+    expect(enrolledQuery.where.inventoryInstance.is.AND).toContainEqual(inspectionInventoryWhere);
+    expect(enrolledQuery.where.inventoryInstance.is.AND).not.toContainEqual({
+      storageLocation:{is:{name:"棚A"}},
+    });
+  });
+  it("keeps category-changed enrolled inventory visible while enrolling new stock by original scope", async () => {
+    db.stocktakeSession.findUnique.mockResolvedValue({
+      id:"session",operatorUserId:"worker",status:"IN_PROGRESS",scopeType:"MAJOR_CATEGORY",scopeValue:"食品",
+    });
+    await GET(new NextRequest("http://localhost/api/inventory/search?sessionId=session&filter=ALL"));
+    const enrolledQuery=db.stocktakeTarget.findMany.mock.calls[0][0];
+    expect(enrolledQuery.where.inventoryInstance.is.AND).not.toContainEqual(inventoryCategoryWhere("majorCategory","食品"));
+    expect(db.inventoryInstance.findMany.mock.calls[0][0].where.AND).toContainEqual(inventoryCategoryWhere("majorCategory","食品"));
+  });
   it("does not rewrite an already enrolled target during a scan", async () => {
     db.inventoryInstance.findMany.mockResolvedValue([{ ...inventory, stocktakeTargets: [{ sessionId: "session" }] }]);
     const response = await GET(new NextRequest("http://localhost/api/inventory/search?sessionId=session&exact=true&filter=ALL&q=4901234567890"));
