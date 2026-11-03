@@ -153,7 +153,7 @@ export default function StocktakePage() {
   const [selected, setSelected] = useState<InventoryItem | null>(null);
 
   const [keyword, setKeyword] = useState("");
-  const [filter, setFilter] = useState<FilterType>("UNRECORDED");
+  const [filter, setFilter] = useState<FilterType>("ALL");
   const [scanLocation, setScanLocation] = useState<{ id: string; name: string } | null>(null);
   const [majorCategory, setMajorCategory] = useState<string | null>(null);
   const [minorCategory, setMinorCategory] = useState<string | null>(null);
@@ -270,7 +270,7 @@ export default function StocktakePage() {
   const loadItems = useCallback(
     async (
       nextKeyword = "",
-      nextFilter: FilterType = "UNRECORDED",
+      nextFilter: FilterType = "ALL",
       nextMajorCategory: string | null = null,
       silent = false
     ) => {
@@ -723,7 +723,7 @@ export default function StocktakePage() {
     setMajorCategory(category);
     setPhotoView(true);
     setKeyword("");
-    setFilter("UNRECORDED");
+    setFilter("ALL");
     setMessage(`大分類「${category}」の写真から現物を選び、数量を入力してください。`);
     setError("");
   }, []);
@@ -734,13 +734,13 @@ export default function StocktakePage() {
     setMinorCategory(category);
     setPhotoView(true);
     setKeyword("");
-    setFilter("UNRECORDED");
+    setFilter("ALL");
     setMessage(`小分類QRで絞り込みました：${parentName ? `${parentName} ／ ` : ""}${category}`);
     setError("");
   }, []);
 
   const handleLocationDetected = (location: { id: string; name: string }) => {
-    setMajorCategory(null); setMinorCategory(null); setScanLocation(location); setKeyword(""); setFilter("UNRECORDED"); setMessage("保管場所で絞り込みました。");
+    setMajorCategory(null); setMinorCategory(null); setScanLocation(location); setKeyword(""); setFilter("ALL"); setMessage("保管場所で絞り込みました。");
   };
 
   if (loading) {
@@ -996,7 +996,7 @@ export default function StocktakePage() {
                 </button>
               </div>
 
-              <div className="mt-4 flex flex-wrap gap-2">
+              <div className="mt-4 flex flex-wrap gap-2" role="group" aria-label="棚卸の表示範囲">
                 {(
                   [
                     ["UNRECORDED", "未棚卸のみ"],
@@ -1021,6 +1021,10 @@ export default function StocktakePage() {
                 ))}
               </div>
 
+              <p className="mt-2 text-sm text-slate-600">
+                {filter === "UNRECORDED" ? "未棚卸だけを表示中です。入力済みの在庫は「すべて」で確認できます。" : filter === "RECORDED" ? "棚卸済みの在庫だけ表示しています。" : filter === "DIFFERENCE" ? "差異がある在庫だけ表示しています。" : "未棚卸・棚卸済みの在庫をすべて表示しています。"}
+                {keyword || scanLocation || majorCategory || minorCategory ? " 検索・場所・分類の絞り込みも適用中です。" : ""}
+              </p>
               {scanLocation && <div className="mt-4 flex items-center gap-3 rounded-xl bg-violet-50 p-3 text-violet-900"><span>保管場所：{scanLocation.name}</span><button type="button" className="ml-auto rounded-lg bg-white px-3 py-2" onClick={() => setScanLocation(null)}>解除</button></div>}
               {(majorCategory || minorCategory) && (
                 <div className="mt-4 flex flex-wrap items-center gap-3 rounded-2xl bg-violet-50 px-4 py-3 text-violet-900">
@@ -1061,7 +1065,7 @@ export default function StocktakePage() {
                 <div className="rounded-3xl bg-white p-8 text-center text-slate-500 shadow-sm">
                   {searching
                     ? "棚卸対象を検索しています…"
-                    : "該当する棚卸対象がありません。"}
+                    : "該当する在庫がありません。検索・分類・場所の絞り込みや棚卸対象外設定を確認してください。"}
                 </div>
               ) : (
                 items.map((item) => {
