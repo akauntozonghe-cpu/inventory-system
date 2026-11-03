@@ -90,6 +90,15 @@ type ProgressData = {
   };
 };
 
+type StocktakeDiagnosis = {
+  limited: boolean;
+  stocks: Array<{
+    id:string;itemId:string;itemName:string;janCode:string|null;
+    lotNo:string|null;location:string|null;quantity:number;
+    inSession:boolean;visibleInUnfilteredList:boolean;reasons:string[];
+  }>;
+};
+
 type ConfirmState = {
   title: string;
   message: string;
@@ -172,6 +181,11 @@ export default function StocktakePage() {
   const [saving, setSaving] = useState(false);
   const [changingStatus, setChangingStatus] = useState(false);
   const [lastSyncedAt, setLastSyncedAt] = useState<Date | null>(null);
+  const [diagnoseQuery,setDiagnoseQuery]=useState("");
+  const [diagnosis,setDiagnosis]=useState<StocktakeDiagnosis|null>(null);
+  const [diagnoseBusy,setDiagnoseBusy]=useState(false);
+  const [diagnoseError,setDiagnoseError]=useState("");
+
 
   const [normalCameraOpen, setNormalCameraOpen] = useState(false);
   const [continuousCameraOpen, setContinuousCameraOpen] = useState(false);
@@ -202,6 +216,19 @@ export default function StocktakePage() {
   const canManage = progress?.permissions.canManage === true;
   const canRegisterItem = progress?.permissions.canRegisterItem === true;
   const { pendingCount, syncing, saveInstant } = useInstantStocktake(sessionId);
+  const diagnoseMissingStock = async () => {
+    if(diagnoseQuery.trim().length<2 || diagnoseBusy)return;
+    setDiagnoseBusy(true);setDiagnoseError("");setDiagnosis(null);
+    try{
+      const query=new URLSearchParams({sessionId,q:diagnoseQuery.trim()});
+      const response=await fetchFresh(`/api/stocktake/diagnose?${query.toString()}`);
+      const value:unknown=await response.json().catch(()=>null);
+      if(!response.ok) throw new Error(readErrorMessage(value,"在庫の照合に失敗しました。"));
+      setDiagnosis(value as StocktakeDiagnosis);
+    }catch(error){setDiagnoseError(error instanceof Error?error.message:"照合に失敗しました。");}
+    finally{setDiagnoseBusy(false);}
+  };
+
 
   useEffect(() => {
     draftRef.current = selected ? {
@@ -1025,6 +1052,44 @@ export default function StocktakePage() {
                 {filter === "UNRECORDED" ? "未棚卸だけを表示中です。入力済みの在庫は「すべて」で確認できます。" : filter === "RECORDED" ? "棚卸済みの在庫だけ表示しています。" : filter === "DIFFERENCE" ? "差異がある在庫だけ表示しています。" : "未棚卸・棚卸済みの在庫をすべて表示しています。"}
                 {keyword || scanLocation || majorCategory || minorCategory ? " 検索・場所・分類の絞り込みも適用中です。" : ""}
               </p>
+              {isAdmin && (
+                <details className="mt-4 rounded-xl border border-amber-200 bg-amber-50/50">
+                  <summary className="cursor-pointer p-3 text-sm font-bold text-amber-950">
+                    棚卸に出てこない在庫を調べる（管理者）
+                  </summary>
+                  <div className="border-t border-amber-200 p-3">
+                    <p className="text-sm text-slate-700">JAN・商品名・在庫番号で、削除済み／棚卸対象外／対象範囲外／未登録を確認します。診断だけではデータを変更しません。</p>
+                    <form className="mt-3 flex flex-col gap-2 sm:flex-row" onSubmit={event=>{event.preventDefault();void diagnoseMissingStock();}}>
+                      <input type="search" value={diagnoseQuery} onChange={event=>setDiagnoseQuery(event.target.value)} maxLength={100}
+                        placeholder="JAN・商品名・在庫番号（2文字以上）" aria-label="棚卸に見つからない在庫を検索"
+                        className="min-h-11 min-w-0 flex-1 rounded-lg border border-slate-300 bg-white px-3 py-2 text-base"/>
+                      <button type="submit" disabled={diagnoseBusy||diagnoseQuery.trim().length<2}
+                        className="min-h-11 rounded-lg bg-amber-800 px-4 py-2 font-bold text-white disabled:opacity-40">
+                        {diagnoseBusy?"確認中…":"表示されない理由を確認"}
+                      </button>
+                    </form>
+                    {diagnoseError&&<p role="alert" className="mt-3 font-bold text-red-700">{diagnoseError}</p>}
+                    {diagnosis&&<div aria-live="polite" className="mt-3 space-y-2">
+                      <p className="text-sm font-bold text-slate-800">該当する在庫：{diagnosis.stocks.length}件{diagnosis.limited?"（51件以上のため最初の50件のみ表示。検索を絞ってください）":""}</p>
+                      {diagnosis.stocks.length===0&&<p className="rounded-lg bg-white p-3 text-sm text-slate-700">商品・在庫マスタに一致するデータが見つかりません。JANや商品名を確認してください。</p>}
+                      {diagnosis.stocks.map(stock=><div key={stock.id} className="rounded-lg border border-slate-200 bg-white p-3">
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <strong className="break-words text-sm">{stock.itemName} ／ Lot：{stock.lotNo||"未設定"}</strong>
+                          <span className={`rounded-full px-2 py-1 text-xs font-bold ${stock.visibleInUnfilteredList?"bg-emerald-100 text-emerald-800":"bg-amber-100 text-amber-900"}`}>
+                            {stock.visibleInUnfilteredList?"棚卸登録済み":"表示条件を確認"}
+                          </span>
+                        </div>
+                        <p className="mt-1 text-xs text-slate-600">JAN：{stock.janCode||"未設定"} ／ 保管場所：{stock.location||"未設定"} ／ 数量：{stock.quantity}</p>
+                        <p className="mt-2 text-sm text-slate-700">{stock.visibleInUnfilteredList?"棚卸に登録されています。「すべて」を選び、検索・場所・分類の絞り込みを解除してください。":stock.reasons.join(" ／ ")||"状態を再確認してください。"}</p>
+                        <Link href={`/items/${stock.itemId}?inventoryId=${encodeURIComponent(stock.id)}`}
+                          className="mt-2 inline-block rounded-lg bg-slate-100 px-3 py-2 text-sm font-bold text-blue-800">
+                          商品・在庫の設定を確認する
+                        </Link>
+                      </div>)}
+                    </div>}
+                  </div>
+                </details>
+              )}
               {scanLocation && <div className="mt-4 flex items-center gap-3 rounded-xl bg-violet-50 p-3 text-violet-900"><span>保管場所：{scanLocation.name}</span><button type="button" className="ml-auto rounded-lg bg-white px-3 py-2" onClick={() => setScanLocation(null)}>解除</button></div>}
               {(majorCategory || minorCategory) && (
                 <div className="mt-4 flex flex-wrap items-center gap-3 rounded-2xl bg-violet-50 px-4 py-3 text-violet-900">
