@@ -229,8 +229,12 @@ export async function GET(request: NextRequest) {
     // Active stocktake screens read the current linked item/stock state.
     // Completed sessions retain their recorded target snapshots for audit.
     const isActiveSession = ["IN_PROGRESS", "PAUSED", "REVIEW", "CONFLICT"].includes(session.status);
+    // Once a stock has been enrolled, retain it in the working session even
+    // if its location or category changes afterwards. The original session
+    // scope still governs which *new* stocks may be enrolled (above).
+    // Continue excluding deleted/explicitly exempt stocks from the active view.
     const currentFilters: Prisma.InventoryInstanceWhereInput[] = isActiveSession
-      ? [inspectionInventoryWhere, scopeWhere, ...inventoryFilters]
+      ? [inspectionInventoryWhere, ...inventoryFilters]
       : inventoryFilters;
     const where: Prisma.StocktakeTargetWhereInput = {
       sessionId,
@@ -283,7 +287,7 @@ export async function GET(request: NextRequest) {
       orderBy: {
         createdAt: "asc",
       },
-      ...(exact ? {} : { take: 1000 }),
+      // Do not silently hide the 1001st and later inventory entries.
     }));
 
     const records = await withDatabaseRetry(() => prisma.stocktakeRecord.findMany({
