@@ -1048,6 +1048,14 @@ export default function StocktakePage() {
                 ))}
               </div>
 
+              <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
+                <span className="text-sm font-bold text-slate-700">表示中 {items.length}件 ／ 棚卸登録 {progress.summary.targetCount}件</span>
+                <button type="button" disabled={!canOperate}
+                  onClick={()=>{setKeyword("");setFilter("ALL");setMajorCategory(null);setMinorCategory(null);setScanLocation(null);}}
+                  className="min-h-11 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-sm font-bold text-blue-800 disabled:opacity-50">
+                  絞り込みをすべて解除
+                </button>
+              </div>
               <p className="mt-2 text-sm text-slate-600">
                 {filter === "UNRECORDED" ? "未棚卸だけを表示中です。入力済みの在庫は「すべて」で確認できます。" : filter === "RECORDED" ? "棚卸済みの在庫だけ表示しています。" : filter === "DIFFERENCE" ? "差異がある在庫だけ表示しています。" : "未棚卸・棚卸済みの在庫をすべて表示しています。"}
                 {keyword || scanLocation || majorCategory || minorCategory ? " 検索・場所・分類の絞り込みも適用中です。" : ""}
