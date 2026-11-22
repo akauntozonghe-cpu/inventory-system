@@ -347,6 +347,41 @@ export async function POST(request: NextRequest) {
       }, { isolationLevel: "Serializable" });
       if (!deletion.deleted) return NextResponse.json({ code: "CLASSIFICATION_IN_USE", message: deletion.assessment.counts.items ? `在庫数量とは別に、${deletion.assessment.counts.items}件の商品マスタにこの分類が設定されています。分類解除・統合を行ってから削除してください。` : "在庫明細・登録申請・棚卸・子分類から参照されています。使用状況を確認してください。", assessment: deletion.assessment }, { status: 409 });
       return NextResponse.json({ code: "CLASSIFICATION_DELETE_OK", message: `分類「${source}」を削除しました。商品・在庫・棚卸履歴は変更していません。`, result: deletion });
+    } else if (action === "RETIRE_LOCATION" || action === "RESTORE_LOCATION") {
+      const sourceId=text(body.sourceId);
+      if(!sourceId || body.confirmName===undefined ||
+         !(action==="RESTORE_LOCATION" || text(body.reason,500).length>=2)){
+        return NextResponse.json({code:"LOCATION_RETIRE_INPUT_INVALID",message:"対象名と廃止理由を確認してください。"},{status:400});
+      }
+      const result=await prisma.$transaction(async tx=>{
+        const previous=await tx.storageLocation.findUnique({where:{id:sourceId}});
+        if(!previous)return {changed:false,why:"NOT_FOUND"};
+        if(body.confirmName!==previous.name || body.expectedId!==previous.id)
+          return {changed:false,why:"CHANGED"};
+        const retiring=action==="RETIRE_LOCATION";
+        if(Boolean(previous.retiredAt)===retiring)return {changed:false,why:"ALREADY_SET"};
+        const now=new Date();
+        const updated=await tx.storageLocation.update({
+          where:{id:sourceId},
+          data:retiring
+            ? {retiredAt:now,retirementReason:text(body.reason,500),retiredByUserId:auth.user!.id}
+            : {retiredAt:null,retirementReason:null,retiredByUserId:null},
+        });
+        await tx.adminActionLog.create({data:{
+          adminUserId:auth.user!.id,action:retiring?"CLASSIFICATION_RETIRE_LOCATION":"CLASSIFICATION_RESTORE_LOCATION",
+          route:"/admin/classifications",
+          detail:{sourceId,name:previous.name,reason:text(body.reason,500),
+            productDataPreserved:true,inventoryLinksPreserved:true,stocktakeHistoryPreserved:true},
+        }});
+        return {changed:true,id:updated.id,retired:retiring};
+      },{isolationLevel:"Serializable"});
+      if(!result.changed)return NextResponse.json({code:"LOCATION_RETIRE_CONFLICT",
+        message:"保管場所の状態が変更されています。再読み込みしてから操作してください。",
+        detail:result.why},{status:409});
+      return NextResponse.json({code:action==="RETIRE_LOCATION"?"LOCATION_RETIRED":"LOCATION_RESTORED",
+        message:action==="RETIRE_LOCATION"
+          ? "保管場所を廃止済みに移動しました。在庫明細と棚卸履歴は移動・削除していません。"
+          : "保管場所を復元しました。",result});
     } else if (action === "PREVIEW_DELETE_LOCATION" || action === "DELETE_LOCATION") {
       const sourceId = text(body.sourceId);
       if (!sourceId) return NextResponse.json({ code: "LOCATION_INPUT_INVALID", message: "削除する保管場所を指定してください。" }, { status: 400 });
