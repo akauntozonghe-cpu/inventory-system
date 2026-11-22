@@ -11,6 +11,30 @@ export function extractErrorCode(message: string, fallback = "CLIENT_UNCLASSIFIE
 }
 
 export function getErrorGuidance(code: string): ErrorGuidance {
+  if (code === "CLASSIFICATION_IN_USE" || code === "CLASSIFICATION_UNASSIGN_BLOCKED") {
+    return {
+      action: "削除の対象が商品・在庫・棚卸などから参照されています。分類・保管場所の整理で「削除・廃止」を開き、使用状況と商品名を確認してください。在庫が0でも商品に分類が残る場合は、分類を一括解除・移動・統合できます。",
+      adminSteps: [
+        "分類・保管場所の整理で該当する分類を選ぶ",
+        "削除・廃止で商品・在庫・棚卸・登録申請の参照件数を確認する",
+        "紐づいている商品を確認して、分類を一括解除・移動・統合する",
+        "一覧の件数を再読込し、参照がないことを確かめて削除する",
+      ],
+      recoveryRoute: "/admin/classifications",
+    };
+  }
+  if (code === "LOCATION_IN_USE" || code === "LOCATION_HISTORICAL_REQUESTS") {
+    return {
+      action: "保管場所を参照している在庫や登録申請・棚卸があります。分類・保管場所の整理で使用状況を確認し、移動・統合ができるか調べてください。履歴を壊す場合は操作できません。",
+      adminSteps: [
+        "保管場所の「削除・廃止」で現在の参照先を確認する",
+        "現在の在庫と進行中の棚卸を確認する",
+        "履歴を守れる範囲で保管場所を変更・統合する",
+        "参照が解消されたら削除する",
+      ],
+      recoveryRoute: "/admin/classifications",
+    };
+  }
   if (/AUTH|REAUTH|ELEVATION|PASSWORD/.test(code)) {
     return {
       action: "入力内容を確認してもう一度認証してください。解決しない場合は、別の全機能利用者に復旧を依頼してください。",
@@ -52,7 +76,7 @@ export function getErrorGuidance(code: string): ErrorGuidance {
   }
 
   return {
-    action: "処理結果を確認できませんでした。画面の保存状態を確認してください。再試行しても解決しない場合は、管理者にこのエラーコードと実行した操作を伝えてください。",
+    action: "処理結果を確認できませんでした。管理センターの「エラー・対応履歴」から、このエラーコードと対象操作を確認してください。保存結果が不明な場合は、同じ操作を繰り返さないでください。",
     adminSteps: ["パスワードで復旧操作を認証する", "エラーコード・発生画面・発生時刻を確認する", "このエラーを選んで診断し、対象と変更内容を確認して処置する", "同じ操作で正常動作を確認する", "対応内容を記録して解決済みにする"],
     recoveryRoute: "/admin/error-reports",
   };
