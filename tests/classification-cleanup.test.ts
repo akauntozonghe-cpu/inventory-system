@@ -109,6 +109,18 @@ describe("safe classification / location retirement",()=>{
     expect(db.storageLocation.delete).toHaveBeenCalledWith({where:{id:locationId}});
     expect(db.adminActionLog.create).toHaveBeenCalled();
   });
+  it("prevents retirement when finished registration requests still reference the old location",async()=>{
+    db.itemRegistrationRequest.count.mockResolvedValue(1);
+    const response=await post({action:"MERGE_LOCATION",sourceId:locationId,targetId:"loc-2",reason:"旧倉庫を廃止"});
+    expect(response.status).toBe(409);
+    expect((await response.json()).code).toBe("LOCATION_HISTORICAL_REQUESTS");
+    expect(db.inventoryInstance.updateMany).not.toHaveBeenCalled();
+    expect(db.storageLocation.delete).not.toHaveBeenCalled();
+  });
+  it("requires an explicit reason before retiring a used location",async()=>{
+    expect((await post({action:"MERGE_LOCATION",sourceId:locationId,targetId:"loc-2"})).status).toBe(400);
+    expect(db.$transaction).not.toHaveBeenCalled();
+  });
   it("retires a location through reassignment without merging stocktake or deleting individual lots",async()=>{
     const response=await post({action:"MERGE_LOCATION",sourceId:locationId,targetId:"loc-2",reason:"旧倉庫を廃止"});
     expect(response.status).toBe(200);
