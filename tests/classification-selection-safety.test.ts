@@ -34,6 +34,11 @@ describe("classification selection safety",()=>{
     expect(response.status).toBe(409);
     expect((await response.json()).code).toBe("CLASSIFICATION_DUPLICATE_NORMALIZED");
   });
+  it("requires an active parent category before adding a subcategory",async()=>{
+    const response=await post({action:"CREATE_CLASSIFICATION",kind:"MINOR",name:"清涼飲料",parentName:"存在しない大分類"});
+    expect(response.status).toBe(409);
+    expect((await response.json()).code).toBe("CLASSIFICATION_PARENT_NOT_ACTIVE");
+  });
   it("rejects unknown merge destinations without editing products",async()=>{
     const response=await post({action:"RENAME_OR_MERGE_CLASSIFICATION",editMode:"MERGE",
       kind:"MAJOR",source:"食品",target:"存在しない分類",reason:"重複を整理"});
