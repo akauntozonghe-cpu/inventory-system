@@ -1,0 +1,129 @@
+import {beforeEach,describe,expect,it,vi} from "vitest";
+import {NextRequest,NextResponse} from "next/server";
+const authState=vi.hoisted(()=>({admin:true}));
+const db=vi.hoisted(()=>({
+  $transaction:vi.fn(),
+  classification:{findUnique:vi.fn(),count:vi.fn(),delete:vi.fn()},
+  item:{count:vi.fn()},
+  inventoryInstance:{count:vi.fn(),updateMany:vi.fn(),delete:vi.fn()},
+  itemRegistrationRequest:{count:vi.fn(),updateMany:vi.fn()},
+  stocktakeSession:{count:vi.fn(),updateMany:vi.fn()},
+  storageLocation:{findUnique:vi.fn(),delete:vi.fn()},
+  stocktakeTarget:{deleteMany:vi.fn()},stocktakeRecord:{deleteMany:vi.fn()},
+  adminActionLog:{create:vi.fn()},
+}));
+vi.mock("@/lib/prisma",()=>({prisma:db}));
+vi.mock("@/lib/auth",()=>({requireAdmin:()=>authState.admin
+  ? {user:{id:"admin",role:"ADMIN"},response:null}
+  : {user:null,response:NextResponse.json({code:"FORBIDDEN"},{status:403})},
+}));
+vi.mock("@/lib/error-report",()=>({createAdminActionLog:vi.fn()}));
+import {POST} from "../src/app/api/admin/classifications/route";
+
+const post=(body:Record<string,unknown>)=>POST(new NextRequest("http://localhost/api/admin/classifications",{
+  method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body),
+}));
+const classification={kind:"MAJOR",source:"食品",parentName:""};
+const locationId="loc-1";
+beforeEach(()=>{
+  vi.resetAllMocks();authState.admin=true;
+  db.$transaction.mockImplementation(async callback=>callback(db));
+  db.classification.findUnique.mockResolvedValue({id:"cat-1"});
+  db.classification.count.mockResolvedValue(0);
+  db.item.count.mockResolvedValue(0);
+  db.inventoryInstance.count.mockResolvedValue(0);
+  db.itemRegistrationRequest.count.mockResolvedValue(0);
+  db.stocktakeSession.count.mockResolvedValue(0);
+  db.storageLocation.findUnique.mockImplementation(async ({where}:{where:{id:string}})=>where.id===locationId
+    ? {id:locationId,name:"旧倉庫"}:{id:"loc-2",name:"新倉庫"});
+  db.inventoryInstance.updateMany.mockResolvedValue({count:2});
+  db.itemRegistrationRequest.updateMany.mockResolvedValue({count:1});
+  db.stocktakeSession.updateMany.mockResolvedValue({count:1});
+  db.classification.delete.mockResolvedValue({id:"cat-1"});
+  db.storageLocation.delete.mockResolvedValue({id:locationId});
+  db.adminActionLog.create.mockResolvedValue({});
+});
+describe("safe classification / location retirement",()=>{
+  it("does not allow non-admins to preview or delete",async()=>{
+    authState.admin=false;
+    expect((await post({action:"PREVIEW_DELETE_CLASSIFICATION",...classification})).status).toBe(403);
+    expect((await post({action:"DELETE_LOCATION",sourceId:locationId})).status).toBe(403);
+    expect(db.$transaction).not.toHaveBeenCalled();
+  });
+  it("previews an unused classification without mutating anything",async()=>{
+    const response=await post({action:"PREVIEW_DELETE_CLASSIFICATION",...classification});
+    expect(response.status).toBe(200);
+    expect((await response.json()).assessment).toMatchObject({
+      id:"cat-1",canDelete:true,
+      counts:{items:0,stocks:0,registrationRequests:0,activeStocktakes:0,childCategories:0},
+    });
+    expect(db.classification.delete).not.toHaveBeenCalled();
+    expect(db.adminActionLog.create).not.toHaveBeenCalled();
+  });
+  it.each([
+    ["an item",()=>db.item.count.mockResolvedValue(1)],
+    ["a lot-level override",()=>db.inventoryInstance.count.mockResolvedValue(2)],
+    ["a pending registration",()=>db.itemRegistrationRequest.count.mockResolvedValue(3)],
+    ["an active stocktake",()=>db.stocktakeSession.count.mockResolvedValue(1)],
+    ["a child category",()=>db.classification.count.mockResolvedValue(1)],
+  ])("blocks deletion if referenced by %s",async(_,prepare)=>{
+    prepare();
+    const response=await post({action:"DELETE_CLASSIFICATION",...classification,
+      expectedId:"cat-1",confirmName:"食品",reason:"不要な分類を整理"});
+    expect(response.status).toBe(409);
+    expect((await response.json()).assessment.canDelete).toBe(false);
+    expect(db.classification.delete).not.toHaveBeenCalled();
+    expect(db.adminActionLog.create).not.toHaveBeenCalled();
+  });
+  it("requires confirmation and checks the master identity",async()=>{
+    expect((await post({action:"DELETE_CLASSIFICATION",...classification})).status).toBe(400);
+    expect((await post({action:"DELETE_CLASSIFICATION",...classification,
+      expectedId:"wrong",confirmName:"食品",reason:"不要な分類を整理"})).status).toBe(409);
+    expect(db.classification.delete).not.toHaveBeenCalled();
+  });
+  it("deletes only an unreferenced classification and writes a transactional audit log",async()=>{
+    const response=await post({action:"DELETE_CLASSIFICATION",...classification,
+      expectedId:"cat-1",confirmName:"食品",reason:"不要な分類を整理"});
+    expect(response.status).toBe(200);
+    expect(db.classification.delete).toHaveBeenCalledWith({where:{id:"cat-1"}});
+    expect(db.item.count).toHaveBeenCalled();
+    expect(db.inventoryInstance.count).toHaveBeenCalled();
+    expect(db.adminActionLog.create.mock.calls[0][0].data).toMatchObject({
+      adminUserId:"admin",action:"CLASSIFICATION_DELETE_CLASSIFICATION",
+      detail:{reason:"不要な分類を整理"},
+    });
+  });
+  it("never deletes a location linked by even archived stocks or registration requests",async()=>{
+    db.inventoryInstance.count.mockResolvedValue(1);
+    const response=await post({action:"DELETE_LOCATION",sourceId:locationId,
+      expectedId:locationId,confirmName:"旧倉庫",reason:"廃止"});
+    expect(response.status).toBe(409);
+    expect(db.storageLocation.delete).not.toHaveBeenCalled();
+  });
+  it("removes an unused location after checking its displayed name",async()=>{
+    expect((await post({action:"DELETE_LOCATION",sourceId:locationId,
+      expectedId:locationId,confirmName:"間違った名前",reason:"廃止"})).status).toBe(409);
+    const response=await post({action:"DELETE_LOCATION",sourceId:locationId,
+      expectedId:locationId,confirmName:"旧倉庫",reason:"廃止"});
+    expect(response.status).toBe(200);
+    expect(db.storageLocation.delete).toHaveBeenCalledWith({where:{id:locationId}});
+    expect(db.adminActionLog.create).toHaveBeenCalled();
+  });
+  it("retires a location through reassignment without merging stocktake or deleting individual lots",async()=>{
+    const response=await post({action:"MERGE_LOCATION",sourceId:locationId,targetId:"loc-2",reason:"旧倉庫を廃止"});
+    expect(response.status).toBe(200);
+    expect(db.inventoryInstance.updateMany).toHaveBeenCalledWith({
+      where:{storageLocationId:locationId},data:{storageLocationId:"loc-2"},
+    });
+    expect(db.itemRegistrationRequest.updateMany).toHaveBeenCalled();
+    expect(db.stocktakeSession.updateMany).toHaveBeenCalled();
+    expect(db.inventoryInstance.delete).not.toHaveBeenCalled();
+    expect(db.stocktakeRecord.deleteMany).not.toHaveBeenCalled();
+    expect(db.stocktakeTarget.deleteMany).not.toHaveBeenCalled();
+    expect(db.storageLocation.delete).toHaveBeenCalledWith({where:{id:locationId}});
+    expect(db.adminActionLog.create.mock.calls[0][0].data.detail).toMatchObject({
+      sourceLocationName:"旧倉庫",targetLocationName:"新倉庫",consolidated:undefined,
+      preservedInventoryInstances:true,moved:2,
+    });
+  });
+});
