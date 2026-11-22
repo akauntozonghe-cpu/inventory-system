@@ -2,6 +2,7 @@
 import ImeInput from "@/components/common/ImeInput";
 
 import { requestBack } from "@/lib/navigation-history";
+import {classificationReturnTo} from "@/lib/classification-workspace";
 import InventoryLifecycle from "@/components/inventory/InventoryLifecycle";
 import Modal from "@/components/common/Modal";
 import ProductCodeField from "@/components/ProductCodeField";
@@ -242,6 +243,7 @@ function allocationLabel(value: InventoryInstance["allocationType"]) {
 export default function ItemDetailPage() {
   const params = useParams();
   const searchParams=useSearchParams();
+  const returnToClassification=classificationReturnTo(searchParams.get("returnTo"));
   const [focusedInventory,setFocusedInventory]=useState("");
   useEffect(()=>{setFocusedInventory(searchParams.get("inventoryId")??"");},[searchParams]);
 
@@ -653,13 +655,18 @@ export default function ItemDetailPage() {
           </div>
 
           <div className="flex flex-wrap gap-2">
-            <button
-              type="button"
-              onClick={() => requestBack("/items")}
-              className="rounded-xl bg-white px-4 py-3 font-bold text-slate-700 shadow-sm hover:bg-slate-50"
-            >
-              前の画面へ戻る
-            </button>
+            {returnToClassification
+              ? <Link href={returnToClassification}
+                  className="inline-flex min-h-11 items-center rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 font-bold text-blue-800 hover:bg-blue-100">
+                  分類・保管場所の整理に戻る
+                </Link>
+              : <button
+                  type="button"
+                  onClick={() => requestBack("/items")}
+                  className="rounded-xl bg-white px-4 py-3 font-bold text-slate-700 shadow-sm hover:bg-slate-50"
+                >
+                  前の画面へ戻る
+                </button>}
           </div>
         </header>
 
