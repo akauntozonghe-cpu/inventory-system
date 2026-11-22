@@ -389,12 +389,12 @@ export default function ClassificationsPage() {
         {cleanup.assessment.kind==="LOCATION"?"保管場所":cleanup.assessment.kind==="MAJOR"?"大分類":"小分類"}：
         {cleanup.assessment.name}
       </p>
-      <p className="mt-3 text-sm text-slate-700">削除前に商品・在庫・登録申請・棚卸との紐づきを検査しました。使用中の項目は統合して廃止するか、利用先を移動してから削除します。</p>
+      <p className="mt-3 text-sm text-slate-700">商品・在庫・未処理申請・棚卸の現行参照と、削除済み在庫・処理済み申請の履歴を別々に検査しました。履歴だけが残る場合は、分類マスタを完全削除できます。</p>
       <dl className="mt-3 grid grid-cols-2 gap-2 text-sm sm:grid-cols-3">
         {([
-          ["商品",cleanup.assessment.counts.items],
-          ["在庫明細",cleanup.assessment.counts.stocks],
-          ["登録申請",cleanup.assessment.counts.registrationRequests],
+          ["商品マスタ",cleanup.assessment.counts.items],
+          ["使用中の在庫明細",cleanup.assessment.counts.activeStocks??cleanup.assessment.counts.stocks],
+          ["未処理の登録申請",cleanup.assessment.counts.pendingRegistrationRequests??cleanup.assessment.counts.registrationRequests],
           ["進行中の棚卸",cleanup.assessment.counts.activeStocktakes],
           ["子分類",cleanup.assessment.counts.childCategories],
           ["現在庫がある明細",cleanup.assessment.counts.positiveStockRows??0],
@@ -403,6 +403,41 @@ export default function ClassificationsPage() {
           <dt className="text-slate-600">{name}</dt><dd className="mt-1 font-black">{count}件</dd>
         </div>)}
       </dl>
+      {cleanup.assessment.kind!=="LOCATION" && (
+        <details className="mt-3 rounded-xl border border-slate-200 bg-slate-50 p-3">
+          <summary className="cursor-pointer text-sm font-bold text-slate-700">保存された履歴（完全削除を妨げない参照）</summary>
+          <div className="mt-2 grid grid-cols-2 gap-2 text-sm">
+            <p>削除済み在庫明細：<strong>{cleanup.assessment.counts.archivedStocks??0}件</strong></p>
+            <p>処理済み登録申請：<strong>{cleanup.assessment.counts.historicalRegistrationRequests??0}件</strong></p>
+          </div>
+          <p className="mt-2 text-xs text-slate-600">
+            この履歴は変更も削除もしません。現在の利用がなければ、分類マスタだけを削除できます。
+          </p>
+        </details>
+      )}
+      {cleanup.assessment.kind!=="LOCATION" && (cleanup.assessment.counts.activeStocks??0)>0 && (
+        <details className="mt-2 rounded-xl border border-amber-200 bg-amber-50 p-3">
+          <summary className="cursor-pointer text-sm font-bold text-amber-900">
+            個別の在庫明細に残る分類を確認（{cleanup.assessment.counts.activeStocks}件）
+          </summary>
+          <p className="mt-2 text-sm text-amber-950">
+            商品の分類を統合しても、在庫明細に個別指定された旧分類が残っている場合があります。
+            下記から在庫明細を確認し、必要なら分類を修正してください。
+          </p>
+          <div className="mt-2 max-h-56 space-y-2 overflow-y-auto">
+            {cleanup.assessment.linkedStocks?.map(stock=>
+              <div key={stock.id} className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-white p-2 text-sm">
+                <span className="min-w-0 break-words">{stock.itemName} ／ Lot：{stock.lotNo||"未設定"} ／ 数量：{stock.quantity}</span>
+                <Link href={classificationItemHref(stock.itemId,stock.id,"MASTERS")}
+                  className="min-h-11 rounded-lg border border-blue-200 px-3 py-2 font-bold text-blue-800">
+                  明細を確認
+                </Link>
+              </div>)}
+            {(cleanup.assessment.counts.activeStocks??0)>30&&
+              <p className="text-xs text-amber-900">表示は先頭30件です。在庫一覧でも検索できます。</p>}
+          </div>
+        </details>
+      )}
       {cleanup.assessment.kind!=="LOCATION" && cleanup.assessment.counts.items>0 && <>
         <p className="mt-3 rounded-lg bg-blue-50 p-3 text-sm font-bold text-blue-900">
           「商品{cleanup.assessment.counts.items}件」は在庫数量ではなく、この分類が設定された商品マスタの件数です。
@@ -424,6 +459,10 @@ export default function ClassificationsPage() {
           在庫を削除せずに整理できます。
           確認後、表示された商品の分類と、数量0の在庫に残る同じ分類を解除し、
           分類マスタを削除します。商品・数量・過去の棚卸・取引履歴は削除しません。
+        </p>}
+      {cleanup.assessment.kind!=="LOCATION" && cleanup.assessment.canDelete &&
+        <p className="mt-3 rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-sm font-bold text-emerald-900">
+          現在の参照は0件です。履歴を保持したまま、この分類マスタを完全削除できます。
         </p>}
       {cleanup.assessment.reasons.length>0&&<section className="mt-3 rounded-xl border border-amber-200 bg-amber-50 p-3">
         <h3 className="font-black text-amber-900">{cleanup.assessment.kind==="LOCATION"?"完全削除はできません（廃止は可能）":"完全削除はできません（廃止は可能）"}</h3>
