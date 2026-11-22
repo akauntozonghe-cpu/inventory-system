@@ -332,7 +332,7 @@ export async function POST(request: NextRequest) {
       },{isolationLevel:"Serializable",timeout:30000});
       if(!deletion.deleted) return NextResponse.json({
         code:"CLASSIFICATION_UNASSIGN_BLOCKED",
-        message:deletion.assessment.reasons.length ? `分類を解除できない理由：${deletion.assessment.reasons.join("／")}。` : "分類の状態が変わりました。再読み込みしてください。",
+        message:deletion.assessment?.reasons?.length ? `分類を解除できない理由：${deletion.assessment.reasons.join("／")}。` : "分類の状態が変わりました。再読み込みしてください。",
         assessment:deletion.assessment,
       },{status:409});
       return NextResponse.json({code:"CLASSIFICATION_UNASSIGN_DELETE_OK",
