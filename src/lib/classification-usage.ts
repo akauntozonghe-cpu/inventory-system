@@ -9,6 +9,7 @@ export type ClassificationUsageItem = {
   minorCategory: string | null;
   isArchived: boolean;
   _count: { inventoryInstances: number };
+  inventoryInstances?: Array<{majorCategory:string|null;minorCategory:string|null;status:string}>;
 };
 
 export type ClassificationUsageMaster = {
@@ -30,6 +31,8 @@ export type ClassificationUsageRow = {
   itemCount: number;
   inventoryCount: number;
   archivedItemCount: number;
+  activeStockReferenceCount: number;
+  archivedStockReferenceCount: number;
   retiredAt?: Date | null;
   retirementReason?: string | null;
   retiredViaParent?: boolean;
@@ -52,7 +55,7 @@ export function buildClassificationUsageRows(
     // Keep existing masters as distinct records when data is inconsistent,
     // but never reset usage counts collected from the Item master table.
     if (!rows.has(lookup)) rows.set(lookup, {
-      ...master, parentName, itemCount: 0, inventoryCount: 0, archivedItemCount: 0, linkedItems: [],
+      ...master, parentName, itemCount: 0, inventoryCount: 0, archivedItemCount: 0, activeStockReferenceCount:0,archivedStockReferenceCount:0,linkedItems: [],
     });
   }
 
@@ -65,7 +68,7 @@ export function buildClassificationUsageRows(
       const lookup = key(kind, parentName, name);
       const row: ClassificationUsageRow = rows.get(lookup) ?? {
         id: `derived-${lookup}`, kind, parentName, name,
-        itemCount: 0, inventoryCount: 0, archivedItemCount: 0, linkedItems: [],
+        itemCount: 0, inventoryCount: 0, archivedItemCount: 0, activeStockReferenceCount:0,archivedStockReferenceCount:0,linkedItems: [],
       };
       row.itemCount += 1;
       row.inventoryCount += item._count.inventoryInstances;
@@ -76,6 +79,25 @@ export function buildClassificationUsageRows(
         row.linkedItems.push({id:item.id,name:item.name,isArchived:item.isArchived});
       }
       rows.set(lookup, row);
+    }
+    for(const stock of item.inventoryInstances??[]){
+      // Exact stock-level references use the same rules as deletion preflight.
+      // Null category fields inherit the product master, but are not independent
+      // references and must not prevent a master-only deletion after merge.
+      const overrides: Array<[string,string,string]>=[];
+      if(stock.majorCategory)overrides.push(["MAJOR","",stock.majorCategory]);
+      if(stock.minorCategory)overrides.push(["MINOR",stock.majorCategory??item.majorCategory??"",stock.minorCategory]);
+      for(const [kind,parentName,name] of overrides){
+        const lookup=key(kind,parentName,name);
+        const row:ClassificationUsageRow=rows.get(lookup)??{
+          id:`derived-${lookup}`,kind,parentName,name,
+          itemCount:0,inventoryCount:0,archivedItemCount:0,
+          activeStockReferenceCount:0,archivedStockReferenceCount:0,linkedItems:[],
+        };
+        if(stock.status==="廃止")row.archivedStockReferenceCount+=1;
+        else row.activeStockReferenceCount+=1;
+        rows.set(lookup,row);
+      }
     }
   }
   return [...rows.values()];
