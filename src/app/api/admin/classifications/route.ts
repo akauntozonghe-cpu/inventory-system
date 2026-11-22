@@ -169,7 +169,7 @@ export async function POST(request: NextRequest) {
       },{isolationLevel:"Serializable"});
     } else if (action === "UNASSIGN_AND_DELETE_CLASSIFICATION") {
       if (!["MAJOR","MINOR"].includes(kind) || !source || (kind==="MINOR"&&!parentName)
-        || body.confirmName!==source || typeof body.expectedId!=="string"
+        || body.confirmName!==source || !(body.expectedId===null || typeof body.expectedId==="string")
         || typeof body.reason!=="string" || text(body.reason,500).length<2
         || !Array.isArray(body.expectedItems) || !body.expectedItems.length
         || body.expectedItems.length>100
@@ -219,13 +219,13 @@ export async function POST(request: NextRequest) {
           where:stockWhere,
           data:kind==="MAJOR"?{majorCategory:null,minorCategory:null}:{minorCategory:null},
         });
-        await tx.classification.delete({where:{id:assessment.id!}});
+        if(assessment.id) await tx.classification.delete({where:{id:assessment.id}});
         await tx.adminActionLog.create({data:{
           adminUserId:auth.user!.id,action:"CLASSIFICATION_UNASSIGN_AND_DELETE",
           route:"/admin/classifications",
           detail:{kind,source,parentName,reason:text(body.reason,500),productIds:original.map(item=>item.id),
             updatedProducts:original.length,updatedStockOverrides:updatedStocks.count,
-            quantitiesPreserved:true,stocktakeHistoryPreserved:true},
+            masterDeleted:Boolean(assessment.id),quantitiesPreserved:true,stocktakeHistoryPreserved:true},
         }});
         return {deleted:true,updatedProducts:original.length,updatedStockOverrides:updatedStocks.count};
       },{isolationLevel:"Serializable",timeout:30000});
