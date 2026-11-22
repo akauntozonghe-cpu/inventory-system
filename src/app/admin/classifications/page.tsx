@@ -20,7 +20,7 @@ import QrPreviewDialog from "@/components/QrPreviewDialog";
 import FeedbackToast from "@/components/common/FeedbackToast";
 import UnifiedScanner from "@/components/stocktake/UnifiedScanner";
 
-type Classification = { id: string; kind: "MAJOR" | "MINOR"; name: string; parentName: string; labelCode?: string; itemCount: number; inventoryCount: number; archivedItemCount?: number; linkedItems?:Array<{id:string;name:string;isArchived:boolean}> };
+type Classification = { id: string; kind: "MAJOR" | "MINOR"; name: string; parentName: string; labelCode?: string; itemCount: number; inventoryCount: number; archivedItemCount?: number; retiredAt?: string|null; retirementReason?: string|null; linkedItems?:Array<{id:string;name:string;isArchived:boolean}> };
 type Location = { id: string; name: string; description: string | null; _count: { inventories: number; itemRegistrationRequests: number } };
 type ItemRow = { managementCode?:string|null; inventoryInstances?:Array<{id:string;storageLocationId:string|null;quantity:number}>; id: string; name: string; janCode: string | null; systemBarcode: string | null; majorCategory: string | null; minorCategory: string | null; inventoryCount: number; quantityLabel?:string; totalQuantity: number };
 type Payload = { classifications: Classification[]; locations: Location[]; items: ItemRow[] };
@@ -138,8 +138,9 @@ export default function ClassificationsPage() {
 
   const load = useCallback(async () => { const sequence = ++loadSequence.current; const response = await fetchFresh("/api/admin/classifications"); const payload: unknown = await response.json().catch(() => null); if (!response.ok) { const message = payload && typeof payload === "object" && "message" in payload && typeof payload.message === "string" ? payload.message : "分類を取得できませんでした。"; throw new Error(message); } if (sequence === loadSequence.current) setData(normalizePayload(payload)); }, []);
   useEffect(() => { void load().catch((e) => setError(e instanceof Error ? e.message : "分類を取得できませんでした。")); }, [load]);
-  const majors = useMemo(() => data.classifications.filter((row) => row.kind === "MAJOR"), [data.classifications]);
-  const minors = useMemo(() => data.classifications.filter((row) => row.kind === "MINOR"), [data.classifications]);
+  const majors = useMemo(() => data.classifications.filter((row) => row.kind === "MAJOR"&&!row.retiredAt), [data.classifications]);
+  const minors = useMemo(() => data.classifications.filter((row) => row.kind === "MINOR"&&!row.retiredAt), [data.classifications]);
+  const retiredClassifications = useMemo(() => data.classifications.filter((row)=>Boolean(row.retiredAt)),[data.classifications]);
   const liveFailed = useLiveRefresh(load);
   const matchesMaster = (name: string) => name.normalize("NFKC").toLocaleLowerCase("ja").includes(masterSearch.normalize("NFKC").trim().toLocaleLowerCase("ja"));
   const visibleItems = useMemo(() => { const query = itemSearch.normalize("NFKC").trim().toLocaleLowerCase("ja"); return data.items.filter((item) => (!selectedOnly||selectedSet.has(item.id))&&(!itemMinorFilter||item.minorCategory===itemMinorFilter)&&(!itemLocationFilter||item.inventoryInstances?.some(row=>row.storageLocationId===itemLocationFilter))&&(itemMajorFilter === "ALL" || (itemMajorFilter === "NONE" ? !item.majorCategory : item.majorCategory === itemMajorFilter)) && (!query || [item.name,item.janCode,item.systemBarcode,item.majorCategory,item.minorCategory].filter(Boolean).join(" ").normalize("NFKC").toLocaleLowerCase("ja").includes(query))); }, [data.items, itemMajorFilter, itemSearch,itemMinorFilter,itemLocationFilter,selectedOnly,selectedSet]);
@@ -202,6 +203,19 @@ export default function ClassificationsPage() {
     setNotice(`「${assessment.name}」が設定された商品を表示しています。対象の商品を選び、分類変更・分類から除外できます。`);
   };
 
+  const retireReviewed=async()=>{
+    if(!cleanup || cleanup.assessment.kind==="LOCATION" || cleanupName!==cleanup.assessment.name
+       || cleanupReason.trim().length<2 || busy)return;
+    const ok=await execute({...cleanup.body,action:"RETIRE_CLASSIFICATION",
+      expectedId:cleanup.assessment.id,confirmName:cleanupName,reason:cleanupReason.trim()});
+    if(ok){setCleanup(null);setCleanupIssue("");}
+  };
+  const restoreRetired=async(row:Classification)=>{
+    if(!row.retiredAt || busy)return;
+    if(!window.confirm(`廃止済みの分類「${row.parentName?row.parentName+" ／ ":""}${row.name}」を復元しますか？`))return;
+    await execute({action:"RESTORE_CLASSIFICATION",kind:row.kind,source:row.name,
+      parentName:row.parentName,expectedId:row.id,confirmName:row.name});
+  };
   const deleteReviewed=async()=>{
     if(!cleanup||!(cleanup.assessment.canDelete||cleanup.assessment.canUnassignAndDelete)||cleanupName!==cleanup.assessment.name||cleanupReason.trim().length<2){
       setError("削除する名前と理由を確認してください。");return;
@@ -287,14 +301,32 @@ export default function ClassificationsPage() {
   return <main className="min-h-screen bg-slate-100 p-4 text-slate-950 sm:p-8">
     <FeedbackToast tone="error" title="分類編集エラー" message={error} onClose={() => setError("")} />
     <FeedbackToast tone="success" title="更新完了" message={notice} autoCloseMs={5000} onClose={() => setNotice("")} />
-    <div className="mx-auto max-w-7xl"><header className="flex flex-wrap justify-between gap-4"><div><p className="text-sm font-black tracking-widest text-indigo-700">CLASSIFICATION CONTROL</p><h1 className="mt-1 text-3xl font-black">分類・保管場所の整理</h1><Link href="/admin" className="mt-2 inline-flex min-h-11 items-center rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-bold text-slate-700 hover:bg-slate-50">管理センターへ戻る</Link><p className="mt-2 text-slate-600">追加、名称変更・統合、使用状況の確認、不要な分類・保管場所の削除を管理します。使用中は移動・統合してから廃止します。</p></div><div className="flex h-fit flex-wrap gap-2"><button onClick={()=>setScannerOpen("single")} className="rounded-xl bg-indigo-600 px-4 py-3 font-black text-white">JAN・QRで検索</button><button onClick={()=>{setScannerOpen("continuous");setCandidates([]);}} className="rounded-xl bg-teal-700 px-4 py-3 font-black text-white">JANを連続で選択</button></div></header>
+    <div className="mx-auto max-w-7xl"><header className="flex flex-wrap justify-between gap-4"><div><p className="text-sm font-black tracking-widest text-indigo-700">CLASSIFICATION CONTROL</p><h1 className="mt-1 text-3xl font-black">分類・保管場所の整理</h1><Link href="/admin" className="mt-2 inline-flex min-h-11 items-center rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-bold text-slate-700 hover:bg-slate-50">管理センターへ戻る</Link><p className="mt-2 text-slate-600">追加、名称変更・統合、使用状況の確認、不要な分類・保管場所の削除を管理します。使用中でも廃止して新しい登録候補から除外できます。データを消す完全削除は未使用の場合のみです。</p></div><div className="flex h-fit flex-wrap gap-2"><button onClick={()=>setScannerOpen("single")} className="rounded-xl bg-indigo-600 px-4 py-3 font-black text-white">JAN・QRで検索</button><button onClick={()=>{setScannerOpen("continuous");setCandidates([]);}} className="rounded-xl bg-teal-700 px-4 py-3 font-black text-white">JANを連続で選択</button></div></header>
       <nav aria-label="分類整理の作業" className="mt-4 grid grid-cols-3 gap-2">{[["ITEMS","商品を分類"],["MASTERS","分類・保管場所"],["PRINT","ラベル印刷"]].map(([id,label])=><button key={id} aria-pressed={view===id} onClick={()=>setView(id)} className={`rounded-xl border px-2 py-3 text-sm font-bold ${view===id?"bg-slate-900 text-white":"bg-white"}`}>{label}</button>)}</nav>
       <section className="mt-5 rounded-2xl border border-indigo-200 bg-indigo-50 p-4 text-sm font-bold text-indigo-950">QRで商品・分類・保管場所を呼び出します。JANの連続読取はスキャンした商品を選択に追加します。同じ商品は1回だけ選択し、同じJANの別商品は候補から確認します。分類の変更は「分類変更」を押すまで保存されません。</section>
       {liveFailed && <p role="status" className="mt-3 rounded-xl bg-amber-50 p-3">最新情報を確認できていません。通信が戻ると再取得します。</p>}<div hidden={view!=="MASTERS"}><details open className="mt-5 rounded-2xl border bg-white p-4"><summary className="cursor-pointer font-black">分類・保管場所の追加・編集・廃止・削除</summary><p className="mt-2 text-xs text-slate-600">「在庫明細数」は在庫数量とは異なります。分類を設定した商品が残っている場合、在庫明細が0件でも削除前に分類を解除する必要があります。削除済みの商品も商品マスタへの紐づきとして数えています。</p><ImeInput aria-label="分類・保管場所を検索" value={masterSearch} onChange={e=>setMasterSearch(e.target.value)} placeholder="分類名・保管場所名を検索" className="mt-5 w-full rounded-xl border bg-white p-3"/><section id="locations" className="mt-6 grid gap-5 lg:grid-cols-3">
         <div className="rounded-3xl bg-white p-5 shadow-sm"><h2 className="text-xl font-black">大分類</h2><div className="mt-4 flex gap-2"><ImeInput value={majorName} onChange={(e)=>setMajorName(e.target.value)} placeholder="追加する大分類" className="min-w-0 flex-1 rounded-xl border p-3"/><button disabled={busy||!majorName.trim()} onClick={()=>void execute({action:"CREATE_CLASSIFICATION",kind:"MAJOR",name:majorName}).then(ok=>{if(ok)setMajorName("");})} className="rounded-xl bg-indigo-600 px-4 font-black text-white disabled:opacity-40">追加</button></div><div className="mt-4 max-h-[500px] space-y-2 overflow-auto">{majors.filter(row=>matchesMaster(row.name)).map(row=><div key={row.id} className="rounded-xl border p-3"><div className="flex justify-between gap-2"><div><p className="font-black">{row.name}</p><CategoryUsage row={row}/></div><div className="ml-auto flex flex-wrap items-center justify-end gap-2"><button className="inline-flex h-11 items-center rounded-lg bg-indigo-50 px-3 font-bold" onClick={()=>void showClassificationQr(row)}>QR</button><button onClick={()=>{setEdit({type:"MAJOR",source:row.name});setTarget("");setEditReason("");}} className="inline-flex h-11 items-center rounded-lg bg-slate-100 px-3 font-bold">編集</button><button disabled={busy||cleanupLoading} onClick={()=>void reviewCleanup({kind:"MAJOR",source:row.name,parentName:""})} className="inline-flex h-11 items-center rounded-lg border border-red-200 bg-white px-3 text-sm font-bold text-red-700 disabled:opacity-40">削除・廃止</button></div></div></div>)}</div></div>
         <div className="rounded-3xl bg-white p-5 shadow-sm"><h2 className="text-xl font-black">小分類</h2><div className="mt-4 grid gap-2"><select value={minorParent} onChange={(e)=>setMinorParent(e.target.value)} className="rounded-xl border p-3"><option value="">親の大分類</option>{majors.map(row=><option key={row.id}>{row.name}</option>)}</select><div className="flex gap-2"><ImeInput value={minorName} onChange={(e)=>setMinorName(e.target.value)} placeholder="追加する小分類" className="min-w-0 flex-1 rounded-xl border p-3"/><button disabled={busy||!minorName.trim()||!minorParent} onClick={()=>void execute({action:"CREATE_CLASSIFICATION",kind:"MINOR",name:minorName,parentName:minorParent}).then(ok=>{if(ok)setMinorName("");})} className="rounded-xl bg-cyan-600 px-4 font-black text-white disabled:opacity-40">追加</button></div></div><div className="mt-4 max-h-[500px] space-y-2 overflow-auto">{minors.filter(row=>matchesMaster(row.parentName+" "+row.name)).map(row=><div key={row.id} className="rounded-xl border p-3"><div className="flex justify-between gap-2"><div><p className="font-black">{row.name}</p><p className="text-xs text-slate-500">{row.parentName}</p><CategoryUsage row={row}/></div><div className="ml-auto flex flex-wrap items-center justify-end gap-2"><button className="inline-flex h-11 items-center rounded-lg bg-cyan-50 px-3 font-bold" onClick={()=>void showClassificationQr(row)}>QR</button><button onClick={()=>{setEdit({type:"MINOR",source:row.name,parentName:row.parentName});setTarget("");setTargetParent(row.parentName);setEditReason("");}} className="inline-flex h-11 items-center rounded-lg bg-slate-100 px-3 font-bold">編集</button><button disabled={busy||cleanupLoading} onClick={()=>void reviewCleanup({kind:"MINOR",source:row.name,parentName:row.parentName})} className="inline-flex h-11 items-center rounded-lg border border-red-200 bg-white px-3 text-sm font-bold text-red-700 disabled:opacity-40">削除・廃止</button></div></div></div>)}</div></div>
         <div className="rounded-3xl bg-white p-5 shadow-sm"><h2 className="text-xl font-black">保管場所</h2><div className="mt-4 grid gap-2"><ImeInput value={locationName} onChange={(e)=>setLocationName(e.target.value)} placeholder="追加する保管場所" className="rounded-xl border p-3"/><ImeInput value={locationDescription} onChange={(e)=>setLocationDescription(e.target.value)} placeholder="説明" className="rounded-xl border p-3"/><button disabled={busy||!locationName.trim()} onClick={()=>void execute({action:"CREATE_LOCATION",name:locationName,description:locationDescription}).then(ok=>{if(ok){setLocationName("");setLocationDescription("");}})} className="rounded-xl bg-emerald-600 p-3 font-black text-white disabled:opacity-40">保管場所を追加</button></div><div className="mt-4 max-h-[500px] space-y-2 overflow-auto">{data.locations.filter(row=>matchesMaster(row.name)).map(row=><div key={row.id} className="rounded-xl border p-3"><div className="flex justify-between gap-2"><div><p className="font-black">{row.name}</p><p className="text-xs text-slate-500">在庫明細{row._count.inventories}件</p></div><div className="ml-auto flex flex-wrap items-center justify-end gap-2"><button onClick={()=>void showLocationQr(row)} className="inline-flex h-11 items-center rounded-lg bg-emerald-50 px-3 font-bold text-emerald-800">QR</button><button onClick={()=>{setEdit({type:"LOCATION",source:row.name,sourceId:row.id});setTarget("");setEditReason("");}} className="inline-flex h-11 items-center rounded-lg bg-slate-100 px-3 font-bold">編集</button><button disabled={busy||cleanupLoading} onClick={()=>void reviewCleanup({sourceId:row.id})} className="inline-flex h-11 items-center rounded-lg border border-red-200 bg-white px-3 text-sm font-bold text-red-700 disabled:opacity-40">削除・廃止</button></div></div></div>)}</div></div>
-      </section></details></div>
+      </section>
+      <details className="mt-5 rounded-xl border border-slate-200 bg-white p-3">
+        <summary className="cursor-pointer font-bold text-slate-800">廃止済みの分類（{retiredClassifications.length}件）・復元</summary>
+        <p className="mt-2 text-sm text-slate-600">廃止しても商品・在庫の過去の分類は残っています。新しい登録では選べません。</p>
+        <div className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
+          {retiredClassifications.filter(row=>matchesMaster(row.name+" "+row.parentName)).map(row=>
+            <div key={row.id} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-slate-200 bg-slate-50 p-3">
+              <div className="min-w-0">
+                <p className="break-words font-bold">{row.parentName?row.parentName+" ／ ":""}{row.name}</p>
+                <p className="text-xs text-slate-600">紐づく商品 {row.itemCount}件 ／ 在庫明細 {row.inventoryCount}件</p>
+              </div>
+              <button type="button" disabled={busy} onClick={()=>void restoreRetired(row)}
+                className="min-h-11 rounded-lg border border-blue-200 bg-white px-3 py-2 text-sm font-bold text-blue-800 disabled:opacity-40">
+                復元
+              </button>
+            </div>)}
+          {retiredClassifications.length===0&&<p className="text-sm text-slate-600">廃止済みの分類はありません。</p>}
+        </div>
+      </details></details></div>
       <div hidden={view!=="PRINT"}><LabelPrintPanel data={data} onRefresh={load}/></div>
       <section hidden={view!=="ITEMS"} id="classification-items" className="mt-6 scroll-mt-24 rounded-3xl bg-white p-5 shadow-sm"><div className="flex flex-wrap items-end justify-between gap-3"><div><h2 className="text-2xl font-black">商品の分類を一括変更</h2><p className="mt-1 text-sm font-semibold text-slate-600">商品を選び、分類への追加・変更・除外を一括実行します。一部の商品だけ新分類へ移すと分類を分割できます。</p><p className="mt-2 text-xs text-slate-600">商品名を押すと商品詳細を確認できます。「分類・保管場所の整理に戻る」で、選択と絞り込みを保ったまま戻れます。</p></div><div className="flex gap-2"><p className="rounded-xl bg-indigo-50 px-4 py-2 font-black text-indigo-800">選択 {selectedItemIds.length}件</p></div></div>
         <div className="mt-4 grid gap-3 lg:grid-cols-[1fr_220px]"><ImeInput value={itemSearch} onChange={(e)=>{setItemSearch(e.target.value);setPage(1);}} aria-label="商品名・JAN・QRを検索" type="search" onKeyDown={event=>{if(event.key==="Enter"&&!event.nativeEvent.isComposing){event.preventDefault();void scanManually();}}} placeholder="商品名で検索／JAN・QRを入力してEnterで選択" className="rounded-xl border p-3"/><select aria-label="大分類で絞り込む" value={itemMajorFilter} onChange={(e)=>{setItemMajorFilter(e.target.value);setItemMinorFilter("");setPage(1);}} className="rounded-xl border p-3 font-bold"><option value="ALL">すべての大分類</option><option value="NONE">大分類未設定</option>{majors.map(row=><option key={row.id} value={row.name}>{row.name}</option>)}</select></div>
@@ -317,7 +349,13 @@ export default function ClassificationsPage() {
     </div>
     {review&&<Modal titleId="classification-review" busy={busy} onClose={()=>setReview(null)}><h2 id="classification-review" className="text-xl font-black">変更前 → 変更後を確認</h2>{error&&<p role="alert" className="my-2 text-red-700">{error}</p>}<p className="my-3">選択した商品と関連在庫へ一括反映します。既存の分類自体の統合は「分類・保管場所の追加・名称変更・QR印刷」から行えます。</p><div className="max-h-80 space-y-2 overflow-auto">{review.rows.map(item=>{const next=nextClassification(item,review);return <p key={item.id} className="rounded-xl bg-slate-50 p-3"><strong>{item.name}</strong><br/>{item.majorCategory??"未設定"} ／ {item.minorCategory??"なし"} → <strong>{next.majorCategory??"未設定"} ／ {next.minorCategory??"なし"}</strong></p>;})}</div><div className="mt-4 flex gap-3"><button disabled={busy} className="rounded-xl bg-indigo-700 p-3 font-bold text-white" onClick={()=>void execute({...review,rows:undefined})}>この内容で一括変更</button><button disabled={busy} className="rounded-xl border p-3" onClick={()=>setReview(null)}>戻って修正</button></div></Modal>}
     {cleanup&&<Modal titleId="classification-delete-review" busy={busy||cleanupLoading} onClose={()=>setCleanup(null)}>
-      <h2 id="classification-delete-review" className="text-xl font-black text-slate-950">分類・保管場所の削除確認</h2>
+      <h2 id="classification-delete-review" className="text-xl font-black text-slate-950">削除・廃止の確認</h2>
+      {cleanup.assessment.kind!=="LOCATION"&&!cleanup.assessment.retiredAt&&
+        <div className="mt-3 rounded-xl border border-blue-200 bg-blue-50 p-3 text-sm leading-6 text-blue-950">
+          <strong className="block">廃止なら使用中でも可能</strong>
+          分類を廃止済みに移すだけなので、商品に設定された分類、在庫数量、棚卸・登録履歴、発行済みQRの参照先は変更しません。
+          廃止した分類は新規登録候補から外れ、必要なら後から復元できます。
+        </div>}
       {cleanupIssue&&<p role="alert" className="mt-3 rounded-xl border border-amber-300 bg-amber-50 p-3 text-sm font-bold text-amber-950">
         {cleanupIssue} 下記の使用件数と商品を確認して、この画面から整理できます。
       </p>}
@@ -371,7 +409,7 @@ export default function ClassificationsPage() {
           : "在庫がある、削除済み商品や申請・棚卸・子分類が紐づいている場合は、先に移動・統合などで整理してください。商品や履歴は削除しません。"}</p>
       </section>}
       <p className="mt-3 rounded-lg bg-slate-100 p-3 text-sm text-slate-700">{cleanup.assessment.warning}</p>
-      {(cleanup.assessment.canDelete||cleanup.assessment.canUnassignAndDelete)&&<>
+      {(cleanup.assessment.kind!=="LOCATION" || cleanup.assessment.canDelete || cleanup.assessment.canUnassignAndDelete)&&<>
         <label className="mt-3 block text-sm font-bold">削除する項目名をそのまま入力
           <input value={cleanupName} onChange={event=>setCleanupName(event.target.value)}
             autoComplete="off" placeholder={cleanup.assessment.name}
@@ -383,6 +421,10 @@ export default function ClassificationsPage() {
         </label>
       </>}
       <div className="mt-4 flex flex-wrap gap-2">
+        {cleanup.assessment.kind!=="LOCATION" && !cleanup.assessment.retiredAt &&
+          <button type="button" disabled={busy||cleanupName!==cleanup.assessment.name||cleanupReason.trim().length<2}
+            className="min-h-11 rounded-xl bg-blue-800 px-4 py-3 font-black text-white disabled:opacity-40"
+            onClick={()=>void retireReviewed()}>この分類を廃止する（商品・在庫は残す）</button>}
         {cleanup.assessment.kind!=="LOCATION" && cleanup.assessment.counts.items>0 &&
           <button type="button" onClick={showReferencedProducts}
             className="min-h-11 rounded-xl border border-blue-300 bg-blue-50 px-4 py-3 font-bold text-blue-900">
@@ -390,9 +432,9 @@ export default function ClassificationsPage() {
           </button>}
         {(cleanup.assessment.canDelete||cleanup.assessment.canUnassignAndDelete)&&<button type="button" disabled={busy||cleanupName!==cleanup.assessment.name||cleanupReason.trim().length<2}
           className="min-h-11 rounded-xl bg-red-700 px-4 py-3 font-black text-white disabled:opacity-40"
-          onClick={()=>void deleteReviewed()}>{cleanup.assessment.canUnassignAndDelete&&!cleanup.assessment.canDelete?"商品から分類を外して削除":"この項目を削除する"}</button>}
+          onClick={()=>void deleteReviewed()}>{cleanup.assessment.canUnassignAndDelete&&!cleanup.assessment.canDelete?"商品から分類を外して完全削除":"未使用なので完全削除する"}</button>}
         <button type="button" onClick={()=>setCleanup(null)} className="min-h-11 rounded-xl border px-4 py-3 font-bold">
-          {(cleanup.assessment.canDelete||cleanup.assessment.canUnassignAndDelete)?"キャンセル":"閉じる・整理に戻る"}
+          "閉じる・整理に戻る"
         </button>
       </div>
     </Modal>}
