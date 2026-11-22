@@ -261,6 +261,8 @@ export default function ClassificationsPage() {
           ["登録申請",cleanup.assessment.counts.registrationRequests],
           ["進行中の棚卸",cleanup.assessment.counts.activeStocktakes],
           ["子分類",cleanup.assessment.counts.childCategories],
+          ["現在庫がある明細",cleanup.assessment.counts.positiveStockRows??0],
+          ["削除済み商品",cleanup.assessment.counts.archivedItems??0],
         ] as const).map(([name,count])=><div key={name} className="rounded-lg bg-slate-50 p-3">
           <dt className="text-slate-600">{name}</dt><dd className="mt-1 font-black">{count}件</dd>
         </div>)}
@@ -288,7 +290,7 @@ export default function ClassificationsPage() {
           分類マスタを削除します。商品・数量・過去の棚卸・取引履歴は削除しません。
         </p>}
       {cleanup.assessment.reasons.length>0&&<section className="mt-3 rounded-xl border border-amber-200 bg-amber-50 p-3">
-        <h3 className="font-black text-amber-900">現在は削除できません</h3>
+        <h3 className="font-black text-amber-900">{cleanup.assessment.canUnassignAndDelete?"分類だけの削除はできません（商品からの解除が必要）":"現在は削除できません"}</h3>
         <ul className="mt-2 list-inside list-disc space-y-1 text-sm text-amber-950">
           {cleanup.assessment.reasons.map(reason=><li key={reason}>{reason}</li>)}
         </ul>
