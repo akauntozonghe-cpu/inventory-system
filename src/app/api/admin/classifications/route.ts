@@ -125,12 +125,19 @@ export async function POST(request: NextRequest) {
         return { created: true };
       });
     } else if (action === "RENAME_OR_MERGE_CLASSIFICATION") {
-      if (!["MAJOR", "MINOR"].includes(kind) || !source || !target) return NextResponse.json({ code: "CLASSIFICATION_INPUT_INVALID", message: "変更元と変更先を指定してください。" }, { status: 400 });
+      const editMode = body.editMode;
+      if (!["MAJOR", "MINOR"].includes(kind) || !source || !target || !["MERGE","RENAME"].includes(String(editMode))) return NextResponse.json({ code: "CLASSIFICATION_INPUT_INVALID", message: "変更方法・変更元・変更先を指定してください。" }, { status: 400 });
       result = await prisma.$transaction(async (tx) => {
         const destination=await tx.classification.findUnique({where:{kind_name_parentName:{
           kind,name:target,parentName:kind==="MAJOR"?"":targetParent||parentName,
         }}});
         if(destination?.retiredAt)throw new Error("CLASSIFICATION_RETIRED_USE_RESTORE");
+        if(editMode==="MERGE" && (!destination || (source===target && (kind==="MAJOR" || parentName===(targetParent||parentName))))) throw new Error("CLASSIFICATION_MERGE_TARGET_REQUIRED");
+        if(editMode==="RENAME" && destination && (source!==target || (kind==="MINOR" && parentName!==(targetParent||parentName)))) throw new Error("CLASSIFICATION_RENAME_DUPLICATE");
+        if(kind==="MINOR"){
+          const nextParent=await tx.classification.findUnique({where:{kind_name_parentName:{kind:"MAJOR",name:targetParent||parentName,parentName:""}}});
+          if(!nextParent || nextParent.retiredAt)throw new Error("CLASSIFICATION_PARENT_NOT_ACTIVE");
+        }
         if (kind === "MAJOR") {
           const items = await tx.item.updateMany({ where: { majorCategory: source }, data: { majorCategory: target } });
           // Rename only stock values that actually use the renamed label.
@@ -181,12 +188,12 @@ export async function POST(request: NextRequest) {
         // pre-existing items until an administrator explicitly reclassifies them.
         if(hasMajor && majorCategory){
           const m=await tx.classification.findUnique({where:{kind_name_parentName:{kind:"MAJOR",name:majorCategory,parentName:""}}});
-          if(m?.retiredAt)throw new Error("CLASSIFICATION_RETIRED_USE_RESTORE");
+          if(!m || m.retiredAt)throw new Error("CLASSIFICATION_TARGET_NOT_ACTIVE");
         }
         if(hasMinor && minorCategory){
           const major=hasMajor?majorCategory:text(body.currentMajor);
           const m=await tx.classification.findUnique({where:{kind_name_parentName:{kind:"MINOR",name:minorCategory,parentName:major??""}}});
-          if(m?.retiredAt)throw new Error("CLASSIFICATION_RETIRED_USE_RESTORE");
+          if(!m || m.retiredAt)throw new Error("CLASSIFICATION_TARGET_NOT_ACTIVE");
         }
         const selected = await tx.item.findMany({ where: { id: { in: itemIds }, isArchived: false }, select: { id: true, majorCategory: true, minorCategory: true } });
         if (selected.length !== itemIds.length) throw new Error("CLASSIFICATION_ITEMS_CHANGED");
