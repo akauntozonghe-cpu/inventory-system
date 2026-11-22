@@ -40,6 +40,28 @@ describe("classification usage matches stored Item classifications, not quantity
     expect(minor).toHaveLength(1);
     expect(minor[0]).toMatchObject({id:"master",name:"A:B",itemCount:1});
   });
+  it("shows 0 linked products but 1 active stock-level override after product category merge",()=>{
+    const rows=buildClassificationUsageRows(
+      [{id:"old-master",kind:"MAJOR",name:"フリマ３",parentName:""}],
+      [{majorCategory:"フリマ3",minorCategory:null,isArchived:false,_count:{inventoryInstances:1},
+        inventoryInstances:[{majorCategory:"フリマ３",minorCategory:null,status:"在庫中"}]}],
+    );
+    expect(rows.find(row=>row.id==="old-master")).toMatchObject({
+      itemCount:0,inventoryCount:0,activeStockReferenceCount:1,archivedStockReferenceCount:0,
+    });
+  });
+
+  it("never counts a deleted stock row as a current blocker",()=>{
+    const rows=buildClassificationUsageRows(
+      [{id:"old-master",kind:"MAJOR",name:"旧分類",parentName:""}],
+      [{majorCategory:"新分類",minorCategory:null,isArchived:false,_count:{inventoryInstances:1},
+        inventoryInstances:[{majorCategory:"旧分類",minorCategory:null,status:"廃止"}]}],
+    );
+    expect(rows.find(row=>row.id==="old-master")).toMatchObject({
+      itemCount:0,inventoryCount:0,activeStockReferenceCount:0,archivedStockReferenceCount:1,
+    });
+  });
+
   it("never treats a product's physical quantity as its linked-product count",()=>{
     const rows=buildClassificationUsageRows(masters,[
       {majorCategory:"食品",minorCategory:"菓子",isArchived:false,_count:{inventoryInstances:10}},
