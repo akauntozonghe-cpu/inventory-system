@@ -73,6 +73,13 @@ export async function GET(request: NextRequest) {
     // The same Item records checked by the delete preflight determine usage.
     // Zero on-hand quantity does not mean zero products linked to a category.
     const rows=buildClassificationUsageRows(masters,items);
+    const retiredMajors=new Map(rows.filter(row=>row.kind==="MAJOR"&&row.retiredAt).map(row=>[row.name,row.retiredAt]));
+    // A child of a retired major is also inactive for new assignments,
+    // without needing to rewrite the child master or any historical product.
+    for(const row of rows){
+      if(row.kind==="MINOR" && !row.retiredAt && retiredMajors.has(row.parentName))
+        row.retiredAt=retiredMajors.get(row.parentName)!;
+    }
     return NextResponse.json({ classifications: rows, locations, items: items.filter(item=>!item.isArchived).map((item) => ({ id: item.id, name: item.name, managementCode:item.managementCode, inventoryInstances:item.inventoryInstances, janCode: item.janCode, systemBarcode: item.systemBarcode, majorCategory: item.majorCategory, minorCategory: item.minorCategory, inventoryCount: item._count.inventoryInstances, quantityLabel:summarizeStock(item.inventoryInstances,item.defaultUnit).map(row=>row.quantity+" "+row.unit).join(" ／ "), totalQuantity: item.inventoryInstances.reduce((sum, row) => sum + row.quantity, 0) })) });
   } catch (error) { console.error("GET classifications", error); return NextResponse.json({ code: "CLASSIFICATION_LIST_FAILED", message: "分類・保管場所を取得できませんでした。", action: "自動再読込後も解決しない場合はシステム点検を実行してください。" }, { status: 500 }); }
 }
@@ -148,6 +155,17 @@ export async function POST(request: NextRequest) {
       if (itemIds.length === 0 || (!hasMajor && !hasMinor)) return NextResponse.json({ code: "CLASSIFICATION_ITEMS_REQUIRED", message: "編集する商品と変更内容を選択してください。" }, { status: 400 });
       if (hasMinor && minorCategory && !(hasMajor ? majorCategory : text(body.currentMajor))) return NextResponse.json({ code: "CLASSIFICATION_PARENT_REQUIRED", message: "小分類を設定する場合は大分類も選択してください。" }, { status: 400 });
       result = await prisma.$transaction(async (tx) => {
+        // Retired categories cannot be newly assigned, but may remain on
+        // pre-existing items until an administrator explicitly reclassifies them.
+        if(hasMajor && majorCategory){
+          const m=await tx.classification.findUnique({where:{kind_name_parentName:{kind:"MAJOR",name:majorCategory,parentName:""}}});
+          if(m?.retiredAt)throw new Error("CLASSIFICATION_RETIRED_USE_RESTORE");
+        }
+        if(hasMinor && minorCategory){
+          const major=hasMajor?majorCategory:text(body.currentMajor);
+          const m=await tx.classification.findUnique({where:{kind_name_parentName:{kind:"MINOR",name:minorCategory,parentName:major}}});
+          if(m?.retiredAt)throw new Error("CLASSIFICATION_RETIRED_USE_RESTORE");
+        }
         const selected = await tx.item.findMany({ where: { id: { in: itemIds }, isArchived: false }, select: { id: true, majorCategory: true, minorCategory: true } });
         if (selected.length !== itemIds.length) throw new Error("CLASSIFICATION_ITEMS_CHANGED");
         if(Array.isArray(body.expectedClassifications)){const expected=body.expectedClassifications as Array<{id:string;majorCategory:string|null;minorCategory:string|null}>;if(selected.some(item=>!expected.some(row=>row.id===item.id&&row.majorCategory===item.majorCategory&&row.minorCategory===item.minorCategory)))throw new Error("CLASSIFICATION_ITEMS_CHANGED");}
