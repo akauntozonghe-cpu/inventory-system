@@ -20,12 +20,18 @@ async function mergeInventory(sourceLocationId: string, targetLocationId: string
       tx.storageLocation.findUnique({ where: { id: targetLocationId } }),
     ]);
     if (!from || !to || from.id === to.id) throw new Error("LOCATION_CHANGED");
+    // Closed registration requests are historical records; don't rewrite the
+    // originally requested location or clear the FK during source deletion.
+    const historicalRequests=await tx.itemRegistrationRequest.count({
+      where:{storageLocationId:sourceLocationId,status:{not:"PENDING"}},
+    });
+    if(historicalRequests) throw new Error("LOCATION_HISTORICAL_REQUESTS");
     const migratedStocks = await tx.inventoryInstance.updateMany({
       where: { storageLocationId: sourceLocationId },
       data: { storageLocationId: targetLocationId },
     });
     const migratedRequests = await tx.itemRegistrationRequest.updateMany({
-      where: { storageLocationId: sourceLocationId },
+      where: { storageLocationId: sourceLocationId, status: "PENDING" },
       data: { storageLocationId: targetLocationId },
     });
     const updatedSessions = await tx.stocktakeSession.updateMany({
@@ -230,5 +236,5 @@ export async function POST(request: NextRequest) {
     if (action !== "MERGE_LOCATION" && action !== "ASSIGN_ITEMS") await createAdminActionLog({ adminUserId: auth.user.id, action: `CLASSIFICATION_${action}`, route: "/admin/classifications", detail: { kind, name, parentName, source, target, targetParent, reason: text(body.reason,500), result: result as never } });
     return NextResponse.json({ code: "CLASSIFICATION_UPDATE_OK", message: "分類・在庫・棚卸範囲を更新し、操作履歴へ記録しました。", result });
   } catch (error) { console.error("POST classifications", error);
-    if (error && typeof error === "object" && (("code" in error && ["P2034", "P2025"].includes(String(error.code))) || (error instanceof Error && ["LOCATION_CHANGED", "CLASSIFICATION_ITEMS_CHANGED"].includes(error.message)))) return NextResponse.json({ code: "CLASSIFICATION_CHANGED", message: "他の操作で情報が変わりました。再読込してから実行してください。" }, { status: 409 }); return NextResponse.json({ code: "CLASSIFICATION_UPDATE_FAILED", message: error instanceof Error && (error.message.startsWith("小分類の変更") || error.message.startsWith("同名の小分類")) ? error.message : "分類編集を完了できませんでした。現在の状態を再読込して確認してください。", action: "入力内容を確認して再試行し、解決しない場合はエラー管理を開いてください。" }, { status: 500 }); }
+    if (error && typeof error === "object" && (("code" in error && ["P2034", "P2025"].includes(String(error.code))) || (error instanceof Error && ["LOCATION_CHANGED", "LOCATION_HISTORICAL_REQUESTS", "CLASSIFICATION_ITEMS_CHANGED"].includes(error.message)))) return NextResponse.json({ code: error instanceof Error && error.message === "LOCATION_HISTORICAL_REQUESTS" ? "LOCATION_HISTORICAL_REQUESTS" : "CLASSIFICATION_CHANGED", message: error instanceof Error && error.message === "LOCATION_HISTORICAL_REQUESTS" ? "完了済みの商品登録申請がこの場所を参照しています。履歴を壊さないよう統合は停止しました。過去の申請と移動方法を確認してください。" : "他の操作で情報が変わりました。再読込してから実行してください。" }, { status: 409 }); return NextResponse.json({ code: "CLASSIFICATION_UPDATE_FAILED", message: error instanceof Error && (error.message.startsWith("小分類の変更") || error.message.startsWith("同名の小分類")) ? error.message : "分類編集を完了できませんでした。現在の状態を再読込して確認してください。", action: "入力内容を確認して再試行し、解決しない場合はエラー管理を開いてください。" }, { status: 500 }); }
 }
