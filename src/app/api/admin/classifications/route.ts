@@ -316,7 +316,7 @@ export async function POST(request: NextRequest) {
       },{isolationLevel:"Serializable",timeout:30000});
       if(!deletion.deleted) return NextResponse.json({
         code:"CLASSIFICATION_UNASSIGN_BLOCKED",
-        message:"在庫が残っている、棚卸や登録申請で使用中、または分類が変更されたため一括整理を停止しました。最新の使用状況を確認してください。",
+        message:deletion.assessment.reasons.length ? `分類を解除できない理由：${deletion.assessment.reasons.join("／")}。` : "分類の状態が変わりました。再読み込みしてください。",
         assessment:deletion.assessment,
       },{status:409});
       return NextResponse.json({code:"CLASSIFICATION_UNASSIGN_DELETE_OK",
@@ -349,7 +349,13 @@ export async function POST(request: NextRequest) {
         } });
         return { deleted: true, assessment };
       }, { isolationLevel: "Serializable" });
-      if (!deletion.deleted) return NextResponse.json({ code: "CLASSIFICATION_IN_USE", message: deletion.assessment.counts.items ? `在庫数量とは別に、${deletion.assessment.counts.items}件の商品マスタにこの分類が設定されています。分類解除・統合を行ってから削除してください。` : "在庫明細・登録申請・棚卸・子分類から参照されています。使用状況を確認してください。", assessment: deletion.assessment }, { status: 409 });
+      if (!deletion.deleted) return NextResponse.json({
+        code: "CLASSIFICATION_IN_USE",
+        message: deletion.assessment.reasons.length
+          ? `完全削除できない理由：${deletion.assessment.reasons.join("／")}。表示された参照先を整理するか「廃止」を選んでください。`
+          : "分類マスタが見つかりません。画面を再読み込みしてください。",
+        assessment: deletion.assessment,
+      }, { status: 409 });
       return NextResponse.json({ code: "CLASSIFICATION_DELETE_OK", message: `分類「${source}」を削除しました。商品・在庫・棚卸履歴は変更していません。`, result: deletion });
     } else if (action === "RETIRE_LOCATION" || action === "RESTORE_LOCATION") {
       const sourceId=text(body.sourceId);
