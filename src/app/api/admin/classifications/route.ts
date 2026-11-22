@@ -227,7 +227,7 @@ export async function POST(request: NextRequest) {
             updatedProducts:original.length,updatedStockOverrides:updatedStocks.count,
             masterDeleted:Boolean(assessment.id),quantitiesPreserved:true,stocktakeHistoryPreserved:true},
         }});
-        return {deleted:true,updatedProducts:original.length,updatedStockOverrides:updatedStocks.count};
+        return {deleted:true,masterDeleted:Boolean(assessment.id),updatedProducts:original.length,updatedStockOverrides:updatedStocks.count};
       },{isolationLevel:"Serializable",timeout:30000});
       if(!deletion.deleted) return NextResponse.json({
         code:"CLASSIFICATION_UNASSIGN_BLOCKED",
@@ -235,7 +235,7 @@ export async function POST(request: NextRequest) {
         assessment:deletion.assessment,
       },{status:409});
       return NextResponse.json({code:"CLASSIFICATION_UNASSIGN_DELETE_OK",
-        message:`${deletion.updatedProducts}件の商品の分類を解除し、分類「${source}」を削除しました。在庫数量と棚卸履歴は変更していません。`,
+        message:deletion.masterDeleted ? `${deletion.updatedProducts}件の商品の分類を解除し、分類「${source}」を削除しました。在庫数量と棚卸履歴は変更していません。` : `${deletion.updatedProducts}件の商品に設定された「${source}」の分類を解除しました。在庫数量と棚卸履歴は変更していません。`,
         result:deletion});
     } else if (action === "PREVIEW_DELETE_CLASSIFICATION" || action === "DELETE_CLASSIFICATION") {
       if (!["MAJOR", "MINOR"].includes(kind) || !source || (kind === "MINOR" && !parentName)) {
