@@ -78,6 +78,7 @@ export default function ClassificationsPage() {
   const [cleanupName,setCleanupName]=useState("");
   const [cleanupReason,setCleanupReason]=useState("");
   const [cleanupLoading,setCleanupLoading]=useState(false);
+  const [cleanupIssue,setCleanupIssue]=useState("");
 
   const [itemSearch, setItemSearch] = useState(""); const [itemMajorFilter, setItemMajorFilter] = useState("ALL");
   const [selectedItemIds, setSelectedItemIds] = useState<string[]>([]); const [assignMajor, setAssignMajor] = useState(""); const [assignMinor, setAssignMinor] = useState("");
@@ -148,7 +149,7 @@ export default function ClassificationsPage() {
   const assignableMinors = useMemo(() => minors.filter((row) => row.parentName === assignMajor), [assignMajor, minors]);
 
   const reviewCleanup=async(body:Record<string,unknown>)=>{
-    setCleanupLoading(true);setError("");setCleanup(null);
+    setCleanupLoading(true);setError("");setCleanupIssue("");setCleanup(null);
     try{
       const response=await fetch("/api/admin/classifications",{
         method:"POST",headers:{"Content-Type":"application/json"},
@@ -189,6 +190,18 @@ export default function ClassificationsPage() {
     }
   };
 
+  const showReferencedProducts=()=>{
+    if(!cleanup || cleanup.assessment.kind==="LOCATION")return;
+    const assessment=cleanup.assessment;
+    setView("ITEMS");setItemSearch("");
+    setItemMajorFilter(assessment.kind==="MAJOR"?assessment.name:String(cleanup.body.parentName??""));
+    setItemMinorFilter(assessment.kind==="MINOR"?assessment.name:"");
+    setItemLocationFilter("");setSelectedOnly(false);setPage(1);
+    updateSelection([]);
+    setCleanup(null);setCleanupIssue("");
+    setNotice(`「${assessment.name}」が設定された商品を表示しています。対象の商品を選び、分類変更・分類から除外できます。`);
+  };
+
   const deleteReviewed=async()=>{
     if(!cleanup||!(cleanup.assessment.canDelete||cleanup.assessment.canUnassignAndDelete)||cleanupName!==cleanup.assessment.name||cleanupReason.trim().length<2){
       setError("削除する名前と理由を確認してください。");return;
@@ -200,17 +213,50 @@ export default function ClassificationsPage() {
       expectedItems:cleanup.assessment.linkedItems?.map(item=>({id:item.id,updatedAt:item.updatedAt})),
       expectedId:cleanup.assessment.id,confirmName:cleanupName,reason:cleanupReason.trim()};
     const successful=await execute(body);
-    if(successful)setCleanup(null);
-    else {
-      // The source may have gained new references after the preview.
-      setCleanup(null);
-    }
+    if(successful){setCleanup(null);setCleanupIssue("");}
+    // On a known reference conflict, execute() refreshes the assessment
+    // in the same dialog rather than hiding the 17 affected products.
   };
 
   const execute = async (body: Record<string, unknown>) => {
     setBusy(true); setError("");
-    try { const response = await fetch("/api/admin/classifications", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }); const payload = await response.json(); if (!response.ok) throw new Error(`${payload.message ?? "更新できませんでした。"}${payload.code ? `（${payload.code}）` : ""}`); setNotice(payload.message); setEdit(null); setTarget(""); setTargetParent(""); updateSelection([]); setSelectedOnly(false);setReview(null);setAssignMajor("");setAssignMinor("");setMajorName("");setMinorName("");setMinorParent("");setLocationName("");setLocationDescription("");setItemSearch("");setItemMajorFilter("ALL");setItemMinorFilter("");setItemLocationFilter("");setCandidates([]);setScanNotice("");setChangeMode("MAJOR_ONLY");setMasterSearch("");setPage(1); try{await load();}catch{setError("CLASSIFICATION_REFRESH_FAILED：変更は保存済みですが、最新情報を取得できませんでした。再入力せず更新してください。");} return true; }
-    catch (e) { setError(e instanceof Error ? e.message : "更新できませんでした。"); return false; } finally { setBusy(false); }
+    try {
+      const response=await fetch("/api/admin/classifications",{
+        method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body),
+      });
+      const payload:unknown=await response.json().catch(()=>null);
+      const result=payload&&typeof payload==="object"
+        ? payload as {message?:string;code?:string;assessment?:CleanupAssessment} : {};
+      if(!response.ok) {
+        if(["CLASSIFICATION_IN_USE","CLASSIFICATION_UNASSIGN_BLOCKED","LOCATION_IN_USE"].includes(result.code??"")
+          && result.assessment){
+          // Expected, actionable conflict. Keep the detailed review open.
+          // Display the actual current references instead of a generic error.
+          setCleanup({
+            assessment:result.assessment,
+            body:cleanup?.body??body,
+          });
+          setCleanupIssue(result.message??"この項目はまだ使用されています。");
+          setCleanupName("");setCleanupReason("");
+          return false;
+        }
+        throw new Error(`${result.message??"更新できませんでした。"}${result.code?`（${result.code}）`:""}`);
+      }
+      setNotice(result.message??"変更を保存しました。");
+      setCleanupIssue("");setEdit(null);setTarget("");setTargetParent("");
+      updateSelection([]);setSelectedOnly(false);setReview(null);
+      setAssignMajor("");setAssignMinor("");setMajorName("");setMinorName("");
+      setMinorParent("");setLocationName("");setLocationDescription("");
+      setItemSearch("");setItemMajorFilter("ALL");setItemMinorFilter("");
+      setItemLocationFilter("");setCandidates([]);setScanNotice("");
+      setChangeMode("MAJOR_ONLY");setMasterSearch("");setPage(1);
+      try{await load();}
+      catch{setError("CLASSIFICATION_REFRESH_FAILED：変更は保存済みですが、最新情報を取得できませんでした。再入力せず更新してください。");}
+      return true;
+    }catch(e){
+      setError(e instanceof Error?e.message:"更新できませんでした。");
+      return false;
+    }finally{setBusy(false);}
   };
 
   const handleScan = (raw: string):boolean => {
@@ -272,6 +318,9 @@ export default function ClassificationsPage() {
     {review&&<Modal titleId="classification-review" busy={busy} onClose={()=>setReview(null)}><h2 id="classification-review" className="text-xl font-black">変更前 → 変更後を確認</h2>{error&&<p role="alert" className="my-2 text-red-700">{error}</p>}<p className="my-3">選択した商品と関連在庫へ一括反映します。既存の分類自体の統合は「分類・保管場所の追加・名称変更・QR印刷」から行えます。</p><div className="max-h-80 space-y-2 overflow-auto">{review.rows.map(item=>{const next=nextClassification(item,review);return <p key={item.id} className="rounded-xl bg-slate-50 p-3"><strong>{item.name}</strong><br/>{item.majorCategory??"未設定"} ／ {item.minorCategory??"なし"} → <strong>{next.majorCategory??"未設定"} ／ {next.minorCategory??"なし"}</strong></p>;})}</div><div className="mt-4 flex gap-3"><button disabled={busy} className="rounded-xl bg-indigo-700 p-3 font-bold text-white" onClick={()=>void execute({...review,rows:undefined})}>この内容で一括変更</button><button disabled={busy} className="rounded-xl border p-3" onClick={()=>setReview(null)}>戻って修正</button></div></Modal>}
     {cleanup&&<Modal titleId="classification-delete-review" busy={busy||cleanupLoading} onClose={()=>setCleanup(null)}>
       <h2 id="classification-delete-review" className="text-xl font-black text-slate-950">分類・保管場所の削除確認</h2>
+      {cleanupIssue&&<p role="alert" className="mt-3 rounded-xl border border-amber-300 bg-amber-50 p-3 text-sm font-bold text-amber-950">
+        {cleanupIssue} 下記の使用件数と商品を確認して、この画面から整理できます。
+      </p>
       <p className="mt-2 rounded-xl bg-slate-100 p-3 font-black">
         {cleanup.assessment.kind==="LOCATION"?"保管場所":cleanup.assessment.kind==="MAJOR"?"大分類":"小分類"}：
         {cleanup.assessment.name}
@@ -334,6 +383,11 @@ export default function ClassificationsPage() {
         </label>
       </>}
       <div className="mt-4 flex flex-wrap gap-2">
+        {cleanup.assessment.kind!=="LOCATION" && cleanup.assessment.counts.items>0 &&
+          <button type="button" onClick={showReferencedProducts}
+            className="min-h-11 rounded-xl border border-blue-300 bg-blue-50 px-4 py-3 font-bold text-blue-900">
+            該当する商品を表示して整理
+          </button>}
         {(cleanup.assessment.canDelete||cleanup.assessment.canUnassignAndDelete)&&<button type="button" disabled={busy||cleanupName!==cleanup.assessment.name||cleanupReason.trim().length<2}
           className="min-h-11 rounded-xl bg-red-700 px-4 py-3 font-black text-white disabled:opacity-40"
           onClick={()=>void deleteReviewed()}>{cleanup.assessment.canUnassignAndDelete&&!cleanup.assessment.canDelete?"商品から分類を外して削除":"この項目を削除する"}</button>}
