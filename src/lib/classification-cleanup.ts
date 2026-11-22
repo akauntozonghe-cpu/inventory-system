@@ -79,8 +79,7 @@ export async function assessClassificationCleanup(
     tx.item.findMany({where:{...whereItem,isArchived:false},select:{id:true,name:true,updatedAt:true},orderBy:{name:"asc"},take:101}),
   ]);
   const counts = { items, stocks, registrationRequests, activeStocktakes, childCategories, positiveStockRows, archivedItems };
-  const canUnassignAndDelete=Boolean(master)
-    && items>0 && items<=100 && linkedItems.length===items
+  const canUnassignAndDelete=items>0 && items<=100 && linkedItems.length===items
     && archivedItems===0 && positiveStockRows===0
     && registrationRequests===0 && activeStocktakes===0 && childCategories===0;
   const reasons = [
@@ -90,7 +89,7 @@ export async function assessClassificationCleanup(
     ...(activeStocktakes ? [`進行中・確認中の棚卸が${activeStocktakes}件あります`] : []),
     ...(childCategories ? [`小分類が${childCategories}件あります`] : []),
   ];
-  if (!master) reasons.unshift("登録済みの分類マスタがありません。商品・在庫のデータを整理してください");
+  if (!master) reasons.unshift(items ? "商品に設定された分類名から生成された項目です（分類マスタは未登録）" : "分類マスタが既にありません。最新の一覧を確認してください");
 
   return {
     id: master?.id ?? null,
