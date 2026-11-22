@@ -20,7 +20,7 @@ async function mergeInventory(sourceLocationId: string, targetLocationId: string
       tx.storageLocation.findUnique({ where: { id: sourceLocationId } }),
       tx.storageLocation.findUnique({ where: { id: targetLocationId } }),
     ]);
-    if (!from || !to || from.id === to.id) throw new Error("LOCATION_CHANGED");
+    if (!from || !to || from.id === to.id || to.retiredAt) throw new Error("LOCATION_CHANGED");
     // Closed registration requests are historical records; don't rewrite the
     // originally requested location or clear the FK during source deletion.
     const historicalRequests=await tx.itemRegistrationRequest.count({
@@ -111,6 +111,10 @@ export async function POST(request: NextRequest) {
     } else if (action === "RENAME_OR_MERGE_CLASSIFICATION") {
       if (!["MAJOR", "MINOR"].includes(kind) || !source || !target) return NextResponse.json({ code: "CLASSIFICATION_INPUT_INVALID", message: "変更元と変更先を指定してください。" }, { status: 400 });
       result = await prisma.$transaction(async (tx) => {
+        const destination=await tx.classification.findUnique({where:{kind_name_parentName:{
+          kind,name:target,parentName:kind==="MAJOR"?"":targetParent||parentName,
+        }}});
+        if(destination?.retiredAt)throw new Error("CLASSIFICATION_RETIRED_USE_RESTORE");
         if (kind === "MAJOR") {
           const items = await tx.item.updateMany({ where: { majorCategory: source }, data: { majorCategory: target } });
           // Rename only stock values that actually use the renamed label.
@@ -409,6 +413,8 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ code: "LOCATION_DELETE_OK", message: `保管場所「${deletion.assessment.name}」を削除しました。在庫・棚卸履歴は変更していません。`, result: deletion });
     } else if (action === "CREATE_LOCATION") {
       if (!name) return NextResponse.json({ code: "LOCATION_NAME_REQUIRED", message: "保管場所名を入力してください。" }, { status: 400 });
+      const existing=await prisma.storageLocation.findUnique({where:{name}});
+      if(existing?.retiredAt)throw new Error("LOCATION_RETIRED_USE_RESTORE");
       result = await prisma.storageLocation.upsert({ where: { name }, update: { description: text(body.description, 500) || null }, create: { name, description: text(body.description, 500) || null } });
     } else if (action === "RENAME_LOCATION") {
       const sourceId = text(body.sourceId); if (!sourceId || !target) return NextResponse.json({ code: "LOCATION_INPUT_INVALID", message: "変更元と新しい名称を指定してください。" }, { status: 400 });
@@ -422,6 +428,10 @@ export async function POST(request: NextRequest) {
     if (action !== "MERGE_LOCATION" && action !== "ASSIGN_ITEMS") await createAdminActionLog({ adminUserId: auth.user.id, action: `CLASSIFICATION_${action}`, route: "/admin/classifications", detail: { kind, name, parentName, source, target, targetParent, reason: text(body.reason,500), result: result as never } });
     return NextResponse.json({ code: "CLASSIFICATION_UPDATE_OK", message: "分類・在庫・棚卸範囲を更新し、操作履歴へ記録しました。", result });
   } catch (error) { console.error("POST classifications", error);
+    if(error instanceof Error && error.message==="LOCATION_RETIRED_USE_RESTORE")
+      return NextResponse.json({code:"LOCATION_RETIRED_USE_RESTORE",
+        message:"同名の保管場所は廃止済みです。廃止済み一覧から復元してください。"},
+        {status:409});
     if(error instanceof Error && error.message==="CLASSIFICATION_RETIRED_USE_RESTORE")
       return NextResponse.json({code:"CLASSIFICATION_RETIRED_USE_RESTORE",
         message:"その分類は廃止済みです。分類・保管場所の整理にある「廃止済み」から復元してください。"},
