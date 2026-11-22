@@ -133,6 +133,7 @@ export async function POST(request: NextRequest) {
         }}});
         if(destination?.retiredAt)throw new Error("CLASSIFICATION_RETIRED_USE_RESTORE");
         if(editMode==="MERGE" && (!destination || (source===target && (kind==="MAJOR" || parentName===(targetParent||parentName))))) throw new Error("CLASSIFICATION_MERGE_TARGET_REQUIRED");
+        if(editMode==="MERGE" && text(body.reason,500).length<2) throw new Error("CLASSIFICATION_MERGE_REASON_REQUIRED");
         if(editMode==="RENAME" && destination && (source!==target || (kind==="MINOR" && parentName!==(targetParent||parentName)))) throw new Error("CLASSIFICATION_RENAME_DUPLICATE");
         if(kind==="MINOR"){
           const nextParent=await tx.classification.findUnique({where:{kind_name_parentName:{kind:"MAJOR",name:targetParent||parentName,parentName:""}}});
@@ -461,6 +462,16 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({code:"LOCATION_RETIRED_USE_RESTORE",
         message:"同名の保管場所は廃止済みです。廃止済み一覧から復元してください。"},
         {status:409});
+    if(error instanceof Error && ["CLASSIFICATION_MERGE_TARGET_REQUIRED","CLASSIFICATION_MERGE_REASON_REQUIRED","CLASSIFICATION_RENAME_DUPLICATE","CLASSIFICATION_PARENT_NOT_ACTIVE","CLASSIFICATION_TARGET_NOT_ACTIVE"].includes(error.message)){
+      const messages:Record<string,string>={
+        CLASSIFICATION_MERGE_TARGET_REQUIRED:"統合先は登録済みの別の有効な分類から選択してください。",
+        CLASSIFICATION_MERGE_REASON_REQUIRED:"統合理由を2文字以上で入力してください。",
+        CLASSIFICATION_RENAME_DUPLICATE:"同名の分類が既にあります。名称変更ではなく統合先を選択してください。",
+        CLASSIFICATION_PARENT_NOT_ACTIVE:"有効な親の大分類を選択してください。",
+        CLASSIFICATION_TARGET_NOT_ACTIVE:"変更先は登録済みの有効な分類から選択してください。",
+      };
+      return NextResponse.json({code:error.message,message:messages[error.message]},{status:409});
+    }
     if(error instanceof Error && error.message==="CLASSIFICATION_RETIRED_USE_RESTORE")
       return NextResponse.json({code:"CLASSIFICATION_RETIRED_USE_RESTORE",
         message:"その分類は廃止済みです。分類・保管場所の整理にある「廃止済み」から復元してください。"},
