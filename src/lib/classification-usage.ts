@@ -3,6 +3,8 @@
  *  It deliberately includes archived products, matching deletion preflight.
  */
 export type ClassificationUsageItem = {
+  id?: string;
+  name?: string;
   majorCategory: string | null;
   minorCategory: string | null;
   isArchived: boolean;
@@ -26,6 +28,7 @@ export type ClassificationUsageRow = {
   itemCount: number;
   inventoryCount: number;
   archivedItemCount: number;
+  linkedItems: Array<{id:string;name:string;isArchived:boolean}>;
 };
 
 function key(kind: string, parentName: string, name: string) {
@@ -44,7 +47,7 @@ export function buildClassificationUsageRows(
     // Keep existing masters as distinct records when data is inconsistent,
     // but never reset usage counts collected from the Item master table.
     if (!rows.has(lookup)) rows.set(lookup, {
-      ...master, parentName, itemCount: 0, inventoryCount: 0, archivedItemCount: 0,
+      ...master, parentName, itemCount: 0, inventoryCount: 0, archivedItemCount: 0, linkedItems: [],
     });
   }
 
@@ -57,11 +60,16 @@ export function buildClassificationUsageRows(
       const lookup = key(kind, parentName, name);
       const row = rows.get(lookup) ?? {
         id: `derived-${lookup}`, kind, parentName, name,
-        itemCount: 0, inventoryCount: 0, archivedItemCount: 0,
+        itemCount: 0, inventoryCount: 0, archivedItemCount: 0, linkedItems: [],
       };
       row.itemCount += 1;
       row.inventoryCount += item._count.inventoryInstances;
       if (item.isArchived) row.archivedItemCount += 1;
+      // Show exactly which products are counted, including archived entries.
+      // This helps explain a nonzero product count when physical inventory is 0.
+      if (item.id && item.name && row.linkedItems.length < 100) {
+        row.linkedItems.push({id:item.id,name:item.name,isArchived:item.isArchived});
+      }
       rows.set(lookup, row);
     }
   }
