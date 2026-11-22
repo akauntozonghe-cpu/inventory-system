@@ -58,7 +58,7 @@ export function buildClassificationUsageRows(
 
     for (const [kind, parentName, name] of categories) {
       const lookup = key(kind, parentName, name);
-      const row = rows.get(lookup) ?? {
+      const row: ClassificationUsageRow = rows.get(lookup) ?? {
         id: `derived-${lookup}`, kind, parentName, name,
         itemCount: 0, inventoryCount: 0, archivedItemCount: 0, linkedItems: [],
       };
