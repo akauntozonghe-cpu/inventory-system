@@ -67,7 +67,7 @@ export async function GET(request: NextRequest) {
   try {
     const [masters, items, locations] = await prisma.$transaction(tx=>Promise.all([
       tx.classification.findMany({ orderBy: [{ kind: "asc" }, { parentName: "asc" }, { name: "asc" }] }),
-      tx.item.findMany({ orderBy: { name: "asc" }, select: { id: true, name: true, isArchived:true, janCode: true, systemBarcode: true, majorCategory: true, minorCategory: true, managementCode:true, defaultUnit:true, inventoryInstances: { select: { id:true, quantity: true, unit:true, storageLocationId:true } }, _count: { select: { inventoryInstances: true } } } }),
+      tx.item.findMany({ orderBy: { name: "asc" }, select: { id: true, name: true, isArchived:true, janCode: true, systemBarcode: true, majorCategory: true, minorCategory: true, managementCode:true, defaultUnit:true, inventoryInstances: { select: { id:true, quantity: true, unit:true, storageLocationId:true, majorCategory:true,minorCategory:true,status:true } }, _count: { select: { inventoryInstances: true } } } }),
       tx.storageLocation.findMany({ orderBy: { name: "asc" }, include: { _count: { select: { inventories: true, itemRegistrationRequests: true } } } }),
     ]),{isolationLevel:"RepeatableRead"});
     // The same Item records checked by the delete preflight determine usage.
