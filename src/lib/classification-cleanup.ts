@@ -5,12 +5,17 @@ export type CleanupAssessment = {
   name: string;
   kind: "MAJOR" | "MINOR" | "LOCATION";
   canDelete: boolean;
+  /** Zero-current-stock linked products can be unassigned before master retirement. */
+  canUnassignAndDelete?: boolean;
+  linkedItems?: Array<{id:string;name:string;updatedAt:Date}>;
   counts: {
     items: number;
     stocks: number;
     registrationRequests: number;
     activeStocktakes: number;
     childCategories: number;
+    positiveStockRows?: number;
+    archivedItems?: number;
   };
   reasons: string[];
   warning: string;
@@ -60,7 +65,24 @@ export async function assessClassificationCleanup(
       : Promise.resolve(0),
   ]);
 
-  const counts = { items, stocks, registrationRequests, activeStocktakes, childCategories };
+  const [positiveStockRows, archivedItems, linkedItems] = await Promise.all([
+    // A current stock row of any affected product OR a lot-level override is
+    // enough to block automatic unassignment when its quantity is positive.
+    tx.inventoryInstance.count({where:{
+      status:{not:"廃止"},quantity:{gt:0},
+      OR:[
+        {item:{is:{...(kind === "MAJOR" ? {majorCategory:name} : {majorCategory:parentName,minorCategory:name}),isArchived:false}}},
+        whereStock,
+      ],
+    }}),
+    tx.item.count({where:{...whereItem,isArchived:true}}),
+    tx.item.findMany({where:{...whereItem,isArchived:false},select:{id:true,name:true,updatedAt:true},orderBy:{name:"asc"},take:101}),
+  ]);
+  const counts = { items, stocks, registrationRequests, activeStocktakes, childCategories, positiveStockRows, archivedItems };
+  const canUnassignAndDelete=Boolean(master)
+    && items>0 && items<=100 && linkedItems.length===items
+    && archivedItems===0 && positiveStockRows===0
+    && registrationRequests===0 && activeStocktakes===0 && childCategories===0;
   const reasons = [
     ...(items ? [`商品が${items}件使用しています`] : []),
     ...(stocks ? [`在庫明細が${stocks}件参照しています`] : []),
@@ -74,7 +96,9 @@ export async function assessClassificationCleanup(
     id: master?.id ?? null,
     name, kind, counts, reasons,
     canDelete: Boolean(master) && reasons.length === 0,
-    warning: "削除すると発行済みの分類QRは利用できなくなります。商品・在庫・棚卸実績の削除は行いません。",
+    canUnassignAndDelete,
+    linkedItems,
+    warning: "商品マスタの分類と現在の在庫明細を変更する場合も、商品自体・数量・棚卸実績・取引履歴は削除しません。分類を削除すると発行済みの分類QRは使用できなくなります。",
   };
 }
 
