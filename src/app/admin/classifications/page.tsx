@@ -225,8 +225,8 @@ export default function ClassificationsPage() {
         method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body),
       });
       const payload:unknown=await response.json().catch(()=>null);
-      const result=payload&&typeof payload==="object"
-        ? payload as {message?:string;code?:string;assessment?:CleanupAssessment} : {};
+      const result:{message?:string;code?:string;assessment?:CleanupAssessment}=
+        payload&&typeof payload==="object" ? payload as {message?:string;code?:string;assessment?:CleanupAssessment} : {};
       if(!response.ok) {
         if(["CLASSIFICATION_IN_USE","CLASSIFICATION_UNASSIGN_BLOCKED","LOCATION_IN_USE"].includes(result.code??"")
           && result.assessment){
