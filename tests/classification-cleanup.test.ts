@@ -137,6 +137,21 @@ describe("safe classification / location retirement",()=>{
     expect(db.stocktakeTarget.deleteMany).not.toHaveBeenCalled();
     expect(db.stocktakeRecord.deleteMany).not.toHaveBeenCalled();
   });
+  it("can clear a derived category with no classification master and no stock",async()=>{
+    const now=new Date("2026-11-22T01:00:00.000Z");
+    const item={id:"item-1",name:"商品",majorCategory:"食品",minorCategory:null,updatedAt:now};
+    db.item.count.mockImplementation(async ({where}:{where:{isArchived?:boolean}})=>where.isArchived?0:1);
+    db.item.findMany.mockResolvedValue([item]);
+    db.classification.findUnique.mockResolvedValue(null);
+    const response=await post({action:"UNASSIGN_AND_DELETE_CLASSIFICATION",...classification,
+      expectedId:null,confirmName:"食品",reason:"使わない分類を整理",
+      expectedItems:[{id:"item-1",updatedAt:now.toISOString()}],
+    });
+    expect(response.status).toBe(200);
+    expect(db.item.updateMany).toHaveBeenCalledTimes(1);
+    expect(db.classification.delete).not.toHaveBeenCalled();
+    expect(db.adminActionLog.create.mock.calls[0][0].data.detail.masterDeleted).toBe(false);
+  });
   it("blocks unassignment when any impacted current stock has positive quantity",async()=>{
     const now=new Date("2026-11-22T01:00:00.000Z");
     const item={id:"item-1",name:"商品",majorCategory:"食品",minorCategory:null,updatedAt:now};
