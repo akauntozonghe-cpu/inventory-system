@@ -86,6 +86,16 @@ export async function POST(request: NextRequest) {
     if (action === "CREATE_CLASSIFICATION") {
       if (!["MAJOR", "MINOR"].includes(kind) || !name || (kind === "MINOR" && !parentName)) return NextResponse.json({ code: "CLASSIFICATION_INPUT_INVALID", message: "分類名と親分類を確認してください。" }, { status: 400 });
       result = await prisma.$transaction(async (tx) => {
+        const previous=await tx.classification.findUnique({where:{kind_name_parentName:{
+          kind,name,parentName:kind==="MAJOR"?"":parentName,
+        }}});
+        if(previous?.retiredAt) throw new Error("CLASSIFICATION_RETIRED_USE_RESTORE");
+        if(kind==="MINOR") {
+          const parent=await tx.classification.findUnique({where:{kind_name_parentName:{
+            kind:"MAJOR",name:parentName,parentName:"",
+          }}});
+          if(parent?.retiredAt) throw new Error("CLASSIFICATION_RETIRED_USE_RESTORE");
+        }
         await ensureClassification(tx, kind === "MAJOR" ? name : parentName, kind === "MINOR" ? name : null);
         return { created: true };
       });
@@ -162,6 +172,62 @@ export async function POST(request: NextRequest) {
         await tx.adminActionLog.create({data:{adminUserId:auth.user!.id,action:"CLASSIFICATION_ASSIGN_ITEMS",route:"/admin/classifications",detail:{before:selected,after:selected.map(item=>({id:item.id,...nextClassification(item,{...(hasMajor?{majorCategory}:{}),...(hasMinor?{minorCategory}:{}),keepMinorCategory:body.keepMinorCategory===true})}))}}});
         return { updatedItems: selected.length, requestedItems: itemIds.length };
       },{isolationLevel:"Serializable"});
+    } else if (action === "RETIRE_CLASSIFICATION" || action === "RESTORE_CLASSIFICATION") {
+      if (!["MAJOR","MINOR"].includes(kind) || !source
+        || (kind === "MINOR" && !parentName)
+        || body.confirmName !== source || !(body.expectedId === null || typeof body.expectedId === "string")
+        || (action === "RETIRE_CLASSIFICATION" && text(body.reason,500).length<2)) {
+        return NextResponse.json({code:"CLASSIFICATION_RETIRE_INPUT_INVALID",message:"対象名・分類と廃止理由を確認してください。"}, {status:400});
+      }
+      const change=await prisma.$transaction(async tx=>{
+        const parent=kind==="MINOR"
+          ? await tx.classification.findUnique({where:{kind_name_parentName:{kind:"MAJOR",name:parentName,parentName:""}}})
+          : null;
+        if(action==="RESTORE_CLASSIFICATION" && parent?.retiredAt)
+          return {changed:false,why:"PARENT_RETIRED" as const};
+        const key={kind,name:source,parentName:kind==="MAJOR"?"":parentName};
+        const previous=await tx.classification.findUnique({where:{kind_name_parentName:key}});
+        if((previous?.id??null)!==body.expectedId) return {changed:false,why:"CLASSIFICATION_CHANGED" as const};
+        if(action==="RESTORE_CLASSIFICATION" && !previous)
+          return {changed:false,why:"CLASSIFICATION_NOT_FOUND" as const};
+        const retiring=action==="RETIRE_CLASSIFICATION";
+        if(previous?.retiredAt && retiring || (previous && !previous.retiredAt && !retiring))
+          return {changed:false,why:retiring?"ALREADY_RETIRED" as const:"ALREADY_ACTIVE" as const};
+        const now=new Date();
+        const master=retiring
+          ? await tx.classification.upsert({
+            where:{kind_name_parentName:key},
+            update:{retiredAt:now,retirementReason:text(body.reason,500),retiredByUserId:auth.user!.id},
+            create:{...key,retiredAt:now,retirementReason:text(body.reason,500),retiredByUserId:auth.user!.id},
+          })
+          : await tx.classification.update({
+            where:{id:previous!.id},
+            data:{retiredAt:null,retirementReason:null,retiredByUserId:null},
+          });
+        await tx.adminActionLog.create({data:{
+          adminUserId:auth.user!.id,
+          action:retiring?"CLASSIFICATION_RETIRE":"CLASSIFICATION_RESTORE",
+          route:"/admin/classifications",
+          detail:{id:master.id,kind,name:source,parentName,reason:text(body.reason,500),
+            previousRetiredAt:previous?.retiredAt??null,
+            productClassificationsPreserved:true,inventoryQuantitiesPreserved:true,stocktakeHistoryPreserved:true},
+        }});
+        return {changed:true,retired:retiring,id:master.id};
+      },{isolationLevel:"Serializable"});
+      if(!change.changed){
+        return NextResponse.json({code:"CLASSIFICATION_RETIRE_CONFLICT",
+          message: change.why==="PARENT_RETIRED"
+          ? "親の大分類が廃止中です。先に親分類を復元してください。"
+          : "分類の状態が変更されています。一覧を再読み込みしてから操作してください。",
+          detail:change.why},{status:409});
+      }
+      return NextResponse.json({
+        code:action==="RETIRE_CLASSIFICATION"?"CLASSIFICATION_RETIRED":"CLASSIFICATION_RESTORED",
+        message:action==="RETIRE_CLASSIFICATION"
+          ? `分類「${source}」を廃止済みに移動しました。使用中の商品・在庫明細・棚卸履歴は保持しています。`
+          : `分類「${source}」を復元しました。`,
+        result:change,
+      });
     } else if (action === "UNASSIGN_AND_DELETE_CLASSIFICATION") {
       if (!["MAJOR","MINOR"].includes(kind) || !source || (kind==="MINOR"&&!parentName)
         || body.confirmName!==source || !(body.expectedId===null || typeof body.expectedId==="string")
@@ -301,5 +367,9 @@ export async function POST(request: NextRequest) {
     if (action !== "MERGE_LOCATION" && action !== "ASSIGN_ITEMS") await createAdminActionLog({ adminUserId: auth.user.id, action: `CLASSIFICATION_${action}`, route: "/admin/classifications", detail: { kind, name, parentName, source, target, targetParent, reason: text(body.reason,500), result: result as never } });
     return NextResponse.json({ code: "CLASSIFICATION_UPDATE_OK", message: "分類・在庫・棚卸範囲を更新し、操作履歴へ記録しました。", result });
   } catch (error) { console.error("POST classifications", error);
+    if(error instanceof Error && error.message==="CLASSIFICATION_RETIRED_USE_RESTORE")
+      return NextResponse.json({code:"CLASSIFICATION_RETIRED_USE_RESTORE",
+        message:"その分類は廃止済みです。分類・保管場所の整理にある「廃止済み」から復元してください。"},
+        {status:409});
     if (error && typeof error === "object" && (("code" in error && ["P2034", "P2025"].includes(String(error.code))) || (error instanceof Error && ["LOCATION_CHANGED", "LOCATION_HISTORICAL_REQUESTS", "CLASSIFICATION_ITEMS_CHANGED"].includes(error.message)))) return NextResponse.json({ code: error instanceof Error && error.message === "LOCATION_HISTORICAL_REQUESTS" ? "LOCATION_HISTORICAL_REQUESTS" : "CLASSIFICATION_CHANGED", message: error instanceof Error && error.message === "LOCATION_HISTORICAL_REQUESTS" ? "完了済みの商品登録申請がこの場所を参照しています。履歴を壊さないよう統合は停止しました。過去の申請と移動方法を確認してください。" : "他の操作で情報が変わりました。再読込してから実行してください。" }, { status: 409 }); return NextResponse.json({ code: "CLASSIFICATION_UPDATE_FAILED", message: error instanceof Error && (error.message.startsWith("小分類の変更") || error.message.startsWith("同名の小分類")) ? error.message : "分類編集を完了できませんでした。現在の状態を再読込して確認してください。", action: "入力内容を確認して再試行し、解決しない場合はエラー管理を開いてください。" }, { status: 500 }); }
 }
