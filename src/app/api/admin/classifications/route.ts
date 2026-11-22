@@ -165,7 +165,7 @@ export async function POST(request: NextRequest) {
         }
         if(hasMinor && minorCategory){
           const major=hasMajor?majorCategory:text(body.currentMajor);
-          const m=await tx.classification.findUnique({where:{kind_name_parentName:{kind:"MINOR",name:minorCategory,parentName:major}}});
+          const m=await tx.classification.findUnique({where:{kind_name_parentName:{kind:"MINOR",name:minorCategory,parentName:major??""}}});
           if(m?.retiredAt)throw new Error("CLASSIFICATION_RETIRED_USE_RESTORE");
         }
         const selected = await tx.item.findMany({ where: { id: { in: itemIds }, isArchived: false }, select: { id: true, majorCategory: true, minorCategory: true } });
