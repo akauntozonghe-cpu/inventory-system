@@ -76,7 +76,7 @@ export async function assessClassificationCleanup(
       ],
     }}),
     tx.item.count({where:{...whereItem,isArchived:true}}),
-    tx.item.findMany({where:{...whereItem,isArchived:false},select:{id:true,name:true,updatedAt:true},orderBy:{name:"asc"},take:101}),
+    tx.item.findMany({where:{...whereItem,isArchived:false},select:{id:true,name:true,updatedAt:true},orderBy:{name:"asc"},take:100}),
   ]);
   const counts = { items, stocks, registrationRequests, activeStocktakes, childCategories, positiveStockRows, archivedItems };
   const canUnassignAndDelete=items>0 && items<=100 && linkedItems.length===items
