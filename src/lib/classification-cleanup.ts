@@ -108,7 +108,7 @@ export async function assessLocationCleanup(
   sourceId: string,
 ): Promise<CleanupAssessment> {
   const location = await tx.storageLocation.findUnique({
-    where: { id: sourceId }, select: { id: true, name: true },
+    where: { id: sourceId }, select: { id: true, name: true, retiredAt: true },
   });
   const name = location?.name ?? "";
   if (!location) return {
@@ -131,7 +131,7 @@ export async function assessLocationCleanup(
     ...(activeStocktakes ? [`進行中・確認中の棚卸が${activeStocktakes}件あります`] : []),
   ];
   return {
-    id: location.id, name, kind: "LOCATION",
+    id: location.id, retiredAt:location.retiredAt, name, kind: "LOCATION",
     counts, reasons, canDelete: reasons.length === 0,
     warning: "削除すると発行済みの保管場所QRは利用できなくなります。使用中の場合は在庫明細を移動してから整理してください。",
   };
