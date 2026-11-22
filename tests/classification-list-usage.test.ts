@@ -36,6 +36,10 @@ it("shows 11 linked product masters even when all their inventory detail counts 
     expect.objectContaining({kind:"MINOR",name:"菓子",parentName:"食品",itemCount:11,inventoryCount:0,archivedItemCount:0}),
   ]));
   expect(data.items).toHaveLength(11);
+  const category=data.classifications.find((row:{kind:string})=>row.kind==="MAJOR");
+  expect(category.linkedItems.map((item:{name:string})=>item.name)).toEqual(
+    Array.from({length:11},(_,i)=>"商品"+i)
+  );
 });
 it("uses the same product-reference scope as the deletion preflight including archived products",async()=>{
   db.item.findMany.mockResolvedValue([item(1),item(2,true),item(3)]);
@@ -43,6 +47,8 @@ it("uses the same product-reference scope as the deletion preflight including ar
   const data=await response.json();
   expect(data.classifications.find((row:{kind:string})=>row.kind==="MAJOR"))
     .toMatchObject({itemCount:3,archivedItemCount:1,inventoryCount:0});
+  const archived=data.classifications.find((row:{kind:string})=>row.kind==="MAJOR").linkedItems;
+  expect(archived.find((row:{id:string})=>row.id==="item-2").isArchived).toBe(true);
   // Historical / archived product references are counted but not editable.
   expect(data.items.map((row:{id:string})=>row.id)).toEqual(["item-1","item-3"]);
   expect(db.item.findMany.mock.calls[0][0].where).toBeUndefined();
