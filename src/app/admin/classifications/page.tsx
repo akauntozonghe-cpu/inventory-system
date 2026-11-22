@@ -167,11 +167,14 @@ export default function ClassificationsPage() {
   };
 
   const deleteReviewed=async()=>{
-    if(!cleanup||!cleanup.assessment.canDelete||cleanupName!==cleanup.assessment.name||!cleanupReason.trim()){
+    if(!cleanup||!(cleanup.assessment.canDelete||cleanup.assessment.canUnassignAndDelete)||cleanupName!==cleanup.assessment.name||cleanupReason.trim().length<2){
       setError("削除する名前と理由を確認してください。");return;
     }
     const body={...cleanup.body,
-      action:cleanup.body.kind?"DELETE_CLASSIFICATION":"DELETE_LOCATION",
+      action:cleanup.assessment.canUnassignAndDelete && !cleanup.assessment.canDelete
+        ? "UNASSIGN_AND_DELETE_CLASSIFICATION"
+        : cleanup.body.kind?"DELETE_CLASSIFICATION":"DELETE_LOCATION",
+      expectedItems:cleanup.assessment.linkedItems?.map(item=>({id:item.id,updatedAt:item.updatedAt})),
       expectedId:cleanup.assessment.id,confirmName:cleanupName,reason:cleanupReason.trim()};
     const successful=await execute(body);
     if(successful)setCleanup(null);
@@ -262,15 +265,39 @@ export default function ClassificationsPage() {
           <dt className="text-slate-600">{name}</dt><dd className="mt-1 font-black">{count}件</dd>
         </div>)}
       </dl>
+      {cleanup.assessment.kind!=="LOCATION" && cleanup.assessment.counts.items>0 && <>
+        <p className="mt-3 rounded-lg bg-blue-50 p-3 text-sm font-bold text-blue-900">
+          「商品{cleanup.assessment.counts.items}件」は在庫数量ではなく、この分類が設定された商品マスタの件数です。
+          在庫数量が0でも商品が登録されている限り、通常の「分類だけ削除」はできません。
+          {cleanup.assessment.counts.positiveStockRows===0
+            ? " 現在庫がある在庫明細は検出されていません。"
+            : ` 現在庫が残る在庫明細が${cleanup.assessment.counts.positiveStockRows}件あります。`}
+        </p>
+        <details className="mt-2 rounded-lg border border-slate-200">
+          <summary className="cursor-pointer p-3 text-sm font-bold">紐づいている商品を確認（{cleanup.assessment.counts.items}件）</summary>
+          <div className="max-h-48 overflow-y-auto border-t border-slate-200 p-2">
+            {cleanup.assessment.linkedItems?.map(item=><p key={item.id} className="border-b border-slate-100 px-2 py-1 text-sm">{item.name}</p>)}
+            {cleanup.assessment.counts.items>100&&<p className="text-sm text-amber-800">最初の100件のみ表示。対象を絞ってください。</p>}
+          </div>
+        </details>
+      </>}
+      {cleanup.assessment.canUnassignAndDelete&&!cleanup.assessment.canDelete&&
+        <p className="mt-3 rounded-xl border border-blue-200 bg-blue-50 p-3 text-sm leading-6 text-blue-950">
+          在庫を削除せずに整理できます。
+          確認後、表示された商品の分類と、数量0の在庫に残る同じ分類を解除し、
+          分類マスタを削除します。商品・数量・過去の棚卸・取引履歴は削除しません。
+        </p>}
       {cleanup.assessment.reasons.length>0&&<section className="mt-3 rounded-xl border border-amber-200 bg-amber-50 p-3">
         <h3 className="font-black text-amber-900">現在は削除できません</h3>
         <ul className="mt-2 list-inside list-disc space-y-1 text-sm text-amber-950">
           {cleanup.assessment.reasons.map(reason=><li key={reason}>{reason}</li>)}
         </ul>
-        <p className="mt-2 text-sm">必要な項目は先に名称変更・統合、商品の分類変更、保管場所の移動を行ってください。履歴と在庫明細は削除しません。</p>
+        <p className="mt-2 text-sm">{cleanup.assessment.canUnassignAndDelete
+          ? "この商品群は在庫数量0のため、下の「分類だけ解除して削除」から一括整理できます。"
+          : "在庫がある、削除済み商品や申請・棚卸・子分類が紐づいている場合は、先に移動・統合などで整理してください。商品や履歴は削除しません。"}</p>
       </section>}
       <p className="mt-3 rounded-lg bg-slate-100 p-3 text-sm text-slate-700">{cleanup.assessment.warning}</p>
-      {cleanup.assessment.canDelete&&<>
+      {(cleanup.assessment.canDelete||cleanup.assessment.canUnassignAndDelete)&&<>
         <label className="mt-3 block text-sm font-bold">削除する項目名をそのまま入力
           <input value={cleanupName} onChange={event=>setCleanupName(event.target.value)}
             autoComplete="off" placeholder={cleanup.assessment.name}
@@ -282,11 +309,11 @@ export default function ClassificationsPage() {
         </label>
       </>}
       <div className="mt-4 flex flex-wrap gap-2">
-        {cleanup.assessment.canDelete&&<button type="button" disabled={busy||cleanupName!==cleanup.assessment.name||!cleanupReason.trim()}
+        {(cleanup.assessment.canDelete||cleanup.assessment.canUnassignAndDelete)&&<button type="button" disabled={busy||cleanupName!==cleanup.assessment.name||cleanupReason.trim().length<2}
           className="min-h-11 rounded-xl bg-red-700 px-4 py-3 font-black text-white disabled:opacity-40"
-          onClick={()=>void deleteReviewed()}>この項目を削除する</button>}
+          onClick={()=>void deleteReviewed()}>{cleanup.assessment.canUnassignAndDelete&&!cleanup.assessment.canDelete?"商品から分類を外して削除":"この項目を削除する"}</button>}
         <button type="button" onClick={()=>setCleanup(null)} className="min-h-11 rounded-xl border px-4 py-3 font-bold">
-          {cleanup.assessment.canDelete?"キャンセル":"閉じる・整理に戻る"}
+          {(cleanup.assessment.canDelete||cleanup.assessment.canUnassignAndDelete)?"キャンセル":"閉じる・整理に戻る"}
         </button>
       </div>
     </Modal>}
