@@ -20,7 +20,7 @@ import QrPreviewDialog from "@/components/QrPreviewDialog";
 import FeedbackToast from "@/components/common/FeedbackToast";
 import UnifiedScanner from "@/components/stocktake/UnifiedScanner";
 
-type Classification = { id: string; kind: "MAJOR" | "MINOR"; name: string; parentName: string; labelCode?: string; itemCount: number; inventoryCount: number; archivedItemCount?: number };
+type Classification = { id: string; kind: "MAJOR" | "MINOR"; name: string; parentName: string; labelCode?: string; itemCount: number; inventoryCount: number; archivedItemCount?: number; linkedItems?:Array<{id:string;name:string;isArchived:boolean}> };
 type Location = { id: string; name: string; description: string | null; _count: { inventories: number; itemRegistrationRequests: number } };
 type ItemRow = { managementCode?:string|null; inventoryInstances?:Array<{id:string;storageLocationId:string|null;quantity:number}>; id: string; name: string; janCode: string | null; systemBarcode: string | null; majorCategory: string | null; minorCategory: string | null; inventoryCount: number; quantityLabel?:string; totalQuantity: number };
 type Payload = { classifications: Classification[]; locations: Location[]; items: ItemRow[] };
@@ -40,6 +40,19 @@ function CategoryUsage({row}:{row:Classification}) {
   return <div className="mt-1 text-xs leading-5 text-slate-600">
     <p><strong className="text-slate-800">分類を設定した商品 {row.itemCount}件</strong> ／ 商品に紐づく在庫明細 {row.inventoryCount}件</p>
     {(row.archivedItemCount??0)>0 && <p>削除済み商品を含む：{row.archivedItemCount}件</p>}
+    {row.itemCount>0 && <details className="mt-2 rounded-lg border border-slate-200 bg-slate-50">
+      <summary className="cursor-pointer px-2 py-2 font-bold text-blue-800">
+        紐づいている商品を見る（{row.itemCount}件）
+      </summary>
+      <div className="max-h-48 space-y-1 overflow-y-auto border-t border-slate-200 p-2">
+        {row.linkedItems?.map(item=><div key={item.id} className="flex min-w-0 items-center gap-2">
+          <Link href={classificationItemHref(item.id,undefined,"MASTERS")}
+            className="min-w-0 break-words font-bold text-blue-800 underline-offset-2 hover:underline">{item.name}</Link>
+          {item.isArchived && <span className="shrink-0 rounded bg-amber-100 px-1.5 py-0.5 text-amber-900">削除済み</span>}
+        </div>)}
+        {row.itemCount>100 && <p className="text-amber-800">最大100件まで表示しています。削除確認では全件を再検査します。</p>}
+      </div>
+    </details>}
     {row.inventoryCount===0&&row.itemCount>0 && <p className="font-semibold text-amber-800">
       在庫明細は0件でも、商品{row.itemCount}件にはこの分類が残っています
     </p>}
