@@ -136,6 +136,35 @@ describe("safe classification / location retirement",()=>{
     expect(db.classification.delete).not.toHaveBeenCalled();
   });
 
+  it("deletes exactly the selected full-width-number legacy master, not its half-width counterpart",async()=>{
+    const raw="フリマ３";
+    db.classification.findUnique.mockImplementation(async ({where}:{where:{kind_name_parentName:{name:string}}})=>{
+      expect(where.kind_name_parentName.name).toBe(raw);
+      return {id:"fullwidth-master"};
+    });
+    const preview=await (await post({action:"PREVIEW_DELETE_CLASSIFICATION",kind:"MAJOR",source:raw,parentName:""})).json();
+    expect(preview.assessment).toMatchObject({id:"fullwidth-master",name:raw,canDelete:true});
+    const response=await post({action:"DELETE_CLASSIFICATION",kind:"MAJOR",source:raw,parentName:"",
+      expectedId:"fullwidth-master",confirmName:raw,reason:"全角数字の分類を統合した"});
+    expect(response.status).toBe(200);
+    expect(db.classification.delete).toHaveBeenCalledWith({where:{id:"fullwidth-master"}});
+    expect(db.item.count.mock.calls.some(([arg])=>arg.where?.majorCategory===raw)).toBe(true);
+    expect(db.inventoryInstance.count.mock.calls.some(([arg])=>arg.where?.majorCategory===raw)).toBe(true);
+  });
+
+  it("preserves the full-width legacy parent name while checking a minor category for deletion",async()=>{
+    const rawParent="フリマ３";
+    db.classification.findUnique.mockImplementation(async ({where}:{where:{kind_name_parentName:{parentName:string}}})=>{
+      expect(where.kind_name_parentName.parentName).toBe(rawParent);
+      return {id:"minor-master"};
+    });
+    const response=await post({action:"PREVIEW_DELETE_CLASSIFICATION",kind:"MINOR",source:"未使用品",parentName:rawParent});
+    expect(response.status).toBe(200);
+    const assessment=(await response.json()).assessment;
+    expect(assessment).toMatchObject({id:"minor-master",name:"未使用品",kind:"MINOR",canDelete:true});
+    expect(db.item.count).toHaveBeenCalledWith({where:{majorCategory:rawParent,minorCategory:"未使用品"}});
+  });
+
   it("requires confirmation and checks the master identity",async()=>{
     expect((await post({action:"DELETE_CLASSIFICATION",...classification})).status).toBe(400);
     expect((await post({action:"DELETE_CLASSIFICATION",...classification,
