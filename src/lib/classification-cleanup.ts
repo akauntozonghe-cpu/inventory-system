@@ -2,6 +2,7 @@ import type { Prisma } from "@prisma/client";
 
 export type CleanupAssessment = {
   id: string | null;
+  retiredAt?: Date | null;
   name: string;
   kind: "MAJOR" | "MINOR" | "LOCATION";
   canDelete: boolean;
@@ -35,7 +36,7 @@ export async function assessClassificationCleanup(
 ): Promise<CleanupAssessment> {
   const master = await tx.classification.findUnique({
     where: { kind_name_parentName: { kind, name, parentName: kind === "MAJOR" ? "" : parentName } },
-    select: { id: true },
+    select: { id: true, retiredAt: true },
   });
 
   const whereItem = kind === "MAJOR"
@@ -93,6 +94,7 @@ export async function assessClassificationCleanup(
 
   return {
     id: master?.id ?? null,
+    retiredAt:master?.retiredAt ?? null,
     name, kind, counts, reasons,
     canDelete: Boolean(master) && reasons.length === 0,
     canUnassignAndDelete,
