@@ -4,7 +4,7 @@ import {NextRequest,NextResponse} from "next/server";
 const auth=vi.hoisted(()=>({admin:true}));
 const db=vi.hoisted(()=>({
   $transaction:vi.fn(),
-  classification:{findUnique:vi.fn()},
+  classification:{findUnique:vi.fn(),findMany:vi.fn()},
   item:{findMany:vi.fn(),updateMany:vi.fn()},
   inventoryInstance:{updateMany:vi.fn()},
   itemRegistrationRequest:{updateMany:vi.fn()},
@@ -25,8 +25,15 @@ beforeEach(()=>{
   vi.resetAllMocks();auth.admin=true;
   db.$transaction.mockImplementation(async callback=>callback(db));
   db.classification.findUnique.mockResolvedValue(null);
+  db.classification.findMany.mockResolvedValue([]);
 });
 describe("classification selection safety",()=>{
+  it("rejects normalized duplicate labels during creation",async()=>{
+    db.classification.findMany.mockResolvedValue([{name:"フリマ３"}]);
+    const response=await post({action:"CREATE_CLASSIFICATION",kind:"MAJOR",name:"フリマ3"});
+    expect(response.status).toBe(409);
+    expect((await response.json()).code).toBe("CLASSIFICATION_DUPLICATE_NORMALIZED");
+  });
   it("rejects unknown merge destinations without editing products",async()=>{
     const response=await post({action:"RENAME_OR_MERGE_CLASSIFICATION",editMode:"MERGE",
       kind:"MAJOR",source:"食品",target:"存在しない分類",reason:"重複を整理"});
