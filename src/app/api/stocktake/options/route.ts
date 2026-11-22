@@ -13,18 +13,26 @@ export async function GET(request: NextRequest) {
     const [locations, inventories, masters, items] = await Promise.all([
       prisma.storageLocation.findMany({ select: { id: true, name: true }, orderBy: { name: "asc" } }),
       prisma.inventoryInstance.findMany({ select: { unit: true }, distinct: ["unit"] }),
-      prisma.classification.findMany({ select: { kind: true, name: true, parentName: true } }),
+      prisma.classification.findMany({ select: { kind: true, name: true, parentName: true, retiredAt: true } }),
       prisma.item.findMany({ where: { isArchived: false }, select: { majorCategory: true, minorCategory: true, defaultUnit: true } }),
     ]);
+    const retiredMajors=new Set(masters.filter(row=>row.kind==="MAJOR"&&row.retiredAt).map(row=>row.name));
+    const retiredMinorPairs=new Set(masters.filter(row=>row.kind==="MINOR"&&row.retiredAt)
+      .map(row=>JSON.stringify([row.parentName,row.name])));
+    const availableMajor=(name:string|null|undefined)=>Boolean(name)&&!retiredMajors.has(name!);
+    const availableMinor=(parentName:string,name:string)=>
+      !retiredMajors.has(parentName)&&!retiredMinorPairs.has(JSON.stringify([parentName,name]));
     const minorPairs = [
-      ...masters.filter((row) => row.kind === "MINOR").map((row) => ({ name: row.name, parentName: row.parentName })),
-      ...items.filter((item) => item.minorCategory).map((item) => ({ name: item.minorCategory!, parentName: item.majorCategory ?? "" })),
+      ...masters.filter((row) => row.kind === "MINOR"&&availableMinor(row.parentName,row.name))
+        .map((row) => ({ name: row.name, parentName: row.parentName })),
+      ...items.filter((item) => item.minorCategory && availableMinor(item.majorCategory??"",item.minorCategory))
+        .map((item) => ({ name: item.minorCategory!, parentName: item.majorCategory ?? "" })),
     ];
     return NextResponse.json({
       success: true,
       storageLocations: locations.map((location) => location.name),
       storageLocationOptions: locations,
-      majorCategories: uniqueSorted([...masters.filter((row) => row.kind === "MAJOR").map((row) => row.name), ...items.map((item) => item.majorCategory)]),
+      majorCategories: uniqueSorted([...masters.filter((row) => row.kind === "MAJOR"&&!row.retiredAt).map((row) => row.name), ...items.map((item) => item.majorCategory).filter(availableMajor)]),
       minorCategories: uniqueSorted(minorPairs.map((row) => row.name)),
       minorCategoryOptions: [...new Map(minorPairs.map((row) => [JSON.stringify([row.parentName, row.name]), row])).values()],
       units: uniqueSorted([...DEFAULT_UNITS, ...items.map((item) => item.defaultUnit), ...inventories.map((row) => row.unit)]).filter((unit) => !unitValidationMessage(unit)),
