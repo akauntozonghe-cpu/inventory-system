@@ -1,0 +1,113 @@
+import type { Prisma } from "@prisma/client";
+
+export type CleanupAssessment = {
+  id: string | null;
+  name: string;
+  kind: "MAJOR" | "MINOR" | "LOCATION";
+  canDelete: boolean;
+  counts: {
+    items: number;
+    stocks: number;
+    registrationRequests: number;
+    activeStocktakes: number;
+    childCategories: number;
+  };
+  reasons: string[];
+  warning: string;
+};
+
+const activeStatuses = ["IN_PROGRESS", "PAUSED", "REVIEW", "CONFLICT"] as const;
+
+/** Count every linked item/stock, including archived entries.
+ * A "zero products" badge in the UI is not proof that a master can be deleted:
+ * lots may override categories and pending requests may still reference it.
+ */
+export async function assessClassificationCleanup(
+  tx: Prisma.TransactionClient,
+  kind: "MAJOR" | "MINOR",
+  name: string,
+  parentName = "",
+): Promise<CleanupAssessment> {
+  const master = await tx.classification.findUnique({
+    where: { kind_name_parentName: { kind, name, parentName: kind === "MAJOR" ? "" : parentName } },
+    select: { id: true },
+  });
+
+  const whereItem = kind === "MAJOR"
+    ? { majorCategory: name }
+    : { minorCategory: name, majorCategory: parentName };
+  const whereStock: Prisma.InventoryInstanceWhereInput = kind === "MAJOR"
+    ? { majorCategory: name }
+    : { minorCategory: name, OR: [
+      { majorCategory: parentName },
+      { majorCategory: null, item: { majorCategory: parentName } },
+    ] };
+  const whereRequest = kind === "MAJOR"
+    ? { majorCategory: name }
+    : { majorCategory: parentName, minorCategory: name };
+
+  const [items, stocks, registrationRequests, activeStocktakes, childCategories] = await Promise.all([
+    tx.item.count({ where: whereItem }),
+    tx.inventoryInstance.count({ where: whereStock }),
+    tx.itemRegistrationRequest.count({ where: whereRequest }),
+    tx.stocktakeSession.count({ where: {
+      scopeType: kind === "MAJOR" ? "MAJOR_CATEGORY" : "MINOR_CATEGORY",
+      scopeValue: name,
+      status: { in: [...activeStatuses] },
+    } }),
+    kind === "MAJOR"
+      ? tx.classification.count({ where: { kind: "MINOR", parentName: name } })
+      : Promise.resolve(0),
+  ]);
+
+  const counts = { items, stocks, registrationRequests, activeStocktakes, childCategories };
+  const reasons = [
+    ...(items ? [`商品が${items}件使用しています`] : []),
+    ...(stocks ? [`在庫明細が${stocks}件参照しています`] : []),
+    ...(registrationRequests ? [`登録申請が${registrationRequests}件参照しています`] : []),
+    ...(activeStocktakes ? [`進行中・確認中の棚卸が${activeStocktakes}件あります`] : []),
+    ...(childCategories ? [`小分類が${childCategories}件あります`] : []),
+  ];
+  if (!master) reasons.unshift("登録済みの分類マスタがありません。商品・在庫のデータを整理してください");
+
+  return {
+    id: master?.id ?? null,
+    name, kind, counts, reasons,
+    canDelete: Boolean(master) && reasons.length === 0,
+    warning: "削除すると発行済みの分類QRは利用できなくなります。商品・在庫・棚卸実績の削除は行いません。",
+  };
+}
+
+export async function assessLocationCleanup(
+  tx: Prisma.TransactionClient,
+  sourceId: string,
+): Promise<CleanupAssessment> {
+  const location = await tx.storageLocation.findUnique({
+    where: { id: sourceId }, select: { id: true, name: true },
+  });
+  const name = location?.name ?? "";
+  if (!location) return {
+    id: null, name, kind: "LOCATION", canDelete: false,
+    counts: { items: 0, stocks: 0, registrationRequests: 0, activeStocktakes: 0, childCategories: 0 },
+    reasons: ["保管場所が存在しません。最新情報を再取得してください"],
+    warning: "削除すると発行済みの保管場所QRは利用できなくなります。",
+  };
+  const [stocks, registrationRequests, activeStocktakes] = await Promise.all([
+    tx.inventoryInstance.count({ where: { storageLocationId: sourceId } }),
+    tx.itemRegistrationRequest.count({ where: { storageLocationId: sourceId } }),
+    tx.stocktakeSession.count({ where: {
+      scopeType: "LOCATION", scopeValue: name, status: { in: [...activeStatuses] },
+    } }),
+  ]);
+  const counts = { items: 0, stocks, registrationRequests, activeStocktakes, childCategories: 0 };
+  const reasons = [
+    ...(stocks ? [`在庫明細が${stocks}件あります`] : []),
+    ...(registrationRequests ? [`登録申請が${registrationRequests}件参照しています`] : []),
+    ...(activeStocktakes ? [`進行中・確認中の棚卸が${activeStocktakes}件あります`] : []),
+  ];
+  return {
+    id: location.id, name, kind: "LOCATION",
+    counts, reasons, canDelete: reasons.length === 0,
+    warning: "削除すると発行済みの保管場所QRは利用できなくなります。使用中の場合は在庫明細を移動してから整理してください。",
+  };
+}
