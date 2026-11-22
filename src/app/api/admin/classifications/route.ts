@@ -1,4 +1,5 @@
 import {nextClassification} from "@/lib/classification-change";
+import { assessClassificationCleanup, assessLocationCleanup } from "@/lib/classification-cleanup";
 import {summarizeStock} from "@/lib/stock-state";
 import { renameClassificationMaster } from "@/lib/classification-links";
 import { ensureClassification, syncItemLinks } from "@/lib/item-links";
@@ -10,42 +11,47 @@ import { createAdminActionLog } from "@/lib/error-report";
 
 function text(value: unknown, max = 100) { return normalizeDisplayText(value, max); }
 
-async function mergeInventory(sourceLocationId: string, targetLocationId: string, actorId: string) {
+/** Reassign each individual stock without ever merging or deleting stocktake,
+ * stock history or marketplace records. Duplicate lots remain distinct. */
+async function mergeInventory(sourceLocationId: string, targetLocationId: string, actorId: string, reason: string) {
   return prisma.$transaction(async (tx) => {
-    const [from, to] = await Promise.all([tx.storageLocation.findUnique({ where: { id: sourceLocationId } }), tx.storageLocation.findUnique({ where: { id: targetLocationId } })]);
-    if (!from || !to) throw new Error("LOCATION_CHANGED");
-    const source = await tx.inventoryInstance.findMany({ where: { storageLocationId: sourceLocationId }, orderBy: { createdAt: "asc" } });
-    let moved = 0, consolidated = 0;
-    for (const inventory of source) {
-      const duplicate = await tx.inventoryInstance.findFirst({ where: { id: { not: inventory.id }, storageLocationId: targetLocationId, itemId: inventory.itemId, lotNo: inventory.lotNo, expirationDate: inventory.expirationDate } });
-      if (!duplicate) {
-        await tx.inventoryInstance.update({ where: { id: inventory.id }, data: { storageLocationId: targetLocationId } });
-        moved += 1;
-        continue;
-      }
-      const sourceTargets = await tx.stocktakeTarget.findMany({ where: { inventoryInstanceId: inventory.id } });
-      for (const row of sourceTargets) {
-        await tx.stocktakeTarget.upsert({ where: { sessionId_inventoryInstanceId: { sessionId: row.sessionId, inventoryInstanceId: duplicate.id } }, update: { expectedQuantity: { increment: row.expectedQuantity } }, create: { sessionId: row.sessionId, inventoryInstanceId: duplicate.id, expectedQuantity: row.expectedQuantity } });
-      }
-      const sourceRecords = await tx.stocktakeRecord.findMany({ where: { inventoryInstanceId: inventory.id } });
-      for (const row of sourceRecords) {
-        await tx.stocktakeRecord.upsert({ where: { sessionId_inventoryInstanceId: { sessionId: row.sessionId, inventoryInstanceId: duplicate.id } }, update: { countedQuantity: { increment: row.countedQuantity }, memo: "保管場所統合により棚卸記録を合算" }, create: { sessionId: row.sessionId, inventoryInstanceId: duplicate.id, countedQuantity: row.countedQuantity, memo: row.memo } });
-      }
-      await tx.stocktakeRecord.deleteMany({ where: { inventoryInstanceId: inventory.id } });
-      await tx.stocktakeTarget.deleteMany({ where: { inventoryInstanceId: inventory.id } });
-      await tx.inventoryHistory.updateMany({ where: { inventoryInstanceId: inventory.id }, data: { inventoryInstanceId: duplicate.id } });
-      await tx.inventoryEvent.updateMany({ where: { inventoryInstanceId: inventory.id }, data: { inventoryInstanceId: duplicate.id } });
-      await tx.marketplaceListing.updateMany({ where: { inventoryInstanceId: inventory.id }, data: { inventoryInstanceId: duplicate.id } });
-      await tx.inventoryInstance.update({ where: { id: duplicate.id }, data: { quantity: { increment: inventory.quantity }, actualQuantity: duplicate.actualQuantity === null || inventory.actualQuantity === null ? null : duplicate.actualQuantity + inventory.actualQuantity } });
-      await tx.inventoryEvent.create({ data: { inventoryInstanceId: duplicate.id, eventType: "TRANSFER_IN", quantityBefore: duplicate.quantity, quantityChange: inventory.quantity, quantityAfter: duplicate.quantity + inventory.quantity, reason: "保管場所統合", performedByUserId: actorId, detail: { mergedInventoryInstanceId: inventory.id, sourceLocationId, targetLocationId } } });
-      await tx.inventoryInstance.delete({ where: { id: inventory.id } });
-      consolidated += 1;
-    }
-    await tx.itemRegistrationRequest.updateMany({ where: { storageLocationId: sourceLocationId }, data: { storageLocationId: targetLocationId } });
-    await tx.stocktakeSession.updateMany({ where: { scopeType: "LOCATION", scopeValue: from.name, status: { in: ["IN_PROGRESS", "PAUSED", "REVIEW", "CONFLICT"] } }, data: { scopeValue: to.name, scopeLabel: to.name } });
+    const [from, to] = await Promise.all([
+      tx.storageLocation.findUnique({ where: { id: sourceLocationId } }),
+      tx.storageLocation.findUnique({ where: { id: targetLocationId } }),
+    ]);
+    if (!from || !to || from.id === to.id) throw new Error("LOCATION_CHANGED");
+    const migratedStocks = await tx.inventoryInstance.updateMany({
+      where: { storageLocationId: sourceLocationId },
+      data: { storageLocationId: targetLocationId },
+    });
+    const migratedRequests = await tx.itemRegistrationRequest.updateMany({
+      where: { storageLocationId: sourceLocationId },
+      data: { storageLocationId: targetLocationId },
+    });
+    const updatedSessions = await tx.stocktakeSession.updateMany({
+      where: {
+        scopeType: "LOCATION",
+        scopeValue: from.name,
+        status: { in: ["IN_PROGRESS", "PAUSED", "REVIEW", "CONFLICT"] },
+      },
+      data: { scopeValue: to.name, scopeLabel: to.name },
+    });
     await tx.storageLocation.delete({ where: { id: sourceLocationId } });
-    await tx.adminActionLog.create({ data: { adminUserId: actorId, action: "CLASSIFICATION_MERGE_LOCATION", route: "/admin/classifications", detail: { sourceLocationId, targetLocationId, moved, consolidated } } });
-    return { moved, consolidated };
+    await tx.adminActionLog.create({
+      data: {
+        adminUserId: actorId,
+        action: "CLASSIFICATION_MERGE_LOCATION",
+        route: "/admin/classifications",
+        detail: {
+          reason, sourceLocationId, sourceLocationName: from.name,
+          targetLocationId, targetLocationName: to.name,
+          moved: migratedStocks.count,
+          requests: migratedRequests.count, sessions: updatedSessions.count,
+          preservedInventoryInstances: true,
+        },
+      },
+    });
+    return { moved: migratedStocks.count, consolidated: 0, requests: migratedRequests.count };
   }, { timeout: 30_000, isolationLevel: "Serializable" });
 }
 
@@ -155,22 +161,60 @@ export async function POST(request: NextRequest) {
         await tx.adminActionLog.create({data:{adminUserId:auth.user!.id,action:"CLASSIFICATION_ASSIGN_ITEMS",route:"/admin/classifications",detail:{before:selected,after:selected.map(item=>({id:item.id,...nextClassification(item,{...(hasMajor?{majorCategory}:{}),...(hasMinor?{minorCategory}:{}),keepMinorCategory:body.keepMinorCategory===true})}))}}});
         return { updatedItems: selected.length, requestedItems: itemIds.length };
       },{isolationLevel:"Serializable"});
-    } else if (action === "DELETE_CLASSIFICATION") {
-      const used = kind === "MAJOR" ? await prisma.item.count({ where: { majorCategory: source } }) : await prisma.item.count({ where: { minorCategory: source, ...(parentName ? { majorCategory: parentName } : {}) } });
-      if (used > 0) return NextResponse.json({ code: "CLASSIFICATION_IN_USE", message: `${used}件の商品が使用中です。削除ではなく統合または移動を実行してください。` }, { status: 409 });
-      result = await prisma.classification.deleteMany({ where: { kind, name: source, ...(kind === "MINOR" ? { parentName } : {}) } });
-    } else if (action === "DELETE_LOCATION") {
+    } else if (action === "PREVIEW_DELETE_CLASSIFICATION" || action === "DELETE_CLASSIFICATION") {
+      if (!["MAJOR", "MINOR"].includes(kind) || !source || (kind === "MINOR" && !parentName)) {
+        return NextResponse.json({ code: "CLASSIFICATION_INPUT_INVALID", message: "削除する分類と親分類を指定してください。" }, { status: 400 });
+      }
+      if (action === "PREVIEW_DELETE_CLASSIFICATION") {
+        const assessment = await prisma.$transaction(
+          tx => assessClassificationCleanup(tx, kind as "MAJOR" | "MINOR", source, parentName),
+          { isolationLevel: "RepeatableRead" },
+        );
+        return NextResponse.json({ code: "CLASSIFICATION_DELETE_PREVIEW", assessment });
+      }
+      if (body.confirmName !== source || typeof body.expectedId !== "string") {
+        return NextResponse.json({ code: "CLASSIFICATION_DELETE_CONFIRM_REQUIRED", message: "削除対象の名前を確認し、確認画面から実行してください。" }, { status: 400 });
+      }
+      const deletion = await prisma.$transaction(async tx => {
+        const assessment = await assessClassificationCleanup(tx, kind as "MAJOR" | "MINOR", source, parentName);
+        if (!assessment.canDelete) return { deleted: false, assessment };
+        if (body.expectedId !== assessment.id) throw new Error("CLASSIFICATION_ITEMS_CHANGED");
+        await tx.classification.delete({ where: { id: assessment.id! } });
+        await tx.adminActionLog.create({ data: {
+          adminUserId: auth.user!.id,
+          action: "CLASSIFICATION_DELETE_CLASSIFICATION",
+          route: "/admin/classifications",
+          detail: { kind, name: source, parentName, reason: text(body.reason, 500), assessment },
+        } });
+        return { deleted: true, assessment };
+      }, { isolationLevel: "Serializable" });
+      if (!deletion.deleted) return NextResponse.json({ code: "CLASSIFICATION_IN_USE", message: "商品・在庫・登録申請・棚卸・子分類で使用されています。先に統合・移動してください。", assessment: deletion.assessment }, { status: 409 });
+      return NextResponse.json({ code: "CLASSIFICATION_DELETE_OK", message: `分類「${source}」を削除しました。商品・在庫・棚卸履歴は変更していません。`, result: deletion });
+    } else if (action === "PREVIEW_DELETE_LOCATION" || action === "DELETE_LOCATION") {
       const sourceId = text(body.sourceId);
       if (!sourceId) return NextResponse.json({ code: "LOCATION_INPUT_INVALID", message: "削除する保管場所を指定してください。" }, { status: 400 });
-      const location = await prisma.storageLocation.findUnique({ where: { id: sourceId }, select: { id: true, name: true } });
-      if (!location) return NextResponse.json({ code: "LOCATION_NOT_FOUND", message: "保管場所が見つかりません。" }, { status: 404 });
-      const [inventoryCount, requestCount, activeSessionCount] = await Promise.all([
-        prisma.inventoryInstance.count({ where: { storageLocationId: sourceId } }),
-        prisma.itemRegistrationRequest.count({ where: { storageLocationId: sourceId } }),
-        prisma.stocktakeSession.count({ where: { scopeType: "LOCATION", scopeValue: location.name, status: { in: ["IN_PROGRESS", "PAUSED", "REVIEW", "CONFLICT"] } } }),
-      ]);
-      if (inventoryCount || requestCount || activeSessionCount) return NextResponse.json({ code: "LOCATION_IN_USE", message: "在庫・商品登録・棚卸で使用中のため削除できません。先に移動または統合してください。" }, { status: 409 });
-      result = await prisma.storageLocation.delete({ where: { id: sourceId } });
+      if (action === "PREVIEW_DELETE_LOCATION") {
+        const assessment = await prisma.$transaction(tx => assessLocationCleanup(tx, sourceId), { isolationLevel: "RepeatableRead" });
+        return NextResponse.json({ code: "LOCATION_DELETE_PREVIEW", assessment });
+      }
+      if (typeof body.expectedId !== "string" || typeof body.confirmName !== "string") {
+        return NextResponse.json({ code: "LOCATION_DELETE_CONFIRM_REQUIRED", message: "削除対象の名前を確認し、確認画面から実行してください。" }, { status: 400 });
+      }
+      const deletion = await prisma.$transaction(async tx => {
+        const assessment = await assessLocationCleanup(tx, sourceId);
+        if (!assessment.canDelete) return { deleted: false, assessment };
+        if (body.expectedId !== assessment.id || body.confirmName !== assessment.name) throw new Error("LOCATION_CHANGED");
+        await tx.storageLocation.delete({ where: { id: sourceId } });
+        await tx.adminActionLog.create({ data: {
+          adminUserId: auth.user!.id,
+          action: "CLASSIFICATION_DELETE_LOCATION",
+          route: "/admin/classifications",
+          detail: { sourceId, name: assessment.name, reason: text(body.reason, 500), assessment },
+        } });
+        return { deleted: true, assessment };
+      }, { isolationLevel: "Serializable" });
+      if (!deletion.deleted) return NextResponse.json({ code: "LOCATION_IN_USE", message: "在庫・登録申請・棚卸で使用中です。先に移動してから削除してください。", assessment: deletion.assessment }, { status: 409 });
+      return NextResponse.json({ code: "LOCATION_DELETE_OK", message: `保管場所「${deletion.assessment.name}」を削除しました。在庫・棚卸履歴は変更していません。`, result: deletion });
     } else if (action === "CREATE_LOCATION") {
       if (!name) return NextResponse.json({ code: "LOCATION_NAME_REQUIRED", message: "保管場所名を入力してください。" }, { status: 400 });
       result = await prisma.storageLocation.upsert({ where: { name }, update: { description: text(body.description, 500) || null }, create: { name, description: text(body.description, 500) || null } });
@@ -180,7 +224,7 @@ export async function POST(request: NextRequest) {
       result = await prisma.$transaction([prisma.storageLocation.update({ where: { id: sourceId }, data: { name: target, description: text(body.description, 500) || before.description } }), prisma.stocktakeSession.updateMany({ where: { scopeType: "LOCATION", scopeValue: before.name, status: { in: ["IN_PROGRESS", "PAUSED", "REVIEW", "CONFLICT"] } }, data: { scopeValue: target, scopeLabel: target } })]);
     } else if (action === "MERGE_LOCATION") {
       const sourceId = text(body.sourceId), targetId = text(body.targetId); if (!sourceId || !targetId || sourceId === targetId) return NextResponse.json({ code: "LOCATION_MERGE_INVALID", message: "異なる統合元と統合先を指定してください。" }, { status: 400 });
-      result = await mergeInventory(sourceId, targetId, auth.user.id);
+      result = await mergeInventory(sourceId, targetId, auth.user.id, text(body.reason, 500));
     } else return NextResponse.json({ code: "CLASSIFICATION_ACTION_INVALID", message: "編集操作が正しくありません。" }, { status: 400 });
     if (action !== "MERGE_LOCATION" && action !== "ASSIGN_ITEMS") await createAdminActionLog({ adminUserId: auth.user.id, action: `CLASSIFICATION_${action}`, route: "/admin/classifications", detail: { kind, name, parentName, source, target, targetParent, result: result as never } });
     return NextResponse.json({ code: "CLASSIFICATION_UPDATE_OK", message: "分類・在庫・棚卸範囲を更新し、操作履歴へ記録しました。", result });
