@@ -77,8 +77,10 @@ export async function GET(request: NextRequest) {
     // A child of a retired major is also inactive for new assignments,
     // without needing to rewrite the child master or any historical product.
     for(const row of rows){
-      if(row.kind==="MINOR" && !row.retiredAt && retiredMajors.has(row.parentName))
+      if(row.kind==="MINOR" && !row.retiredAt && retiredMajors.has(row.parentName)){
         row.retiredAt=retiredMajors.get(row.parentName)!;
+        row.retiredViaParent=true;
+      }
     }
     return NextResponse.json({ classifications: rows, locations, items: items.filter(item=>!item.isArchived).map((item) => ({ id: item.id, name: item.name, managementCode:item.managementCode, inventoryInstances:item.inventoryInstances, janCode: item.janCode, systemBarcode: item.systemBarcode, majorCategory: item.majorCategory, minorCategory: item.minorCategory, inventoryCount: item._count.inventoryInstances, quantityLabel:summarizeStock(item.inventoryInstances,item.defaultUnit).map(row=>row.quantity+" "+row.unit).join(" ／ "), totalQuantity: item.inventoryInstances.reduce((sum, row) => sum + row.quantity, 0) })) });
   } catch (error) { console.error("GET classifications", error); return NextResponse.json({ code: "CLASSIFICATION_LIST_FAILED", message: "分類・保管場所を取得できませんでした。", action: "自動再読込後も解決しない場合はシステム点検を実行してください。" }, { status: 500 }); }
