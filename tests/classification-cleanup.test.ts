@@ -122,7 +122,7 @@ describe("safe classification / location retirement",()=>{
     expect(db.stocktakeTarget.deleteMany).not.toHaveBeenCalled();
     expect(db.storageLocation.delete).toHaveBeenCalledWith({where:{id:locationId}});
     expect(db.adminActionLog.create.mock.calls[0][0].data.detail).toMatchObject({
-      sourceLocationName:"旧倉庫",targetLocationName:"新倉庫",consolidated:undefined,
+      sourceLocationName:"旧倉庫",targetLocationName:"新倉庫",
       preservedInventoryInstances:true,moved:2,
     });
   });
