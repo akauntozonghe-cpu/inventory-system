@@ -66,7 +66,7 @@ describe("safe classification / location retirement",()=>{
     ["a pending registration",()=>db.itemRegistrationRequest.count.mockResolvedValue(3)],
     ["an active stocktake",()=>db.stocktakeSession.count.mockResolvedValue(1)],
     ["a child category",()=>db.classification.count.mockResolvedValue(1)],
-  ])("blocks deletion if referenced by %s",async(_,prepare)=>{
+  ] as const)("blocks deletion if referenced by %s",async(_,prepare)=>{
     prepare();
     const response=await post({action:"DELETE_CLASSIFICATION",...classification,
       expectedId:"cat-1",confirmName:"食品",reason:"不要な分類を整理"});
