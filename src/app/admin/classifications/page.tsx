@@ -320,7 +320,7 @@ export default function ClassificationsPage() {
       <h2 id="classification-delete-review" className="text-xl font-black text-slate-950">分類・保管場所の削除確認</h2>
       {cleanupIssue&&<p role="alert" className="mt-3 rounded-xl border border-amber-300 bg-amber-50 p-3 text-sm font-bold text-amber-950">
         {cleanupIssue} 下記の使用件数と商品を確認して、この画面から整理できます。
-      </p>
+      </p>}
       <p className="mt-2 rounded-xl bg-slate-100 p-3 font-black">
         {cleanup.assessment.kind==="LOCATION"?"保管場所":cleanup.assessment.kind==="MAJOR"?"大分類":"小分類"}：
         {cleanup.assessment.name}
