@@ -122,7 +122,7 @@ export async function POST(request: NextRequest) {
           const parent=await tx.classification.findUnique({where:{kind_name_parentName:{
             kind:"MAJOR",name:parentName,parentName:"",
           }}});
-          if(parent?.retiredAt) throw new Error("CLASSIFICATION_RETIRED_USE_RESTORE");
+          if(!parent || parent.retiredAt) throw new Error("CLASSIFICATION_PARENT_NOT_ACTIVE");
         }
         await ensureClassification(tx, kind === "MAJOR" ? name : parentName, kind === "MINOR" ? name : null);
         return { created: true };
