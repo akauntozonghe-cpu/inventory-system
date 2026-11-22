@@ -3,6 +3,7 @@ import AppHeader from "@/components/layout/AppHeader";
 import Modal from "./Modal";
 import { setUnsavedWork } from "@/lib/navigation-draft";
 import { canGoBack,installNavigationHistory } from "@/lib/navigation-history";
+import { classificationReturnTo } from "@/lib/classification-workspace";
 import { usePathname,useRouter } from "next/navigation";
 import { useEffect,useLayoutEffect,useRef,useState } from "react";
 import { pageParent,publicPage } from "@/lib/page-flow";
@@ -17,7 +18,20 @@ export default function PageNavigation(){
   const input=(event:Event)=>{const element=event.target as HTMLInputElement;if(element.closest("form[data-guard-unsaved]")&&element.type!=="search"){dirty.current=true;setUnsavedWork(true);}};
   const draft=(event:Event)=>{dirty.current=Boolean((event as CustomEvent).detail?.dirty);setUnsavedWork(dirty.current);};
   const click=(event:MouseEvent)=>{const link=(event.target as Element)?.closest?.("a[href]") as HTMLAnchorElement|null;if(!link||event.defaultPrevented||event.button!==0||link.target==="_blank"||link.origin!==location.origin||(link.pathname===location.pathname&&link.search===location.search)||event.ctrlKey||event.metaKey||event.shiftKey||event.altKey)return;if(dirty.current){event.preventDefault();event.stopPropagation();window.dispatchEvent(new Event("inventory:close-menu"));setDestination(link.pathname+link.search+link.hash);}};
-  const back=(event:Event)=>{const fallback=(event as CustomEvent).detail?.fallback??parent.href;if(canGoBack())router.back();else if(dirty.current)setDestination(fallback);else{void leaveCurrentStocktakes().catch(()=>{});router.push(fallback);}};
+  const back=(event:Event)=>{
+    const fallback=(event as CustomEvent).detail?.fallback??parent.href;
+    // A page opened from classification management returns to its actual
+    // workspace, even after reload or unrelated browser history entries.
+    const origin=pathname.startsWith("/items/")
+      ? classificationReturnTo(new URLSearchParams(window.location.search).get("returnTo"))
+      : null;
+    if(origin){
+      if(dirty.current)setDestination(origin);
+      else{void leaveCurrentStocktakes().catch(()=>{});router.push(origin);}
+    }else if(canGoBack())router.back();
+    else if(dirty.current)setDestination(fallback);
+    else{void leaveCurrentStocktakes().catch(()=>{});router.push(fallback);}
+  };
   const before=(event:BeforeUnloadEvent)=>{if(dirty.current){event.preventDefault();event.returnValue="";}};
   document.addEventListener("input",input);document.addEventListener("click",click,true);window.addEventListener("inventory:draft",draft);window.addEventListener("inventory:back",back);window.addEventListener("beforeunload",before);
   return()=>{document.removeEventListener("input",input);document.removeEventListener("click",click,true);window.removeEventListener("inventory:draft",draft);window.removeEventListener("inventory:back",back);window.removeEventListener("beforeunload",before);};
