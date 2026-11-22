@@ -32,6 +32,7 @@ export type ClassificationUsageRow = {
   archivedItemCount: number;
   retiredAt?: Date | null;
   retirementReason?: string | null;
+  retiredViaParent?: boolean;
   linkedItems: Array<{id:string;name:string;isArchived:boolean}>;
 };
 
