@@ -17,6 +17,8 @@ export type ClassificationUsageMaster = {
   name: string;
   parentName: string;
   labelCode?: string | null;
+  retiredAt?: Date | null;
+  retirementReason?: string | null;
 };
 
 export type ClassificationUsageRow = {
@@ -28,6 +30,8 @@ export type ClassificationUsageRow = {
   itemCount: number;
   inventoryCount: number;
   archivedItemCount: number;
+  retiredAt?: Date | null;
+  retirementReason?: string | null;
   linkedItems: Array<{id:string;name:string;isArchived:boolean}>;
 };
 
