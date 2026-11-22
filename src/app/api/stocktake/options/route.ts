@@ -11,7 +11,7 @@ export async function GET(request: NextRequest) {
   if (!getLoggedInUser(request)) return NextResponse.json({ message: "ログイン情報を確認できませんでした。" }, { status: 401 });
   try {
     const [locations, inventories, masters, items] = await Promise.all([
-      prisma.storageLocation.findMany({ select: { id: true, name: true }, orderBy: { name: "asc" } }),
+      prisma.storageLocation.findMany({ where:{retiredAt:null}, select: { id: true, name: true }, orderBy: { name: "asc" } }),
       prisma.inventoryInstance.findMany({ select: { unit: true }, distinct: ["unit"] }),
       prisma.classification.findMany({ select: { kind: true, name: true, parentName: true, retiredAt: true } }),
       prisma.item.findMany({ where: { isArchived: false }, select: { majorCategory: true, minorCategory: true, defaultUnit: true } }),
