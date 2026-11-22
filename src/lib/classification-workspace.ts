@@ -31,8 +31,8 @@ export function classificationReturnTo(value: string | null | undefined): string
   } catch { return null; }
 }
 
-export function classificationItemHref(itemId: string, inventoryId?: string) {
-  const params = new URLSearchParams({returnTo:"/admin/classifications?view=ITEMS"});
+export function classificationItemHref(itemId: string, inventoryId?: string, view: ClassificationView = "ITEMS") {
+  const params = new URLSearchParams({returnTo:`/admin/classifications?view=${view}`});
   if (inventoryId) params.set("inventoryId", inventoryId);
   return `/items/${encodeURIComponent(itemId)}?${params.toString()}`;
 }
