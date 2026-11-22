@@ -15,6 +15,7 @@ import { updateDeviceBadge } from "@/lib/device-badge";
 import { leaveCurrentStocktakes } from "@/hooks/useStocktakePresence";
 import { detachDevicePush } from "@/lib/device-push-client";
 import { hasUnsavedWork } from "@/lib/navigation-draft";
+import { CLASSIFICATION_WORKSPACE_KEY } from "@/lib/classification-workspace";
 
 
 export default function AppHeader({parent}:{parent:{href:string;label:string}}) {
@@ -36,7 +37,7 @@ export default function AppHeader({parent}:{parent:{href:string;label:string}}) 
   const logout=async()=>{
     if(hasUnsavedWork()&&!window.confirm("未保存の入力があります。保存せずにログアウトしますか？"))return;
     setBusy(true);
-    try{await leaveCurrentStocktakes();await detachDevicePush();const response=await fetchFresh("/api/auth/logout",{method:"POST"});if(!response.ok)throw new Error("LOGOUT_FAILED");void updateDeviceBadge(0);sessionStorage.removeItem("inventory:recovery-return");router.replace("/login");router.refresh();}
+    try{await leaveCurrentStocktakes();await detachDevicePush();const response=await fetchFresh("/api/auth/logout",{method:"POST"});if(!response.ok)throw new Error("LOGOUT_FAILED");void updateDeviceBadge(0);sessionStorage.removeItem("inventory:recovery-return");sessionStorage.removeItem(CLASSIFICATION_WORKSPACE_KEY);router.replace("/login");router.refresh();}
     finally{setBusy(false);}
   };
   return <header className="sticky top-0 z-[60] border-b border-slate-200 bg-white/95 text-slate-950 shadow-sm backdrop-blur print:hidden">
