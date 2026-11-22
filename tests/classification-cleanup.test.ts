@@ -5,7 +5,7 @@ const db=vi.hoisted(()=>({
   $transaction:vi.fn(),
   classification:{findUnique:vi.fn(),count:vi.fn(),delete:vi.fn(),upsert:vi.fn()},
   item:{count:vi.fn(),findMany:vi.fn(),updateMany:vi.fn()},
-  inventoryInstance:{count:vi.fn(),updateMany:vi.fn(),delete:vi.fn()},
+  inventoryInstance:{count:vi.fn(),findMany:vi.fn(),updateMany:vi.fn(),delete:vi.fn()},
   itemRegistrationRequest:{count:vi.fn(),updateMany:vi.fn()},
   stocktakeSession:{count:vi.fn(),updateMany:vi.fn()},
   storageLocation:{findUnique:vi.fn(),delete:vi.fn()},
@@ -34,6 +34,7 @@ beforeEach(()=>{
   db.item.findMany.mockResolvedValue([]);
   db.item.updateMany.mockResolvedValue({count:1});
   db.inventoryInstance.count.mockResolvedValue(0);
+  db.inventoryInstance.findMany.mockResolvedValue([]);
   db.itemRegistrationRequest.count.mockResolvedValue(0);
   db.stocktakeSession.count.mockResolvedValue(0);
   db.storageLocation.findUnique.mockImplementation(async ({where}:{where:{id:string}})=>where.id===locationId
@@ -78,6 +79,63 @@ describe("safe classification / location retirement",()=>{
     expect(db.classification.delete).not.toHaveBeenCalled();
     expect(db.adminActionLog.create).not.toHaveBeenCalled();
   });
+  it("allows deletion when item registration is zero but historical approved/rejected requests still store the old category name",async()=>{
+    db.itemRegistrationRequest.count.mockImplementation(async ({where}:{where:{status?:string}})=>
+      where.status==="PENDING"?0:7);
+    const preview=await (await post({action:"PREVIEW_DELETE_CLASSIFICATION",...classification})).json();
+    expect(preview.assessment).toMatchObject({
+      canDelete:true,counts:{items:0,stocks:0,registrationRequests:7,
+        pendingRegistrationRequests:0,historicalRegistrationRequests:7},
+    });
+    expect(preview.assessment.reasons).toEqual([]);
+    const response=await post({action:"DELETE_CLASSIFICATION",...classification,
+      expectedId:"cat-1",confirmName:"食品",reason:"分類名を統合したため"});
+    expect(response.status).toBe(200);
+    expect(db.classification.delete).toHaveBeenCalledWith({where:{id:"cat-1"}});
+    // Existing records use literal category strings and must remain unchanged.
+    expect(db.itemRegistrationRequest.updateMany).not.toHaveBeenCalled();
+    expect(db.inventoryInstance.updateMany).not.toHaveBeenCalled();
+  });
+
+  it("allows deletion with only soft-deleted stock rows and preserves their category history",async()=>{
+    db.inventoryInstance.count.mockImplementation(async ({where}:{where:{AND?:unknown[]}})=>
+      where.AND?0:4);
+    const response=await post({action:"DELETE_CLASSIFICATION",...classification,
+      expectedId:"cat-1",confirmName:"食品",reason:"統合後にマスタを整理"});
+    expect(response.status).toBe(200);
+    const history=(await response.json()).result.assessment;
+    expect(history.counts).toMatchObject({stocks:4,activeStocks:0,archivedStocks:4,items:0});
+    expect(db.inventoryInstance.updateMany).not.toHaveBeenCalled();
+    expect(db.inventoryInstance.delete).not.toHaveBeenCalled();
+  });
+
+  it("shows active per-lot category references even when the linked product count is zero",async()=>{
+    db.inventoryInstance.count.mockImplementation(async ({where}:{where:{AND?:unknown[],quantity?:{gt:number}}})=>
+      where.quantity?.gt===0?1:where.AND?1:1);
+    db.inventoryInstance.findMany.mockResolvedValue([{
+      id:"lot-123",itemId:"item-5",lotNo:"LOT",quantity:2,item:{name:"別分類の商品"},
+    }]);
+    const response=await post({action:"PREVIEW_DELETE_CLASSIFICATION",...classification});
+    const data=await response.json();
+    expect(data.assessment).toMatchObject({
+      canDelete:false,counts:{items:0,stocks:1,activeStocks:1},
+      linkedStocks:[{id:"lot-123",itemId:"item-5",itemName:"別分類の商品",quantity:2}],
+    });
+    expect(data.assessment.reasons.join(" ")).toContain("在庫明細");
+  });
+
+  it("blocks deletion when pending requests remain even though completed history is harmless",async()=>{
+    db.itemRegistrationRequest.count.mockImplementation(async ({where}:{where:{status?:string}})=>
+      where.status==="PENDING"?1:5);
+    const response=await post({action:"DELETE_CLASSIFICATION",...classification,
+      expectedId:"cat-1",confirmName:"食品",reason:"分類を整理"});
+    expect(response.status).toBe(409);
+    expect((await response.json()).assessment.counts).toMatchObject({
+      pendingRegistrationRequests:1,historicalRegistrationRequests:4,
+    });
+    expect(db.classification.delete).not.toHaveBeenCalled();
+  });
+
   it("requires confirmation and checks the master identity",async()=>{
     expect((await post({action:"DELETE_CLASSIFICATION",...classification})).status).toBe(400);
     expect((await post({action:"DELETE_CLASSIFICATION",...classification,
