@@ -11,6 +11,17 @@ import { prisma } from "@/lib/prisma";
 import { createAdminActionLog } from "@/lib/error-report";
 
 function text(value: unknown, max = 100) { return normalizeDisplayText(value, max); }
+/**
+ * Identity of an EXISTING record is an exact database key. Converting the
+ * old name "フリマ３" to "フリマ3" before lookup can delete the wrong master,
+ * fail to delete the chosen master, or move an unintended set of products.
+ * Normalize only newly entered destination names.
+ */
+function existingName(value:unknown,max=100){
+  if(typeof value!=="string")return "";
+  const raw=value.slice(0,max);
+  return raw.trim()?raw:"";
+}
 
 /** Reassign each individual stock without ever merging or deleting stocktake,
  * stock history or marketplace records. Duplicate lots remain distinct. */
@@ -90,7 +101,12 @@ export async function POST(request: NextRequest) {
   const auth = requireAdmin(request); if (auth.response || !auth.user) return auth.response;
   try {
     const body = await request.json() as Record<string, unknown>;
-    const action = text(body.action, 40), kind = text(body.kind, 20), name = text(body.name), parentName = text(body.parentName), source = text(body.source), target = text(body.target), targetParent = text(body.targetParent);
+    const action = text(body.action, 40), kind = text(body.kind, 20),
+      name = text(body.name),
+      parentName = existingName(body.parentName),
+      source = existingName(body.source),
+      target = text(body.target),
+      targetParent = existingName(body.targetParent);
     let result: unknown;
     if (action === "CREATE_CLASSIFICATION") {
       if (!["MAJOR", "MINOR"].includes(kind) || !name || (kind === "MINOR" && !parentName)) return NextResponse.json({ code: "CLASSIFICATION_INPUT_INVALID", message: "分類名と親分類を確認してください。" }, { status: 400 });
