@@ -146,6 +146,10 @@ model Classification {
   parentName String   @default("")
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
+  // 廃止は参照元の商品の分類名・在庫・棚卸履歴を変更しない
+  retiredAt DateTime?
+  retirementReason String?
+  retiredByUserId String?
   labelAliases ClassificationLabelAlias[]
 
   @@unique([kind, name, parentName])
