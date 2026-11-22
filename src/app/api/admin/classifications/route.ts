@@ -66,19 +66,31 @@ export async function GET(request: NextRequest) {
   try {
     const [masters, items, locations] = await prisma.$transaction(tx=>Promise.all([
       tx.classification.findMany({ orderBy: [{ kind: "asc" }, { parentName: "asc" }, { name: "asc" }] }),
-      tx.item.findMany({ where: { isArchived: false }, orderBy: { name: "asc" }, select: { id: true, name: true, janCode: true, systemBarcode: true, majorCategory: true, minorCategory: true, managementCode:true, defaultUnit:true, inventoryInstances: { select: { id:true, quantity: true, unit:true, storageLocationId:true } }, _count: { select: { inventoryInstances: true } } } }),
+      tx.item.findMany({ orderBy: { name: "asc" }, select: { id: true, name: true, isArchived:true, janCode: true, systemBarcode: true, majorCategory: true, minorCategory: true, managementCode:true, defaultUnit:true, inventoryInstances: { select: { id:true, quantity: true, unit:true, storageLocationId:true } }, _count: { select: { inventoryInstances: true } } } }),
       tx.storageLocation.findMany({ orderBy: { name: "asc" }, include: { _count: { select: { inventories: true, itemRegistrationRequests: true } } } }),
     ]),{isolationLevel:"RepeatableRead"});
-    const usage = new Map<string, { itemCount: number; inventoryCount: number }>();
+    // Count the same product references used by delete preflight, including
+    // archived products. The ordinary product edit list remains active-only.
+    // Inventory rows and physical quantity are NOT interchangeable.
+    const usage = new Map<string, { itemCount: number; inventoryCount: number; archivedItemCount: number }>();
     for (const item of items) {
-      if (item.majorCategory) { const key = `MAJOR::${item.majorCategory}`; const row = usage.get(key) ?? { itemCount: 0, inventoryCount: 0 }; row.itemCount += 1; row.inventoryCount += item._count.inventoryInstances; usage.set(key, row); }
-      if (item.minorCategory) { const key = `MINOR:${item.majorCategory ?? ""}:${item.minorCategory}`; const row = usage.get(key) ?? { itemCount: 0, inventoryCount: 0 }; row.itemCount += 1; row.inventoryCount += item._count.inventoryInstances; usage.set(key, row); }
+      const keys = [
+        item.majorCategory ? `MAJOR::${item.majorCategory}` : null,
+        item.minorCategory ? `MINOR:${item.majorCategory ?? ""}:${item.minorCategory}` : null,
+      ].filter((key):key is string=>Boolean(key));
+      for (const key of keys) {
+        const row = usage.get(key) ?? { itemCount: 0, inventoryCount: 0, archivedItemCount: 0 };
+        row.itemCount += 1;
+        row.archivedItemCount += item.isArchived ? 1 : 0;
+        row.inventoryCount += item._count.inventoryInstances;
+        usage.set(key, row);
+      }
     }
     const derived = Array.from(usage).map(([key, counts]) => { const [kind, parentName, ...nameParts] = key.split(":"); return { id: `derived-${key}`, kind, parentName: kind === "MAJOR" ? "" : parentName, name: nameParts.join(":"), ...counts }; });
-    const rows = new Map<string, { id: string; labelCode?: string; kind: string; name: string; parentName: string; itemCount: number; inventoryCount: number }>();
-    for (const row of masters) rows.set(`${row.kind}:${row.parentName}:${row.name}`, { ...row, itemCount: 0, inventoryCount: 0 });
+    const rows = new Map<string, { id: string; labelCode?: string; kind: string; name: string; parentName: string; itemCount: number; inventoryCount: number; archivedItemCount:number }>();
+    for (const row of masters) rows.set(`${row.kind}:${row.parentName}:${row.name}`, { ...row, itemCount: 0, inventoryCount: 0, archivedItemCount: 0 });
     for (const row of derived) rows.set(`${row.kind}:${row.parentName}:${row.name}`, { ...(rows.get(`${row.kind}:${row.parentName}:${row.name}`) ?? row), itemCount: row.itemCount, inventoryCount: row.inventoryCount });
-    return NextResponse.json({ classifications: Array.from(rows.values()), locations, items: items.map((item) => ({ id: item.id, name: item.name, managementCode:item.managementCode, inventoryInstances:item.inventoryInstances, janCode: item.janCode, systemBarcode: item.systemBarcode, majorCategory: item.majorCategory, minorCategory: item.minorCategory, inventoryCount: item._count.inventoryInstances, quantityLabel:summarizeStock(item.inventoryInstances,item.defaultUnit).map(row=>row.quantity+" "+row.unit).join(" ／ "), totalQuantity: item.inventoryInstances.reduce((sum, row) => sum + row.quantity, 0) })) });
+    return NextResponse.json({ classifications: Array.from(rows.values()), locations, items: items.filter(item=>!item.isArchived).map((item) => ({ id: item.id, name: item.name, managementCode:item.managementCode, inventoryInstances:item.inventoryInstances, janCode: item.janCode, systemBarcode: item.systemBarcode, majorCategory: item.majorCategory, minorCategory: item.minorCategory, inventoryCount: item._count.inventoryInstances, quantityLabel:summarizeStock(item.inventoryInstances,item.defaultUnit).map(row=>row.quantity+" "+row.unit).join(" ／ "), totalQuantity: item.inventoryInstances.reduce((sum, row) => sum + row.quantity, 0) })) });
   } catch (error) { console.error("GET classifications", error); return NextResponse.json({ code: "CLASSIFICATION_LIST_FAILED", message: "分類・保管場所を取得できませんでした。", action: "自動再読込後も解決しない場合はシステム点検を実行してください。" }, { status: 500 }); }
 }
 
