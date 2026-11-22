@@ -11,6 +11,7 @@ import { prisma } from "@/lib/prisma";
 import { createAdminActionLog } from "@/lib/error-report";
 
 function text(value: unknown, max = 100) { return normalizeDisplayText(value, max); }
+const classificationKey=(value:string)=>value.normalize("NFKC").trim().toLocaleLowerCase("ja");
 /**
  * Identity of an EXISTING record is an exact database key. Converting the
  * old name "フリマ３" to "フリマ3" before lookup can delete the wrong master,
@@ -115,6 +116,8 @@ export async function POST(request: NextRequest) {
           kind,name,parentName:kind==="MAJOR"?"":parentName,
         }}});
         if(previous?.retiredAt) throw new Error("CLASSIFICATION_RETIRED_USE_RESTORE");
+        const siblings=await tx.classification.findMany({where:{kind,parentName:kind==="MAJOR"?"":parentName},select:{name:true}});
+        if(siblings.some(row=>classificationKey(row.name)===classificationKey(name))) throw new Error("CLASSIFICATION_DUPLICATE_NORMALIZED");
         if(kind==="MINOR") {
           const parent=await tx.classification.findUnique({where:{kind_name_parentName:{
             kind:"MAJOR",name:parentName,parentName:"",
@@ -135,6 +138,10 @@ export async function POST(request: NextRequest) {
         if(editMode==="MERGE" && (!destination || (source===target && (kind==="MAJOR" || parentName===(targetParent||parentName))))) throw new Error("CLASSIFICATION_MERGE_TARGET_REQUIRED");
         if(editMode==="MERGE" && text(body.reason,500).length<2) throw new Error("CLASSIFICATION_MERGE_REASON_REQUIRED");
         if(editMode==="RENAME" && destination && (source!==target || (kind==="MINOR" && parentName!==(targetParent||parentName)))) throw new Error("CLASSIFICATION_RENAME_DUPLICATE");
+        if(editMode==="RENAME"){
+          const siblings=await tx.classification.findMany({where:{kind,parentName:kind==="MAJOR"?"":targetParent||parentName},select:{name:true,parentName:true}});
+          if(siblings.some(row=>classificationKey(row.name)===classificationKey(target) && !(row.name===source && row.parentName===(kind==="MAJOR"?"":parentName)))) throw new Error("CLASSIFICATION_DUPLICATE_NORMALIZED");
+        }
         if(kind==="MINOR"){
           const nextParent=await tx.classification.findUnique({where:{kind_name_parentName:{kind:"MAJOR",name:targetParent||parentName,parentName:""}}});
           if(!nextParent || nextParent.retiredAt)throw new Error("CLASSIFICATION_PARENT_NOT_ACTIVE");
@@ -462,13 +469,14 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({code:"LOCATION_RETIRED_USE_RESTORE",
         message:"同名の保管場所は廃止済みです。廃止済み一覧から復元してください。"},
         {status:409});
-    if(error instanceof Error && ["CLASSIFICATION_MERGE_TARGET_REQUIRED","CLASSIFICATION_MERGE_REASON_REQUIRED","CLASSIFICATION_RENAME_DUPLICATE","CLASSIFICATION_PARENT_NOT_ACTIVE","CLASSIFICATION_TARGET_NOT_ACTIVE"].includes(error.message)){
+    if(error instanceof Error && ["CLASSIFICATION_MERGE_TARGET_REQUIRED","CLASSIFICATION_MERGE_REASON_REQUIRED","CLASSIFICATION_RENAME_DUPLICATE","CLASSIFICATION_PARENT_NOT_ACTIVE","CLASSIFICATION_TARGET_NOT_ACTIVE","CLASSIFICATION_DUPLICATE_NORMALIZED"].includes(error.message)){
       const messages:Record<string,string>={
         CLASSIFICATION_MERGE_TARGET_REQUIRED:"統合先は登録済みの別の有効な分類から選択してください。",
         CLASSIFICATION_MERGE_REASON_REQUIRED:"統合理由を2文字以上で入力してください。",
         CLASSIFICATION_RENAME_DUPLICATE:"同名の分類が既にあります。名称変更ではなく統合先を選択してください。",
         CLASSIFICATION_PARENT_NOT_ACTIVE:"有効な親の大分類を選択してください。",
         CLASSIFICATION_TARGET_NOT_ACTIVE:"変更先は登録済みの有効な分類から選択してください。",
+        CLASSIFICATION_DUPLICATE_NORMALIZED:"全角・半角などの表記を統一すると同じ分類が既にあります。既存分類を選択してください。",
       };
       return NextResponse.json({code:error.message,message:messages[error.message]},{status:409});
     }
