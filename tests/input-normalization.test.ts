@@ -6,6 +6,16 @@ describe("input normalization", () => {
     expect(normalizeDisplayText("  ＡＢＣ　 商品  ", 100)).toBe("ABC 商品");
   });
 
+  it("uses half-width digits consistently, including classification labels and zero-padded codes", () => {
+    expect(normalizeDisplayText("フリマ３", 100)).toBe("フリマ3");
+    expect(normalizeDisplayText("収納ケース１２号", 100)).toBe("収納ケース12号");
+    expect(normalizeIdentifier("００７", 100)).toBe("007");
+    expect(normalizeJanCode("０１２３４５６７")).toBe("01234567");
+    expect(normalizeJanInput("０００１２３４５")).toBe("00012345");
+    // Identifiers stay strings: the leading zero must never be lost.
+    expect(typeof normalizeIdentifier("００７", 100)).toBe("string");
+  });
+
   it("normalizes identifiers without changing meaningful punctuation", () => {
     expect(normalizeIdentifier(" lot-ab 12 ", 100)).toBe("LOT-AB12");
   });
