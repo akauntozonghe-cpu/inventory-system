@@ -167,6 +167,76 @@ export async function POST(request: NextRequest) {
         await tx.adminActionLog.create({data:{adminUserId:auth.user!.id,action:"CLASSIFICATION_ASSIGN_ITEMS",route:"/admin/classifications",detail:{before:selected,after:selected.map(item=>({id:item.id,...nextClassification(item,{...(hasMajor?{majorCategory}:{}),...(hasMinor?{minorCategory}:{}),keepMinorCategory:body.keepMinorCategory===true})}))}}});
         return { updatedItems: selected.length, requestedItems: itemIds.length };
       },{isolationLevel:"Serializable"});
+    } else if (action === "UNASSIGN_AND_DELETE_CLASSIFICATION") {
+      if (!["MAJOR","MINOR"].includes(kind) || !source || (kind==="MINOR"&&!parentName)
+        || body.confirmName!==source || typeof body.expectedId!=="string"
+        || typeof body.reason!=="string" || text(body.reason,500).length<2
+        || !Array.isArray(body.expectedItems) || !body.expectedItems.length
+        || body.expectedItems.length>100
+        || body.expectedItems.some((row:unknown)=>!row || typeof row!=="object"
+          || !("id" in row) || typeof row.id!=="string"
+          || !("updatedAt" in row) || typeof row.updatedAt!=="string")) {
+        return NextResponse.json({code:"CLASSIFICATION_UNASSIGN_INVALID",message:"分類、対象商品、確認名、変更理由を確認してください。"},{status:400});
+      }
+      const expected=body.expectedItems as Array<{id:string;updatedAt:string}>;
+      const expectedVersions=new Map(expected.map(row=>[row.id,row.updatedAt]));
+      if(expectedVersions.size!==expected.length) return NextResponse.json({code:"CLASSIFICATION_UNASSIGN_INVALID",message:"商品が重複しています。"},{status:400});
+      const deletion=await prisma.$transaction(async tx=>{
+        const assessment=await assessClassificationCleanup(tx,kind as "MAJOR"|"MINOR",source,parentName);
+        if(!assessment.canUnassignAndDelete || assessment.id!==body.expectedId)
+          return {deleted:false,assessment};
+        const current=assessment.linkedItems??[];
+        if(current.length!==expected.length || current.some(item=>expectedVersions.get(item.id)!==item.updatedAt.toISOString()))
+          throw new Error("CLASSIFICATION_ITEMS_CHANGED");
+        const original=await tx.item.findMany({
+          where:kind==="MAJOR"?{majorCategory:source,isArchived:false}:{majorCategory:parentName,minorCategory:source,isArchived:false},
+          select:{id:true,name:true,updatedAt:true,majorCategory:true,minorCategory:true},
+        });
+        if(original.length!==expected.length || original.some(item=>expectedVersions.get(item.id)!==item.updatedAt.toISOString()))
+          throw new Error("CLASSIFICATION_ITEMS_CHANGED");
+        for(const item of original){
+          const next={majorCategory:kind==="MAJOR"?null:item.majorCategory,minorCategory:null};
+          const result=await tx.item.updateMany({
+            where:{id:item.id,updatedAt:item.updatedAt,isArchived:false,
+              majorCategory:item.majorCategory,minorCategory:item.minorCategory},
+            data:next,
+          });
+          if(result.count!==1)throw new Error("CLASSIFICATION_ITEMS_CHANGED");
+          await syncItemLinks(tx,item.id,{
+            majorCategory:item.majorCategory,minorCategory:item.minorCategory,
+            manufacturer:null,defaultUnit:null,
+          },{
+            ...next,manufacturer:null,defaultUnit:null,
+          });
+        }
+        // Zero-quantity explicit per-lot references from other products are
+        // cleared separately; no stock rows, quantities or audit history deleted.
+        const stockWhere=kind==="MAJOR"
+          ? {majorCategory:source,status:{not:"廃止"},quantity:{lte:0}}
+          : {minorCategory:source,status:{not:"廃止"},quantity:{lte:0},
+              OR:[{majorCategory:parentName},{majorCategory:null,item:{majorCategory:parentName}}]};
+        const updatedStocks=await tx.inventoryInstance.updateMany({
+          where:stockWhere,
+          data:kind==="MAJOR"?{majorCategory:null,minorCategory:null}:{minorCategory:null},
+        });
+        await tx.classification.delete({where:{id:assessment.id!}});
+        await tx.adminActionLog.create({data:{
+          adminUserId:auth.user!.id,action:"CLASSIFICATION_UNASSIGN_AND_DELETE",
+          route:"/admin/classifications",
+          detail:{kind,source,parentName,reason:text(body.reason,500),productIds:original.map(item=>item.id),
+            updatedProducts:original.length,updatedStockOverrides:updatedStocks.count,
+            quantitiesPreserved:true,stocktakeHistoryPreserved:true},
+        }});
+        return {deleted:true,updatedProducts:original.length,updatedStockOverrides:updatedStocks.count};
+      },{isolationLevel:"Serializable",timeout:30000});
+      if(!deletion.deleted) return NextResponse.json({
+        code:"CLASSIFICATION_UNASSIGN_BLOCKED",
+        message:"在庫が残っている、棚卸や登録申請で使用中、または分類が変更されたため一括整理を停止しました。最新の使用状況を確認してください。",
+        assessment:deletion.assessment,
+      },{status:409});
+      return NextResponse.json({code:"CLASSIFICATION_UNASSIGN_DELETE_OK",
+        message:`${deletion.updatedProducts}件の商品の分類を解除し、分類「${source}」を削除しました。在庫数量と棚卸履歴は変更していません。`,
+        result:deletion});
     } else if (action === "PREVIEW_DELETE_CLASSIFICATION" || action === "DELETE_CLASSIFICATION") {
       if (!["MAJOR", "MINOR"].includes(kind) || !source || (kind === "MINOR" && !parentName)) {
         return NextResponse.json({ code: "CLASSIFICATION_INPUT_INVALID", message: "削除する分類と親分類を指定してください。" }, { status: 400 });
@@ -194,7 +264,7 @@ export async function POST(request: NextRequest) {
         } });
         return { deleted: true, assessment };
       }, { isolationLevel: "Serializable" });
-      if (!deletion.deleted) return NextResponse.json({ code: "CLASSIFICATION_IN_USE", message: "商品・在庫・登録申請・棚卸・子分類で使用されています。先に統合・移動してください。", assessment: deletion.assessment }, { status: 409 });
+      if (!deletion.deleted) return NextResponse.json({ code: "CLASSIFICATION_IN_USE", message: deletion.assessment.counts.items ? `在庫数量とは別に、${deletion.assessment.counts.items}件の商品マスタにこの分類が設定されています。分類解除・統合を行ってから削除してください。` : "在庫明細・登録申請・棚卸・子分類から参照されています。使用状況を確認してください。", assessment: deletion.assessment }, { status: 409 });
       return NextResponse.json({ code: "CLASSIFICATION_DELETE_OK", message: `分類「${source}」を削除しました。商品・在庫・棚卸履歴は変更していません。`, result: deletion });
     } else if (action === "PREVIEW_DELETE_LOCATION" || action === "DELETE_LOCATION") {
       const sourceId = text(body.sourceId);
