@@ -2,6 +2,7 @@
 import ImeInput from "@/components/common/ImeInput";
 import { useMemo, useState } from "react";
 import {selectActiveMasters} from "@/lib/active-master-catalog";
+import {sortPrintLabels} from "@/lib/print-order";
 import dynamic from "next/dynamic";
 import type { PrintLabel } from "./LabelPrintDialog";
 const LabelPrintDialog = dynamic(() => import("./LabelPrintDialog"), { ssr: false });
@@ -43,7 +44,7 @@ export default function LabelPrintPanel({ data, onRefresh }: {
     const rows = useMemo<PrintLabel[]>(() => {
         const active=activePrintCatalog(data);
         const labels=kind === "JAN" ? active.items.map(row => ({ id: row.id, itemId: row.id, name: row.name, barcode: row.janCode || row.systemBarcode })) : kind === "LOCATION" ? active.locations.map(locationPrintLabel) : active.classifications.filter(row => row.kind === kind).map(classificationPrintLabel);
-        return [...labels].sort((a,b)=>a.name.localeCompare(b.name,"ja",{numeric:true})||a.id.localeCompare(b.id));
+        return sortPrintLabels(labels,kind==="JAN"?"BARCODE":"QR");
     }, [data, kind]);
     const availableIds=new Set(rows.map(row=>row.id));
     const validSelected=selected.filter(id=>availableIds.has(id));
