@@ -765,3 +765,41 @@ model ItemPhoto {
   createdAt DateTime @default(now())
   @@index([itemId, createdAt])
 }
+
+/**
+ * Independent immutable-style snapshots of retired operational records.
+ * Deliberately has NO foreign keys to active Item, Classification, Location,
+ * InventoryInstance or history tables. Reading these records is admin-only.
+ * This ADDITIVE model does not itself migrate legacy retired rows.
+ */
+model ArchiveRecord {
+  id               String   @id @default(cuid())
+  entityType       String
+  originalId       String
+  snapshot         Json
+  snapshotVersion  Int      @default(1)
+  archivedAt       DateTime @default(now())
+  archivedByUserId String?
+  reason           String?
+  checksum         String?
+  createdAt        DateTime @default(now())
+
+  reRegistrations  ArchiveReRegistration[]
+
+  @@unique([entityType, originalId])
+  @@index([entityType, archivedAt])
+}
+
+/** Re-registration creates a new active identity; the original archive is never reactivated. */
+model ArchiveReRegistration {
+  id            String   @id @default(cuid())
+  archiveId     String
+  archive       ArchiveRecord @relation(fields: [archiveId], references: [id], onDelete: Restrict)
+  newEntityType String
+  newEntityId   String
+  performedById String?
+  createdAt     DateTime @default(now())
+
+  @@index([newEntityType, newEntityId])
+  @@index([archiveId, createdAt])
+}
