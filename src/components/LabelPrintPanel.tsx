@@ -1,6 +1,7 @@
 "use client";
 import ImeInput from "@/components/common/ImeInput";
 import { useEffect, useMemo, useState } from "react";
+import {compareLabels} from "@/lib/natural-label-order";
 import dynamic from "next/dynamic";
 import type { PrintLabel } from "./LabelPrintDialog";
 const PRINT_WORKSPACE_KEY = "inventory:label-print-workspace:v1";
@@ -55,7 +56,7 @@ export default function LabelPrintPanel({ data, onRefresh }: {
       try{sessionStorage.setItem(PRINT_WORKSPACE_KEY,JSON.stringify({kind,search,selected,printing,limit}));}catch{}
     },[workspaceReady,kind,search,selected,printing,limit]);
 
-    const rows = useMemo<PrintLabel[]>(() => kind === "JAN" ? data.items.map(row => ({ id: row.id, itemId: row.id, name: row.name, barcode: row.janCode || row.systemBarcode })) : kind === "LOCATION" ? data.locations.map(locationPrintLabel) : data.classifications.filter(row => row.kind === kind).map(classificationPrintLabel), [data, kind]);
+    const rows = useMemo<PrintLabel[]>(() => (kind === "JAN" ? data.items.map(row => ({ id: row.id, itemId: row.id, name: row.name, barcode: row.janCode || row.systemBarcode })) : kind === "LOCATION" ? data.locations.map(locationPrintLabel) : data.classifications.filter(row => row.kind === kind).map(classificationPrintLabel)).sort((a,b)=>compareLabels(a.name,b.name)||compareLabels(a.barcode??"",b.barcode??"")||compareLabels(a.id,b.id)), [data, kind]);
     const shown = rows.filter(row => (row.name + " " + (row.barcode ?? "")).normalize("NFKC").toLocaleLowerCase("ja").includes(search.normalize("NFKC").toLocaleLowerCase("ja")));
     const finish = () => { setSelected([]); setSearch(""); setPrinting(null); };
     return <section id="label-print" className="mt-6 scroll-mt-24 rounded-2xl border bg-white p-4"><h2 className="text-2xl font-black">JAN・QRラベルの印刷</h2><p className="my-2 text-sm">種類を選び、必要なラベルにチェックしてまとめて印刷します。</p><div className="my-3 flex flex-wrap gap-2">{[["JAN", "商品JAN"], ["MAJOR", "大分類QR"], ["MINOR", "小分類QR"], ["LOCATION", "保管場所QR"]].map(([id, label]) => <button key={id} aria-pressed={kind === id} onClick={() => { setKind(id); setLimit(100); setSelected([]); setSearch(""); }} className={`rounded-xl border px-4 py-3 font-bold ${kind === id ? "bg-blue-700 text-white" : "bg-white"}`}>{label}</button>)}</div>
