@@ -32,7 +32,7 @@ export default function InterruptedWorkBanner(){
   return <section aria-label="中断中の作業" role="status" className="mx-auto mt-3 w-[calc(100%-2rem)] max-w-7xl rounded-xl border border-blue-300 bg-blue-50 p-3 text-blue-950 shadow-sm">
     <div className="flex flex-wrap items-center justify-between gap-3">
       <div className="min-w-0">
-        <p className="font-black">作業が途中です：{work.title}</p>
+        <Link href={work.returnTo} className="inline-block font-black text-blue-900 underline decoration-blue-400 underline-offset-4 hover:text-blue-700">作業が途中です：{work.title}（クリックして戻る）</Link>
         <p className="mt-1 text-sm">{work.detail}</p>
       </div>
       <div className="flex shrink-0 flex-wrap gap-2">
