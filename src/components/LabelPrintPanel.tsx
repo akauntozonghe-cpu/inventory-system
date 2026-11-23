@@ -1,8 +1,9 @@
 "use client";
 import ImeInput from "@/components/common/ImeInput";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import dynamic from "next/dynamic";
 import type { PrintLabel } from "./LabelPrintDialog";
+const PRINT_WORKSPACE_KEY = "inventory:label-print-workspace:v1";
 const LabelPrintDialog = dynamic(() => import("./LabelPrintDialog"), { ssr: false });
 export type LabelCatalog = {
     items: Array<{
@@ -31,6 +32,29 @@ export default function LabelPrintPanel({ data, onRefresh }: {
 }) {
     const [limit, setLimit] = useState(100);
     const [kind, setKind] = useState("JAN"), [search, setSearch] = useState(""), [selected, setSelected] = useState<string[]>([]), [printing, setPrinting] = useState<string[] | null>(null);
+    const [workspaceReady,setWorkspaceReady] = useState(false);
+    useEffect(()=>{
+      try {
+        const raw=sessionStorage.getItem(PRINT_WORKSPACE_KEY);
+        if(raw && raw.length<50000){
+          const value:unknown=JSON.parse(raw);
+          if(value && typeof value==="object"){
+            const state=value as Record<string,unknown>;
+            if(["JAN","MAJOR","MINOR","LOCATION"].includes(String(state.kind)))setKind(String(state.kind));
+            if(typeof state.search==="string")setSearch(state.search.slice(0,250));
+            if(Array.isArray(state.selected))setSelected([...new Set(state.selected.filter((id):id is string=>typeof id==="string"&&id.length<140))].slice(0,2000));
+            if(Array.isArray(state.printing))setPrinting([...new Set(state.printing.filter((id):id is string=>typeof id==="string"&&id.length<140))].slice(0,2000));
+            if(typeof state.limit==="number" && Number.isInteger(state.limit))setLimit(Math.max(100,Math.min(state.limit,2000)));
+          }
+        }
+      }catch{/* Continue with an empty selection if browser storage is blocked. */}
+      setWorkspaceReady(true);
+    },[]);
+    useEffect(()=>{
+      if(!workspaceReady)return;
+      try{sessionStorage.setItem(PRINT_WORKSPACE_KEY,JSON.stringify({kind,search,selected,printing,limit}));}catch{}
+    },[workspaceReady,kind,search,selected,printing,limit]);
+
     const rows = useMemo<PrintLabel[]>(() => kind === "JAN" ? data.items.map(row => ({ id: row.id, itemId: row.id, name: row.name, barcode: row.janCode || row.systemBarcode })) : kind === "LOCATION" ? data.locations.map(locationPrintLabel) : data.classifications.filter(row => row.kind === kind).map(classificationPrintLabel), [data, kind]);
     const shown = rows.filter(row => (row.name + " " + (row.barcode ?? "")).normalize("NFKC").toLocaleLowerCase("ja").includes(search.normalize("NFKC").toLocaleLowerCase("ja")));
     const finish = () => { setSelected([]); setSearch(""); setPrinting(null); };
