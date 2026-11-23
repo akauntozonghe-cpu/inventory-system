@@ -1,4 +1,5 @@
 import JsBarcode from "jsbarcode";
+import {sortPrintLabels} from "./print-order";
 
 export type LabelProfile = "STANDARD" | "COMPACT";
 export type LabelScale = 0.8 | 1;
@@ -42,8 +43,13 @@ export function barcodeLabel(value: string, scale: LabelScale = 0.8, profile: La
 
 export function barcodePrintDocument(items: Array<{ name: string; barcode: string }>, layout: "A4" | "LABEL" = "A4", scale: LabelScale = 0.8, includeName = true, profile: LabelProfile = "STANDARD") {
   if (!items.length) throw new Error("印刷する商品を選択してください。");
-  const labels = items.map((item) => {try{return { ...barcodeLabel(item.barcode, scale, profile), name: item.name };}catch(error){throw new Error(`商品「${item.name}」：${error instanceof Error?error.message:"ラベルを作成できません。"}`);}});
-  const labelHeight = Math.max(...labels.map(label=>includeName?label.labelHeight:Math.ceil(label.height+2)));
+  const ordered=sortPrintLabels(items,"BARCODE");
+  const labels = ordered.map((item) => {try{return { ...barcodeLabel(item.barcode, scale, profile), name: item.name, code: item.barcode };}catch(error){throw new Error(`商品「${item.name}」：${error instanceof Error?error.message:"ラベルを作成できません。"}`);}});
+  // The optional identification slip is not part of the product sticker.
+  // Give it its own height and a visible cut line; never shrink barcode geometry.
+  const stickerHeight=Math.max(...labels.map(label=>Math.ceil(label.height+2)));
+  const guideHeight=includeName?19:0; // 17mm identification + 2mm physical separation
+  const labelHeight=stickerHeight+guideHeight;
   const pageWidth = layout === "A4" ? 194 : Math.max(...labels.map((label) => label.labelWidth));
   const pageHeight = layout === "A4" ? 281 : labelHeight;
   const pages: string[][] = [[]];
@@ -52,7 +58,7 @@ export function barcodePrintDocument(items: Array<{ name: string; barcode: strin
     if (label.labelWidth > pageWidth) throw new Error("このコードは用紙の幅を超えています。コードを確認してください。");
     if (rowWidth && rowWidth + label.labelWidth > pageWidth) { rowWidth = 0; rowTop += labelHeight; }
     if (rowTop + labelHeight > pageHeight) { pages.push([]); rowTop = 0; rowWidth = 0; }
-    pages[pages.length - 1].push(`<article class="label" style="width:${label.labelWidth}mm;height:${labelHeight}mm">${includeName ? `<p>${escapeLabelText(label.name)}</p>` : ""}${label.svg}</article>`);
+    pages[pages.length - 1].push(`<article class="label" style="width:${label.labelWidth}mm;height:${labelHeight}mm">${includeName ? `<div class="guide" aria-label="切り離す確認用部分"><span class="guide-caption">確認用・切り離してください</span><strong class="guide-name">${escapeLabelText(label.name)}</strong><span class="guide-jan">${/^\d{8}$|^\d{13}$/.test(label.code)?"JAN":"システムコード"}：${escapeLabelText(label.code)}</span></div>` : ""}<div class="sticker" aria-label="商品へ貼るバーコード">${label.svg}</div></article>`);
     rowWidth += label.labelWidth;
     if (layout === "LABEL") { rowWidth = pageWidth; }
   }
@@ -61,7 +67,11 @@ export function barcodePrintDocument(items: Array<{ name: string; barcode: strin
   *{box-sizing:border-box}body{margin:0;background:white;color:black;font-family:Arial,sans-serif}
   .sheet{display:flex;flex-wrap:wrap;align-content:flex-start;gap:0;width:${pageWidth}mm;break-after:page}.sheet:last-child{break-after:auto}
   .label{flex:none;padding:1mm;break-inside:avoid;outline:0.1mm dashed #aaa;overflow:hidden}
-  .label p{margin:0 0 .4mm;height:2.6mm;line-height:2.6mm;font-size:6.5pt;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .guide{height:17mm;margin:0 0 2mm;padding:0 0 2mm;border-bottom:.25mm dashed #444;display:flex;flex-direction:column;align-items:center;justify-content:flex-start;gap:.7mm;text-align:center;overflow:hidden}
+  .guide-caption{font-size:5pt;color:#444;line-height:2mm}
+  .guide-name{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:3;max-height:9mm;font-size:7pt;line-height:3mm;overflow:hidden;overflow-wrap:anywhere}
+  .guide-jan{font-family:monospace;font-size:6pt;line-height:2.5mm;white-space:nowrap}
+  .sticker{display:flex;align-items:flex-start;justify-content:center;min-height:1mm}
   svg{display:block;margin:0 auto;max-width:none;flex:none}
   .instructions{padding:12px;font-size:14px;background:#f1f5f9;position:sticky;top:0}.sheet{margin:8mm auto;background:white}@media screen{body{background:#ddd}.sheet{min-height:${pageHeight}mm;box-shadow:0 1px 8px #999}}.instructions button{margin:8px;padding:8px}
   @media print{.instructions{display:none}.sheet{margin:0;box-shadow:none}body{print-color-adjust:exact;-webkit-print-color-adjust:exact}}

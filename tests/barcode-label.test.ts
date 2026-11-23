@@ -42,13 +42,15 @@ describe("product barcode labels", () => {
     expect(html.match(/class="sheet"/g)).toHaveLength(2);
     expect(html.match(/class="label"/g)).toHaveLength(61);
     expect(html).not.toContain('<script>alert');
-    expect(html).toContain('width:32mm;height:26mm');
+    expect(html).toContain('width:32mm;height:42mm');
+    expect(html).toContain('class="guide"');
+    expect(html).toContain('class="sticker"');
     expect(html).toContain('width="29.832mm" height="20.744mm"');
   });
   it("uses one page per label with the same physical barcode as A4", () => {
     const html = barcodePrintDocument([{ name: "商品", barcode: "4901234567894" }, { name: "商品", barcode: "4901234567894" }], "LABEL");
     expect(html.match(/class="sheet"/g)).toHaveLength(2);
-    expect(html).toContain('size:32mm 26mm');
+    expect(html).toContain('size:32mm 42mm');
   });
   it("packs 120 compact labels per A4 and moves the 121st onto a new page", () => {
     const html = barcodePrintDocument(Array.from({ length: 121 }, () => ({name:"皿",barcode:"4901234567894"})), "A4", 0.8, false, "COMPACT");
