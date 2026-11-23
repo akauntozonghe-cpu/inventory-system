@@ -1,3 +1,4 @@
+import {activeClassificationError} from "@/lib/active-classification-error";
 import { findCatalogItem } from "@/lib/catalog-registration";
 import { scheduleDeviceNotifications } from "@/lib/device-push";
 import { requireActiveClassification } from "@/lib/item-links";
@@ -413,6 +414,8 @@ export async function POST(request: NextRequest) {
     );
   } catch (error) {
     console.error("POST /api/items/register", error);
+    const categoryError=activeClassificationError(error);
+    if(categoryError) return NextResponse.json({code:categoryError.code,message:categoryError.message},{status:categoryError.status});
 
     if (isRetryableDatabaseError(error)) {
       return NextResponse.json(
