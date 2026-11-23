@@ -10,7 +10,7 @@ describe("shared selection options", () => {
     db.storageLocation.findMany.mockResolvedValue([{ id: "location", name: "新しい棚" }]);
     db.inventoryInstance.findMany.mockResolvedValue([{ unit: "0" }, { unit: "束" }]);
     db.item.findMany.mockResolvedValue([{ majorCategory: "食品", minorCategory: "飲料", defaultUnit: "箱" }]);
-    db.classification.findMany.mockResolvedValue([{ kind: "MAJOR", name: "まだ商品がない分類", parentName: "" }, { kind: "MINOR", name: "飲料", parentName: "備蓄品" }]);
+    db.classification.findMany.mockResolvedValue([{ kind: "MAJOR", name: "まだ商品がない分類", parentName: "", retiredAt:null }, { kind: "MAJOR", name:"備蓄品",parentName:"",retiredAt:null }, { kind: "MINOR", name: "飲料", parentName: "備蓄品",retiredAt:null }, {kind:"MAJOR",name:"廃止済",parentName:"",retiredAt:new Date()}, {kind:"MINOR",name:"旧小分類",parentName:"廃止済",retiredAt:null}]);
   });
   it("includes a newly created but unused category for worker search and registration", async () => {
     const response = await GET(new NextRequest("http://localhost/api/stocktake/options"));
@@ -21,7 +21,10 @@ describe("shared selection options", () => {
   });
   it("keeps parent-specific minor choices and shares custom units without numeric corruption", async () => {
     const options = await (await GET(new NextRequest("http://localhost/api/stocktake/options"))).json();
-    expect(options.minorCategoryOptions).toEqual(expect.arrayContaining([{ name: "飲料", parentName: "食品" }, { name: "飲料", parentName: "備蓄品" }]));
+    expect(options.minorCategoryOptions).toEqual([{ name: "飲料", parentName: "備蓄品" }]);
+    expect(options.majorCategories).not.toContain("食品");
+    expect(options.majorCategories).not.toContain("廃止済");
+    expect(options.minorCategoryOptions.some((row:{name:string})=>row.name==="旧小分類")).toBe(false);
     expect(options.units).toContain("束");
     expect(options.units).not.toContain("0");
   });
