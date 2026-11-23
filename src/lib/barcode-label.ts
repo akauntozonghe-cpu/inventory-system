@@ -45,7 +45,7 @@ export function barcodePrintDocument(items: Array<{ name: string; barcode: strin
   const labels = items.map((item) => {try{return { ...barcodeLabel(item.barcode, scale, profile), name: item.name, value:item.barcode };}catch(error){throw new Error(`商品「${item.name}」：${error instanceof Error?error.message:"ラベルを作成できません。"}`);}});
   // The product name is a separate cutting guide, not part of the sticker itself.
   const nameGuideHeight = includeName ? 9 : 0;
-  const labelHeight = Math.max(...labels.map(label=>Math.ceil(label.height+5)+nameGuideHeight));
+  const labelHeight = Math.max(...labels.map(label=>Math.ceil(label.height+2)+nameGuideHeight));
   const pageWidth = layout === "A4" ? 194 : Math.max(...labels.map((label) => label.labelWidth));
   const pageHeight = layout === "A4" ? 281 : labelHeight;
   const pages: string[][] = [[]];
@@ -54,7 +54,7 @@ export function barcodePrintDocument(items: Array<{ name: string; barcode: strin
     if (label.labelWidth > pageWidth) throw new Error("このコードは用紙の幅を超えています。コードを確認してください。");
     if (rowWidth && rowWidth + label.labelWidth > pageWidth) { rowWidth = 0; rowTop += labelHeight; }
     if (rowTop + labelHeight > pageHeight) { pages.push([]); rowTop = 0; rowWidth = 0; }
-    pages[pages.length - 1].push(`<article class="label" style="width:${label.labelWidth}mm;height:${labelHeight}mm">${includeName ? `<div class="name-guide">${escapeLabelText(label.name)}</div>` : ""}<div class="barcode-sticker"><span class="code-caption">${/^\d{8}$|^\d{13}$/.test(label.value)?"JAN":"商品コード"} ${escapeLabelText(label.value)}</span>${label.svg}</div></article>`);
+    pages[pages.length - 1].push(`<article class="label" style="width:${label.labelWidth}mm;height:${labelHeight}mm">${includeName ? `<div class="name-guide"><strong>${escapeLabelText(label.name)}</strong><span>${/^\d{8}$|^\d{13}$/.test(label.value)?"JAN":"商品コード"} ${escapeLabelText(label.value)}</span></div>` : ""}<div class="barcode-sticker">${label.svg}</div></article>`);
     rowWidth += label.labelWidth;
     if (layout === "LABEL") { rowWidth = pageWidth; }
   }
@@ -63,9 +63,10 @@ export function barcodePrintDocument(items: Array<{ name: string; barcode: strin
   *{box-sizing:border-box}body{margin:0;background:white;color:black;font-family:Arial,sans-serif}
   .sheet{display:flex;flex-wrap:wrap;align-content:flex-start;gap:0;width:${pageWidth}mm;break-after:page}.sheet:last-child{break-after:auto}
   .label{flex:none;padding:0;break-inside:avoid;overflow:hidden}
-  .name-guide{height:7mm;font-size:7pt;line-height:3mm;font-weight:bold;overflow:hidden;overflow-wrap:anywhere;padding:.6mm .5mm .3mm;border-bottom:.2mm dashed #444;margin-bottom:2mm}
+  .name-guide{height:7mm;font-size:7pt;line-height:3mm;overflow:hidden;padding:.4mm .5mm .2mm;border-bottom:.2mm dashed #444;margin-bottom:2mm}
+  .name-guide strong,.name-guide span{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .name-guide span{font:6pt/2.5mm Arial,sans-serif}
   .barcode-sticker{position:relative;padding:1mm;outline:.1mm dashed #aaa;outline-offset:-.1mm;min-height:0;overflow:hidden}
-  .code-caption{display:block;font:6pt/2mm Arial,sans-serif;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin:0 0 .3mm}
   .name-guide+.barcode-sticker{margin-top:0}
   svg{display:block;margin:0 auto;max-width:none;flex:none}
   .instructions{padding:12px;font-size:14px;background:#f1f5f9;position:sticky;top:0}.sheet{margin:8mm auto;background:white}@media screen{body{background:#ddd}.sheet{min-height:${pageHeight}mm;box-shadow:0 1px 8px #999}}.instructions button{margin:8px;padding:8px}
