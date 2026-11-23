@@ -72,8 +72,8 @@ export async function POST(request: NextRequest) {
       if (!targets.length) throw new Error("NO_TARGET");
 
       if (operation === "SET_LOCATION") {
-        const loc = await tx.storageLocation.findUnique({where:{id:locationId},select:{id:true}});
-        if (!loc) throw new Error("LOCATION_NOT_FOUND");
+        const loc = await tx.storageLocation.findUnique({where:{id:locationId},select:{id:true,retiredAt:true}});
+        if (!loc || loc.retiredAt) throw new Error("LOCATION_NOT_ACTIVE");
       }
       const actorId = (auth.user!.baseRole ?? auth.user!.role) === "ADMIN"
         ? auth.user!.id : getAdminElevation(request)?.adminUserId;
@@ -125,7 +125,7 @@ export async function POST(request: NextRequest) {
     if (code === "STOCK_CHANGED") return NextResponse.json({code,message:"他の端末で在庫が変更されています。再読み込みして対象を選び直してください。"},{status:409});
     if (code === "NO_TARGET" || code === "INVALID_SELECTION" || code === "ITEM_NOT_ACTIVE")
       return NextResponse.json({code,message:"対象に現在操作できない在庫が含まれています。再読み込みしてください。"},{status:409});
-    if (code === "LOCATION_NOT_FOUND") return NextResponse.json({code,message:"指定した保管場所が見つかりません。"},{status:400});
+    if (code === "LOCATION_NOT_ACTIVE") return NextResponse.json({code,message:"この保管場所は未登録または廃止済みです。有効な保管場所を選択してください。"},{status:409});
     console.error("POST /api/inventory/bulk",error);
     return NextResponse.json({code:"BULK_FAILED",message:"一括操作を保存できませんでした。変更は確定していません。"},{status:409});
   }
