@@ -1,6 +1,6 @@
 import { generateSystemJan } from "@/lib/system-jan";
 import { findCatalogItem } from "@/lib/catalog-registration";
-import { ensureClassification } from "@/lib/item-links";
+import { requireActiveClassification } from "@/lib/item-links";
 import { unitValidationMessage } from "@/lib/unit";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
@@ -225,7 +225,7 @@ export async function POST(request: NextRequest) {
           itemCreated = true;
         }
 
-        await ensureClassification(transaction, majorCategory, minorCategory);
+        await requireActiveClassification(transaction, majorCategory, minorCategory);
 
         const lotNo = normalizeIdentifier(body.lotNo, 100);
         const expirationNotApplicable = body.expirationNotApplicable === true;
