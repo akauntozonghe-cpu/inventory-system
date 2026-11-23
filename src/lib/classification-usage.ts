@@ -1,6 +1,5 @@
-/** Classification usage is always a count of linked Item records, never stock quantity.
- *  This is used by the classification master list and its edit-page summary.
- *  It deliberately includes archived products, matching deletion preflight.
+/** Normal classification usage counts active products only. Archived products and stock
+ * references are tracked separately as historical counts, never as active blockers.
  */
 export type ClassificationUsageItem = {
   id?: string;
@@ -70,13 +69,17 @@ export function buildClassificationUsageRows(
         id: `derived-${lookup}`, kind, parentName, name,
         itemCount: 0, inventoryCount: 0, archivedItemCount: 0, activeStockReferenceCount:0,archivedStockReferenceCount:0,linkedItems: [],
       };
-      row.itemCount += 1;
-      row.inventoryCount += item._count.inventoryInstances;
-      if (item.isArchived) row.archivedItemCount += 1;
-      // Show exactly which products are counted, including archived entries.
-      // This helps explain a nonzero product count when physical inventory is 0.
-      if (item.id && item.name && row.linkedItems.length < 100) {
-        row.linkedItems.push({id:item.id,name:item.name,isArchived:item.isArchived});
+      if (item.isArchived) {
+        row.archivedItemCount += 1;
+      } else {
+        row.itemCount += 1;
+        row.inventoryCount += item.inventoryInstances
+          ? item.inventoryInstances.filter(stock=>stock.status!=="廃止").length
+          : item._count.inventoryInstances;
+        // Only currently active products are shown in the normal linked-item list.
+        if (item.id && item.name && row.linkedItems.length < 100) {
+          row.linkedItems.push({id:item.id,name:item.name,isArchived:false});
+        }
       }
       rows.set(lookup, row);
     }
@@ -94,7 +97,7 @@ export function buildClassificationUsageRows(
           itemCount:0,inventoryCount:0,archivedItemCount:0,
           activeStockReferenceCount:0,archivedStockReferenceCount:0,linkedItems:[],
         };
-        if(stock.status==="廃止")row.archivedStockReferenceCount+=1;
+        if(item.isArchived||stock.status==="廃止")row.archivedStockReferenceCount+=1;
         else row.activeStockReferenceCount+=1;
         rows.set(lookup,row);
       }
