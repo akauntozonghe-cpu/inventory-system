@@ -371,6 +371,12 @@ export async function POST(request: NextRequest) {
         const assessment = await assessClassificationCleanup(tx, kind as "MAJOR" | "MINOR", source, parentName);
         if (!assessment.canDelete) return { deleted: false, assessment };
         if (body.expectedId !== assessment.id) throw new Error("CLASSIFICATION_ITEMS_CHANGED");
+        const original=await tx.classification.findUniqueOrThrow({where:{id:assessment.id!},include:{labelAliases:true}});
+        await tx.archiveRecord.create({data:{
+          entityType:"CLASSIFICATION",originalId:original.id,
+          snapshot:JSON.parse(JSON.stringify(original)),snapshotVersion:1,
+          archivedByUserId:auth.user!.id,reason:text(body.reason,500)||"分類整理",
+        }});
         await tx.classification.delete({ where: { id: assessment.id! } });
         await tx.adminActionLog.create({ data: {
           adminUserId: auth.user!.id,
@@ -437,6 +443,12 @@ export async function POST(request: NextRequest) {
         const assessment = await assessLocationCleanup(tx, sourceId);
         if (!assessment.canDelete) return { deleted: false, assessment };
         if (body.expectedId !== assessment.id || body.confirmName !== assessment.name) throw new Error("LOCATION_CHANGED");
+        const original=await tx.storageLocation.findUniqueOrThrow({where:{id:sourceId}});
+        await tx.archiveRecord.create({data:{
+          entityType:"STORAGE_LOCATION",originalId:original.id,
+          snapshot:JSON.parse(JSON.stringify(original)),snapshotVersion:1,
+          archivedByUserId:auth.user!.id,reason:text(body.reason,500)||"保管場所整理",
+        }});
         await tx.storageLocation.delete({ where: { id: sourceId } });
         await tx.adminActionLog.create({ data: {
           adminUserId: auth.user!.id,
