@@ -29,7 +29,8 @@ export async function POST(request:NextRequest){
       if(!master.retiredAt)throw new Error("ARCHIVE_SOURCE_ACTIVE");
       let assessment;
       if(entityType==="CLASSIFICATION"){
-        const kind=("kind" in master)?master.kind:"";
+        if(!("kind" in master) || !("parentName" in master))throw new Error("ARCHIVE_INVALID_KIND");
+        const kind=master.kind;
         if(kind!=="MAJOR"&&kind!=="MINOR")throw new Error("ARCHIVE_INVALID_KIND");
         assessment=await assessClassificationCleanup(tx,kind,master.name,master.parentName);
       }else{
