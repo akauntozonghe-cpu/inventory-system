@@ -1,12 +1,19 @@
 "use client";
 import ImeInput from "@/components/common/ImeInput";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import Link from "@/components/auth/PermissionLink";
+import {rememberInterruptedWork} from "@/lib/interrupted-work";
 import Modal from "./common/Modal";
 import BarcodePrintOptions from "./BarcodePrintOptions";
 import dynamic from "next/dynamic";
 const ProductEditDialog = dynamic(() => import("./ProductEditDialog"), { ssr: false });
 import { barcodeLabel, barcodePrintDocument, type LabelScale, type LabelProfile } from "@/lib/barcode-label";
 import { qrPrintDocument } from "@/lib/qr-print";
+const PRINT_DIALOG_PREFS_KEY = "inventory:label-print-dialog-prefs:v1";
+function readPrintPrefs():Record<string,unknown> {
+  if(typeof window==="undefined")return {};
+  try{const raw=sessionStorage.getItem(PRINT_DIALOG_PREFS_KEY);const value=raw&&raw.length<10000?JSON.parse(raw):null;return value&&typeof value==="object"?value:{};}catch{return {};}
+}
 export type PrintLabel = {
     id: string;
     name: string;
@@ -22,10 +29,13 @@ export default function LabelPrintDialog({ labels, onClose, onComplete, onRefres
     onRefresh?: () => void | Promise<void>;
     canEdit?: boolean;
 }) {
-    const [profile,setProfile]=useState<LabelProfile>("COMPACT");
-    const [scale, setScale] = useState<LabelScale>(0.8), [includeName, setIncludeName] = useState(false), [copies, setCopies] = useState(1);
-    const [layout, setLayout] = useState<"A4" | "LABEL">("A4"), [excluded, setExcluded] = useState<string[]>([]);
+    const [profile,setProfile]=useState<LabelProfile>(()=>{const v=readPrintPrefs().profile;return v==="COMPACT"||v==="STANDARD"||v==="LARGE"?v as LabelProfile:"COMPACT";});
+    const [scale, setScale] = useState<LabelScale>(()=>{const v=readPrintPrefs().scale;return typeof v==="number"&&v>=0.5&&v<=2?v as LabelScale:0.8;}), [includeName, setIncludeName] = useState(()=>readPrintPrefs().includeName===true), [copies, setCopies] = useState(()=>{const v=readPrintPrefs().copies;return typeof v==="number"&&Number.isInteger(v)&&v>=1&&v<=100?v:1;});
+    const [layout, setLayout] = useState<"A4" | "LABEL">(()=>readPrintPrefs().layout==="LABEL"?"LABEL":"A4"), [excluded, setExcluded] = useState<string[]>(()=>{const v=readPrintPrefs().excluded;return Array.isArray(v)?v.filter((id):id is string=>typeof id==="string").slice(0,2000):[];});
     const [busy, setBusy] = useState(false), [message, setMessage] = useState(""), [opened, setOpened] = useState(false), [editing, setEditing] = useState<string | null>(null);
+    useEffect(()=>{
+      try{sessionStorage.setItem(PRINT_DIALOG_PREFS_KEY,JSON.stringify({profile,scale,includeName,copies,layout,excluded}));}catch{}
+    },[profile,scale,includeName,copies,layout,excluded]);
     const targets = labels.filter(row => !excluded.includes(row.id));
     const qr = labels.some(row => row.payload);
     const errors = useMemo(() => new Map(labels.flatMap(row => { if (row.payload)
@@ -104,7 +114,7 @@ export default function LabelPrintDialog({ labels, onClose, onComplete, onRefres
     <p className="font-bold">選択 {targets.length}種類・合計 {total}枚</p>
     {!validCopies && <p role="alert" className="mt-2 text-sm text-red-700">枚数は1〜100の整数を入力してください。</p>}
     {total > 1000 && <p role="alert" className="mt-2 text-sm text-red-700">1回の印刷は1000枚までです。対象か枚数を減らしてください。</p>}
-    <details className="my-3 rounded-xl border p-3" open={invalid || undefined}><summary className="cursor-pointer font-bold">印刷対象を確認・変更（{targets.length}種類）{invalid ? "・コードの確認が必要" : ""}</summary><div className="mt-2 max-h-60 space-y-2 overflow-auto">{labels.map(row => <article key={row.id} className={`rounded-xl border p-3 ${errors.has(row.id) ? "border-red-300 bg-red-50" : ""}`}><label className="flex gap-3 font-bold"><ImeInput type="checkbox" checked={!excluded.includes(row.id)} onChange={event => setExcluded(current => event.target.checked ? current.filter(id => id !== row.id) : [...current, row.id])}/>{row.name}</label>{row.barcode && <p className="mt-1 break-all font-mono text-sm">{row.barcode}</p>}{errors.has(row.id) && <><p role="alert" className="mt-2 text-sm text-red-800">対象：「{row.name}」。{errors.get(row.id)} 今回印刷しない場合はチェックを外してください。</p>{canEdit && row.itemId && <button className="mt-2 rounded-lg border bg-white p-2 font-bold" onClick={() => setEditing(row.itemId!)}>「{row.name}」のコードを修正</button>}</>}</article>)}</div></details>
+    <details className="my-3 rounded-xl border p-3" open={invalid || undefined}><summary className="cursor-pointer font-bold">印刷対象を確認・変更（{targets.length}種類）{invalid ? "・コードの確認が必要" : ""}</summary><div className="mt-2 max-h-60 space-y-2 overflow-auto">{labels.map(row => <article key={row.id} className={`rounded-xl border p-3 ${errors.has(row.id) ? "border-red-300 bg-red-50" : ""}`}><label className="flex gap-3 font-bold"><ImeInput type="checkbox" checked={!excluded.includes(row.id)} onChange={event => setExcluded(current => event.target.checked ? current.filter(id => id !== row.id) : [...current, row.id])}/>{row.name}</label>{row.barcode && <p className="mt-1 break-all font-mono text-sm">{row.barcode}</p>}{errors.has(row.id) && <><p role="alert" className="mt-2 text-sm text-red-800">対象：「{row.name}」。{errors.get(row.id)} 今回印刷しない場合はチェックを外してください。</p>{canEdit && row.itemId && <div className="mt-2 flex flex-wrap items-center gap-2"><Link href={`/items?q=${encodeURIComponent(row.name)}`} onClick={()=>rememberInterruptedWork({returnTo:"/admin/classifications?view=PRINT",title:"商品JANラベルの印刷",detail:"印刷対象と枚数を保持しています。商品情報を修正したら印刷確認に戻れます。"})} className="rounded-lg border border-blue-300 bg-white p-2 font-bold text-blue-800">商品名で検索して修正</Link><button className="rounded-lg border bg-white p-2 font-bold" onClick={() => setEditing(row.itemId!)}>この画面で修正</button></div>}</>}</article>)}</div></details>
     {message && <p role="status" className="my-3 rounded-xl bg-blue-50 p-3">{message}</p>}
     <div className="flex flex-wrap gap-3"><button disabled={printDisabled} onClick={() => void preview()} className="rounded-xl bg-blue-700 p-3 font-bold text-white disabled:opacity-40">{busy ? "ラベルを準備中…" : "この内容で印刷画面を開く"}</button>{opened && <button disabled={busy} className="rounded-xl bg-emerald-700 p-3 font-bold text-white" onClick={() => { onComplete?.(); onClose(); }}>印刷を終えて選択をクリア</button>}<button disabled={busy} onClick={onClose} className="rounded-xl border p-3 font-bold">{opened ? "選択を残して閉じる" : "戻る"}</button></div>
     {editing && <ProductEditDialog itemId={editing} onClose={() => setEditing(null)} onSaved={() => void refreshAfterEdit()}/>}
