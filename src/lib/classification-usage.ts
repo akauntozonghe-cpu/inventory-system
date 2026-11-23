@@ -1,6 +1,5 @@
-/** Classification usage is always a count of linked Item records, never stock quantity.
- *  This is used by the classification master list and its edit-page summary.
- *  It deliberately includes archived products, matching deletion preflight.
+/** Normal classification usage counts active products only. Archived products and stock
+ * references are tracked separately as historical counts, never as active blockers.
  */
 export type ClassificationUsageItem = {
   id?: string;
@@ -66,17 +65,21 @@ export function buildClassificationUsageRows(
 
     for (const [kind, parentName, name] of categories) {
       const lookup = key(kind, parentName, name);
-      const row: ClassificationUsageRow = rows.get(lookup) ?? {
-        id: `derived-${lookup}`, kind, parentName, name,
-        itemCount: 0, inventoryCount: 0, archivedItemCount: 0, activeStockReferenceCount:0,archivedStockReferenceCount:0,linkedItems: [],
-      };
-      row.itemCount += 1;
-      row.inventoryCount += item._count.inventoryInstances;
-      if (item.isArchived) row.archivedItemCount += 1;
-      // Show exactly which products are counted, including archived entries.
-      // This helps explain a nonzero product count when physical inventory is 0.
-      if (item.id && item.name && row.linkedItems.length < 100) {
-        row.linkedItems.push({id:item.id,name:item.name,isArchived:item.isArchived});
+      // An item string is NOT a classification master. Never invent a category
+      // in the normal master list based on legacy or archived data.
+      const row=rows.get(lookup);
+      if(!row)continue;
+      if (item.isArchived) {
+        row.archivedItemCount += 1;
+      } else {
+        row.itemCount += 1;
+        row.inventoryCount += item.inventoryInstances
+          ? item.inventoryInstances.filter(stock=>stock.status!=="廃止").length
+          : item._count.inventoryInstances;
+        // Only currently active products are shown in the normal linked-item list.
+        if (item.id && item.name && row.linkedItems.length < 100) {
+          row.linkedItems.push({id:item.id,name:item.name,isArchived:false});
+        }
       }
       rows.set(lookup, row);
     }
@@ -89,12 +92,11 @@ export function buildClassificationUsageRows(
       if(stock.minorCategory)overrides.push(["MINOR",stock.majorCategory??item.majorCategory??"",stock.minorCategory]);
       for(const [kind,parentName,name] of overrides){
         const lookup=key(kind,parentName,name);
-        const row:ClassificationUsageRow=rows.get(lookup)??{
-          id:`derived-${lookup}`,kind,parentName,name,
-          itemCount:0,inventoryCount:0,archivedItemCount:0,
-          activeStockReferenceCount:0,archivedStockReferenceCount:0,linkedItems:[],
-        };
-        if(stock.status==="廃止")row.archivedStockReferenceCount+=1;
+        // Orphaned stock-level strings are reported by the administrator
+        // audit, not silently reintroduced as selectable master records.
+        const row=rows.get(lookup);
+        if(!row)continue;
+        if(item.isArchived||stock.status==="廃止")row.archivedStockReferenceCount+=1;
         else row.activeStockReferenceCount+=1;
         rows.set(lookup,row);
       }
