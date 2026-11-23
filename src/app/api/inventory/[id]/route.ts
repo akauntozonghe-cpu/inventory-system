@@ -1,5 +1,5 @@
 import { requireEditAccess } from "@/lib/edit-access";
-import { ensureClassification } from "@/lib/item-links";
+import { requireActiveClassification } from "@/lib/item-links";
 import { NextRequest, NextResponse } from "next/server";
 import {
   AllocationType,
@@ -419,7 +419,7 @@ export async function PATCH(
     };
 
     const result = await prisma.$transaction(async (transaction) => {
-      await ensureClassification(transaction,
+      await requireActiveClassification(transaction,
         body.majorCategory === undefined ? existing.majorCategory : emptyToNull(body.majorCategory),
         body.minorCategory === undefined ? existing.minorCategory : emptyToNull(body.minorCategory));
       const updated = await transaction.inventoryInstance.update({
