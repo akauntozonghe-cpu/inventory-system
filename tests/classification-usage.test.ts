@@ -26,10 +26,9 @@ describe("classification usage matches stored Item classifications, not quantity
     expect(rows[0]).toMatchObject({itemCount:1,archivedItemCount:1,inventoryCount:3});
     expect(rows[1]).toMatchObject({itemCount:1,archivedItemCount:1,inventoryCount:3});
   });
-  it("does not silently show zero for categories present only in products",()=>{
+  it("never manufactures selectable master rows from legacy product strings",()=>{
     const rows=buildClassificationUsageRows([],Array.from({length:11},(_,i)=>item(i)));
-    expect(rows).toHaveLength(2);
-    expect(rows.every(row=>row.itemCount===11)).toBe(true);
+    expect(rows).toEqual([]);
   });
   it("handles colon characters in a category and does not create separate duplicates",()=>{
     const rows=buildClassificationUsageRows(
