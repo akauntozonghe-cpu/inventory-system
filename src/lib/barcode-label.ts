@@ -42,8 +42,10 @@ export function barcodeLabel(value: string, scale: LabelScale = 0.8, profile: La
 
 export function barcodePrintDocument(items: Array<{ name: string; barcode: string }>, layout: "A4" | "LABEL" = "A4", scale: LabelScale = 0.8, includeName = true, profile: LabelProfile = "STANDARD") {
   if (!items.length) throw new Error("印刷する商品を選択してください。");
-  const labels = items.map((item) => {try{return { ...barcodeLabel(item.barcode, scale, profile), name: item.name };}catch(error){throw new Error(`商品「${item.name}」：${error instanceof Error?error.message:"ラベルを作成できません。"}`);}});
-  const labelHeight = Math.max(...labels.map(label=>includeName?label.labelHeight:Math.ceil(label.height+2)));
+  const labels = items.map((item) => {try{return { ...barcodeLabel(item.barcode, scale, profile), name: item.name, value:item.barcode };}catch(error){throw new Error(`商品「${item.name}」：${error instanceof Error?error.message:"ラベルを作成できません。"}`);}});
+  // The product name is a separate cutting guide, not part of the sticker itself.
+  const nameGuideHeight = includeName ? 9 : 0;
+  const labelHeight = Math.max(...labels.map(label=>Math.ceil(label.height+5)+nameGuideHeight));
   const pageWidth = layout === "A4" ? 194 : Math.max(...labels.map((label) => label.labelWidth));
   const pageHeight = layout === "A4" ? 281 : labelHeight;
   const pages: string[][] = [[]];
@@ -52,7 +54,7 @@ export function barcodePrintDocument(items: Array<{ name: string; barcode: strin
     if (label.labelWidth > pageWidth) throw new Error("このコードは用紙の幅を超えています。コードを確認してください。");
     if (rowWidth && rowWidth + label.labelWidth > pageWidth) { rowWidth = 0; rowTop += labelHeight; }
     if (rowTop + labelHeight > pageHeight) { pages.push([]); rowTop = 0; rowWidth = 0; }
-    pages[pages.length - 1].push(`<article class="label" style="width:${label.labelWidth}mm;height:${labelHeight}mm">${includeName ? `<p>${escapeLabelText(label.name)}</p>` : ""}${label.svg}</article>`);
+    pages[pages.length - 1].push(`<article class="label" style="width:${label.labelWidth}mm;height:${labelHeight}mm">${includeName ? `<div class="name-guide">${escapeLabelText(label.name)}</div>` : ""}<div class="barcode-sticker"><span class="code-caption">${/^\\d{8}$|^\\d{13}$/.test(label.value)?"JAN":"商品コード"} ${escapeLabelText(label.value)}</span>${label.svg}</div></article>`);
     rowWidth += label.labelWidth;
     if (layout === "LABEL") { rowWidth = pageWidth; }
   }
@@ -60,8 +62,11 @@ export function barcodePrintDocument(items: Array<{ name: string; barcode: strin
   @page { size:${layout === "A4" ? "A4 portrait" : `${pageWidth}mm ${pageHeight}mm`}; margin:${layout === "A4" ? "8mm" : "0"}; }
   *{box-sizing:border-box}body{margin:0;background:white;color:black;font-family:Arial,sans-serif}
   .sheet{display:flex;flex-wrap:wrap;align-content:flex-start;gap:0;width:${pageWidth}mm;break-after:page}.sheet:last-child{break-after:auto}
-  .label{flex:none;padding:1mm;break-inside:avoid;outline:0.1mm dashed #aaa;overflow:hidden}
-  .label p{margin:0 0 .4mm;height:2.6mm;line-height:2.6mm;font-size:6.5pt;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .label{flex:none;padding:0;break-inside:avoid;overflow:hidden}
+  .name-guide{height:7mm;font-size:7pt;line-height:3mm;font-weight:bold;overflow:hidden;overflow-wrap:anywhere;padding:.6mm .5mm .3mm;border-bottom:.2mm dashed #444;margin-bottom:2mm}
+  .barcode-sticker{position:relative;padding:1mm;outline:.1mm dashed #aaa;outline-offset:-.1mm;min-height:0;overflow:hidden}
+  .code-caption{display:block;font:6pt/2mm Arial,sans-serif;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin:0 0 .3mm}
+  .name-guide+.barcode-sticker{margin-top:0}
   svg{display:block;margin:0 auto;max-width:none;flex:none}
   .instructions{padding:12px;font-size:14px;background:#f1f5f9;position:sticky;top:0}.sheet{margin:8mm auto;background:white}@media screen{body{background:#ddd}.sheet{min-height:${pageHeight}mm;box-shadow:0 1px 8px #999}}.instructions button{margin:8px;padding:8px}
   @media print{.instructions{display:none}.sheet{margin:0;box-shadow:none}body{print-color-adjust:exact;-webkit-print-color-adjust:exact}}
