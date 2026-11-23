@@ -9,7 +9,15 @@ export default function InterruptedWorkBanner(){
   const pathname=usePathname();
   const [work,setWork]=useState<InterruptedWork|null>(null);
   useEffect(()=>{
-    const reload=()=>setWork(readInterruptedWork());
+    const reload=()=>{
+      const latest=readInterruptedWork();
+      if(latest && pathname===latest.returnTo.split(/[?#]/)[0]){
+        clearInterruptedWork();
+        setWork(null);
+        return;
+      }
+      setWork(latest);
+    };
     reload();
     window.addEventListener("inventory:interrupted-work-changed",reload);
     window.addEventListener("focus",reload);
