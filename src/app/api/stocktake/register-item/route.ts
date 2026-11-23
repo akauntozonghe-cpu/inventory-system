@@ -1,3 +1,4 @@
+import {activeClassificationError} from "@/lib/active-classification-error";
 import { generateSystemJan } from "@/lib/system-jan";
 import { findCatalogItem } from "@/lib/catalog-registration";
 import { requireActiveClassification } from "@/lib/item-links";
@@ -406,6 +407,8 @@ export async function POST(request: NextRequest) {
     );
   } catch (error) {
     console.error("POST /api/stocktake/register-item", error);
+    const categoryError=activeClassificationError(error);
+    if(categoryError) return NextResponse.json({code:categoryError.code,message:categoryError.message},{status:categoryError.status});
 
     const code = getErrorCode(error);
 
