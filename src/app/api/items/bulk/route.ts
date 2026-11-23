@@ -3,6 +3,7 @@ import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { requireAdmin, getAdminElevation } from "@/lib/auth";
 import { syncItemLinks } from "@/lib/item-links";
+import {activeClassificationError} from "@/lib/active-classification-error";
 
 const labels = { DELETE: "削除", RESTORE: "復元", EXCLUDE_INSPECTION: "棚卸・点検対象外に設定", INCLUDE_INSPECTION: "棚卸・点検対象に復帰", SET_MANUFACTURER: "メーカーを変更", SET_MAJOR_CATEGORY: "大分類を変更", SET_MINOR_CATEGORY: "小分類を変更", SET_UNIT: "既定単位を変更" } as const;
 export async function POST(request: NextRequest) {
@@ -58,7 +59,7 @@ export async function POST(request: NextRequest) {
     const active = items.filter(item => !item.isArchived);
     if (active.length !== items.length) throw new Error("ITEMS_DELETED");
     const newValue = value.normalize("NFKC").trim() || null;
-    const data = action === "SET_MANUFACTURER" ? {manufacturer:newValue} : action === "SET_MAJOR_CATEGORY" ? {majorCategory:newValue} : action === "SET_MINOR_CATEGORY" ? {minorCategory:newValue} : {defaultUnit:newValue};
+    const data = action === "SET_MANUFACTURER" ? {manufacturer:newValue} : action === "SET_MAJOR_CATEGORY" ? {majorCategory:newValue,minorCategory:null} : action === "SET_MINOR_CATEGORY" ? {minorCategory:newValue} : {defaultUnit:newValue};
     // Preserve the distinction between shared catalog values and explicit
     // per-lot overrides. Update the item and its inherited stock references
     // within this same transaction.
@@ -70,7 +71,7 @@ export async function POST(request: NextRequest) {
       const after = {
         manufacturer: action === "SET_MANUFACTURER" ? newValue : item.manufacturer,
         majorCategory: action === "SET_MAJOR_CATEGORY" ? newValue : item.majorCategory,
-        minorCategory: action === "SET_MINOR_CATEGORY" ? newValue : item.minorCategory,
+        minorCategory: action === "SET_MAJOR_CATEGORY" ? null : action === "SET_MINOR_CATEGORY" ? newValue : item.minorCategory,
         defaultUnit: action === "SET_UNIT" ? newValue : item.defaultUnit,
       };
       if (after.minorCategory && !after.majorCategory) throw new Error("CATEGORY_PARENT_REQUIRED");
@@ -96,6 +97,8 @@ export async function POST(request: NextRequest) {
   }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable, timeout: 30000 });
   return NextResponse.json(result);
  } catch (error) {
+  const categoryError=activeClassificationError(error);
+  if(categoryError)return NextResponse.json({code:categoryError.code,message:categoryError.message},{status:categoryError.status});
   if (error instanceof Error && error.message === "DELETE_PROTECTED") return NextResponse.json({ code: "DELETE_PROTECTED", message: "削除できない商品が含まれています。削除前の確認画面を更新してください。" }, { status: 409 });
   if (error instanceof Error && ["CATEGORY_PARENT_REQUIRED","BULK_SYNC_LIMIT"].includes(error.message)) return NextResponse.json({code:error.message,message:error.message==="BULK_SYNC_LIMIT"?"一度に変更する商品は150件以内にしてください。":"小分類を設定する場合は大分類が必要です。"}, {status:400});
   if (error instanceof Error && (error.message === "VALUE_INVALID" || error.message === "ITEMS_DELETED")) return NextResponse.json({ code: error.message, message: "変更値または削除済みの商品が含まれています。対象を確認してください。" }, { status: 400 });
