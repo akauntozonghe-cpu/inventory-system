@@ -35,7 +35,7 @@ it("restores only deleted stock, not active stock",async()=>{
 });
 it("changes location only for reviewed stocks",async()=>{
  expect((await call({operation:"SET_LOCATION",data:{storageLocationId:"loc"}})).status).toBe(200);
- expect(db.storageLocation.findUnique).toHaveBeenCalledWith({where:{id:"loc"},select:{id:true}});
+ expect(db.storageLocation.findUnique).toHaveBeenCalledWith({where:{id:"loc"},select:{id:true,retiredAt:true}});
  expect(db.inventoryInstance.updateMany.mock.calls[0][0].data).toEqual({storageLocationId:"loc"});
 });
 it("blocks invalid allocation and notification day values",async()=>{
