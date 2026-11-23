@@ -14,6 +14,9 @@ export type CommonFields = {
  * Never rewrite stocktake snapshots, quantities, movement logs or deleted stock.
  */
 export async function syncItemLinks(tx: Prisma.TransactionClient, id: string, before: CommonFields, after: CommonFields) {
+  if (before.majorCategory !== after.majorCategory || before.minorCategory !== after.minorCategory) {
+    await requireActiveClassification(tx, after.majorCategory, after.minorCategory);
+  }
   const active = { itemId: id, status: { not: "廃止" } } as const;
   if (before.manufacturer !== after.manufacturer && before.manufacturer !== null) {
     await tx.inventoryInstance.updateMany({
@@ -46,9 +49,6 @@ export async function syncItemLinks(tx: Prisma.TransactionClient, id: string, be
       },
       data: { minorCategory: after.minorCategory },
     });
-  }
-  if (before.majorCategory !== after.majorCategory || before.minorCategory !== after.minorCategory) {
-    await requireActiveClassification(tx, after.majorCategory, after.minorCategory);
   }
 }
 
