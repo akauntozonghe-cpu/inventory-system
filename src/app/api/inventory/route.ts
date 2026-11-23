@@ -1,3 +1,4 @@
+import {activeClassificationError} from "@/lib/active-classification-error";
 import { requireActiveClassification } from "@/lib/item-links";
 import {activeInventoryWhere} from "@/lib/product-scope";
 import { unitValidationMessage } from "@/lib/unit";
@@ -233,6 +234,8 @@ export async function POST(request: NextRequest) {
     );
   } catch (error) {
     console.error("POST /api/inventory", error);
+    const categoryError=activeClassificationError(error);
+    if(categoryError)return NextResponse.json({code:categoryError.code,message:categoryError.message},{status:categoryError.status});
 
     const code = errorMessage(
       error,
@@ -435,6 +438,8 @@ export async function PUT(request: NextRequest) {
     });
   } catch (error) {
     console.error("PUT /api/inventory", error);
+    const categoryError=activeClassificationError(error);
+    if(categoryError)return NextResponse.json({code:categoryError.code,message:categoryError.message},{status:categoryError.status});
 
     const code = errorMessage(
       error,
