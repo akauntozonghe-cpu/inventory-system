@@ -13,7 +13,7 @@ it("assigns an existing active major/minor without carrying an unrelated old sub
  expect(db.inventoryInstance.updateMany).toHaveBeenCalledWith({where:{itemId:"p1",status:{not:"廃止"},majorCategory:"食品"},data:{majorCategory:"備品"}});
  expect(db.inventoryInstance.updateMany).toHaveBeenCalledWith(expect.objectContaining({data:{minorCategory:"消耗品"}}));
  expect(db.inventoryInstance.updateMany).toHaveBeenCalledTimes(2);
- expect(db.classification.upsert).toHaveBeenCalledWith(expect.objectContaining({create:{kind:"MINOR",name:"消耗品",parentName:"備品"}}));
+ expect(db.classification.upsert).not.toHaveBeenCalled();
  expect(db.adminActionLog.create).toHaveBeenCalledWith(expect.objectContaining({data:expect.objectContaining({action:"CLASSIFICATION_ASSIGN_ITEMS"})}));
  expect(db.$transaction).toHaveBeenCalledWith(expect.any(Function),expect.objectContaining({isolationLevel:"Serializable"}));
 });
