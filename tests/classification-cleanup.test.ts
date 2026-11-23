@@ -69,7 +69,7 @@ describe("safe classification / location retirement",()=>{
     expect(db.adminActionLog.create).not.toHaveBeenCalled();
   });
   it.each([
-    ["an item",()=>db.item.count.mockResolvedValue(1)],
+    ["an item",()=>db.item.count.mockImplementation(async ({where}:{where?:{isArchived?:boolean}})=>where?.isArchived===true?0:1)],
     ["a lot-level override",()=>db.inventoryInstance.count.mockResolvedValue(2)],
     ["a pending registration",()=>db.itemRegistrationRequest.count.mockResolvedValue(3)],
     ["an active stocktake",()=>db.stocktakeSession.count.mockResolvedValue(1)],
@@ -302,7 +302,7 @@ describe("safe classification / location retirement",()=>{
     const response=await post({action:"MERGE_LOCATION",sourceId:locationId,targetId:"loc-2",reason:"旧倉庫を廃止"});
     expect(response.status).toBe(200);
     expect(db.inventoryInstance.updateMany).toHaveBeenCalledWith({
-      where:{storageLocationId:locationId},data:{storageLocationId:"loc-2"},
+      where:{storageLocationId:locationId,status:{not:"廃止"}},data:{storageLocationId:"loc-2"},
     });
     expect(db.itemRegistrationRequest.updateMany).toHaveBeenCalled();
     expect(db.stocktakeSession.updateMany).toHaveBeenCalled();
