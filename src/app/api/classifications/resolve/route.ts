@@ -8,7 +8,7 @@ export async function GET(request: NextRequest) {
   const labelCode = request.nextUrl.searchParams.get("labelCode")?.trim() ?? "";
   if (!labelCode) return NextResponse.json({ code: "CLASSIFICATION_LABEL_REQUIRED", message: "分類ラベルコードがありません。" }, { status: 400 });
   const direct = await prisma.classification.findUnique({ where: { labelCode }, select: { id: true, labelCode: true, kind: true, name: true, parentName: true, retiredAt:true, updatedAt: true } });
-  const classification = direct ?? (await prisma.classificationLabelAlias.findUnique({ where: { labelCode }, select: { classification: { select: { id: true, labelCode: true, kind: true, name: true, parentName: true, updatedAt: true } } } }))?.classification;
+  const classification = direct ?? (await prisma.classificationLabelAlias.findUnique({ where: { labelCode }, select: { classification: { select: { id: true, labelCode: true, kind: true, name: true, parentName: true, retiredAt:true, updatedAt: true } } } }))?.classification;
   if (classification?.retiredAt) return NextResponse.json({code:"CLASSIFICATION_LABEL_RETIRED",message:"このQRは廃止済みの分類です。通常業務には使用できません。管理者は廃止記録を確認してください。"},{status:410});
   if(classification?.kind==="MINOR"){
     const parent=await prisma.classification.findUnique({where:{kind_name_parentName:{kind:"MAJOR",name:classification.parentName,parentName:""}},select:{id:true,retiredAt:true}});
