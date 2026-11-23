@@ -29,8 +29,8 @@ export default function LabelPrintDialog({ labels, onClose, onComplete, onRefres
     onRefresh?: () => void | Promise<void>;
     canEdit?: boolean;
 }) {
-    const [profile,setProfile]=useState<LabelProfile>(()=>{const v=readPrintPrefs().profile;return v==="COMPACT"||v==="STANDARD"||v==="LARGE"?v as LabelProfile:"COMPACT";});
-    const [scale, setScale] = useState<LabelScale>(()=>{const v=readPrintPrefs().scale;return typeof v==="number"&&v>=0.5&&v<=2?v as LabelScale:0.8;}), [includeName, setIncludeName] = useState(()=>readPrintPrefs().includeName===true), [copies, setCopies] = useState(()=>{const v=readPrintPrefs().copies;return typeof v==="number"&&Number.isInteger(v)&&v>=1&&v<=100?v:1;});
+    const [profile,setProfile]=useState<LabelProfile>(()=>{const v=readPrintPrefs().profile;return v==="COMPACT"||v==="STANDARD"?v as LabelProfile:"COMPACT";});
+    const [scale, setScale] = useState<LabelScale>(()=>{const v=readPrintPrefs().scale;return v===0.8||v===1?v as LabelScale:0.8;}), [includeName, setIncludeName] = useState(()=>readPrintPrefs().includeName===true), [copies, setCopies] = useState(()=>{const v=readPrintPrefs().copies;return typeof v==="number"&&Number.isInteger(v)&&v>=1&&v<=100?v:1;});
     const [layout, setLayout] = useState<"A4" | "LABEL">(()=>readPrintPrefs().layout==="LABEL"?"LABEL":"A4"), [excluded, setExcluded] = useState<string[]>(()=>{const v=readPrintPrefs().excluded;return Array.isArray(v)?v.filter((id):id is string=>typeof id==="string").slice(0,2000):[];});
     const [busy, setBusy] = useState(false), [message, setMessage] = useState(""), [opened, setOpened] = useState(false), [editing, setEditing] = useState<string | null>(null);
     useEffect(()=>{
