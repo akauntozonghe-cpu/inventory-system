@@ -2,6 +2,7 @@
 import ImeInput from "@/components/common/ImeInput";
 import { useEffect, useMemo, useState } from "react";
 import {compareLabels} from "@/lib/natural-label-order";
+import {selectActiveMasters} from "@/lib/active-master-catalog";
 import dynamic from "next/dynamic";
 import type { PrintLabel } from "./LabelPrintDialog";
 const PRINT_WORKSPACE_KEY = "inventory:label-print-workspace:v1";
@@ -32,11 +33,11 @@ export function classificationPrintLabel(row: LabelCatalog["classifications"][nu
 export function locationPrintLabel(row: LabelCatalog["locations"][number]): PrintLabel { return { id: row.id, name: row.name, kind: "保管場所", payload: JSON.stringify({ type: "INVENTORY_LOCATION_LABEL", storageLocationId: row.id, storageLocationName: row.name }) }; }
 /** The active category/location master is the only source of standard print candidates. */
 export function activePrintCatalog(data:LabelCatalog):LabelCatalog {
-    const activeMajors=new Set(data.classifications.filter(row=>row.kind==="MAJOR"&&!row.retiredAt).map(row=>row.name));
+    const masters=selectActiveMasters(data.classifications,data.locations);
     return {
         items:data.items,
-        classifications:data.classifications.filter(row=>!row.retiredAt&&!row.retiredViaParent&&(row.kind!=="MINOR"||activeMajors.has(row.parentName))),
-        locations:data.locations.filter(row=>!row.retiredAt),
+        classifications:[...masters.majors,...masters.minors],
+        locations:masters.locations,
     };
 }
 export default function LabelPrintPanel({ data, onRefresh }: {
