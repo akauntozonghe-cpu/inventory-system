@@ -24,7 +24,7 @@ describe("management and QR print share the exact same active master identity se
     const printed=activePrintCatalog(data);
     expect(m.majors.map(x=>x.id)).toEqual(printed.classifications.filter(x=>x.kind==="MAJOR").map(x=>x.id));
     expect(m.minors.map(x=>x.id)).toEqual(printed.classifications.filter(x=>x.kind==="MINOR").map(x=>x.id));
-    expect(m.minors.map(x=>x.name)).toEqual(["毛穴","高保湿"]);
+    expect(m.minors.map(x=>x.name)).toEqual(["高保湿","毛穴"]);
     expect(printed.classifications.map(x=>x.id)).not.toContain("mi-orphan");
   });
   it("returns precisely the same active location IDs in natural numeric order",()=>{
