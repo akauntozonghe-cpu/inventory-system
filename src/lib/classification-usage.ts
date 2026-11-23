@@ -65,10 +65,10 @@ export function buildClassificationUsageRows(
 
     for (const [kind, parentName, name] of categories) {
       const lookup = key(kind, parentName, name);
-      const row: ClassificationUsageRow = rows.get(lookup) ?? {
-        id: `derived-${lookup}`, kind, parentName, name,
-        itemCount: 0, inventoryCount: 0, archivedItemCount: 0, activeStockReferenceCount:0,archivedStockReferenceCount:0,linkedItems: [],
-      };
+      // An item string is NOT a classification master. Never invent a category
+      // in the normal master list based on legacy or archived data.
+      const row=rows.get(lookup);
+      if(!row)continue;
       if (item.isArchived) {
         row.archivedItemCount += 1;
       } else {
@@ -92,11 +92,10 @@ export function buildClassificationUsageRows(
       if(stock.minorCategory)overrides.push(["MINOR",stock.majorCategory??item.majorCategory??"",stock.minorCategory]);
       for(const [kind,parentName,name] of overrides){
         const lookup=key(kind,parentName,name);
-        const row:ClassificationUsageRow=rows.get(lookup)??{
-          id:`derived-${lookup}`,kind,parentName,name,
-          itemCount:0,inventoryCount:0,archivedItemCount:0,
-          activeStockReferenceCount:0,archivedStockReferenceCount:0,linkedItems:[],
-        };
+        // Orphaned stock-level strings are reported by the administrator
+        // audit, not silently reintroduced as selectable master records.
+        const row=rows.get(lookup);
+        if(!row)continue;
         if(item.isArchived||stock.status==="廃止")row.archivedStockReferenceCount+=1;
         else row.activeStockReferenceCount+=1;
         rows.set(lookup,row);
