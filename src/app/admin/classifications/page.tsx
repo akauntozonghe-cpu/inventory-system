@@ -3,6 +3,7 @@ import ImeInput from "@/components/common/ImeInput";
 import ActiveFilters from "@/components/common/ActiveFilters";
 import Modal from "@/components/common/Modal";
 import {nextClassification} from "@/lib/classification-change";
+import {compareLabels} from "@/lib/natural-label-order";
 import type {CleanupAssessment} from "@/lib/classification-cleanup";
 import {productScanIndex,normalizeScanCode,addProductSelection} from "@/lib/product-selection";
 import Pagination from "@/components/common/Pagination";
@@ -26,10 +27,6 @@ type ItemRow = { managementCode?:string|null; inventoryInstances?:Array<{id:stri
 type Payload = { classifications: Classification[]; locations: Location[]; items: ItemRow[] };
 
 
-
-// Japanese labels and numbers are shown in a predictable natural order.
-const labelOrder = new Intl.Collator("ja", { numeric: true, sensitivity: "base" });
-const compareLabels = (left:string,right:string)=>labelOrder.compare(left,right);
 
 function normalizePayload(value: unknown): Payload {
   const source = value && typeof value === "object" ? value as Partial<Payload> : {};
