@@ -75,8 +75,8 @@ export class ItemRepository {
   static async create(data: ItemInput) {
     if(data.janCode&&data.systemBarcode)throw new Error("JANとシステムJANはどちらか一方だけ指定してください。");
     return prisma.$transaction(async (tx) => {
+      await requireActiveClassification(tx, data.majorCategory, data.minorCategory);
       const item = await tx.item.create({ data });
-      await requireActiveClassification(tx, item.majorCategory, item.minorCategory);
       return item;
     });
   }
