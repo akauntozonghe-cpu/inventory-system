@@ -81,12 +81,13 @@ it.each([
  db.item.findMany.mockResolvedValue([{id:"item",name:"商品",isArchived:false,manufacturer:"旧",majorCategory:"旧",minorCategory:"旧",defaultUnit:"個"}]);
  const response=await POST(new NextRequest("http://localhost/api/items/bulk",{method:"POST",body:JSON.stringify({operation,itemIds:["item"],reason:"管理情報を整理",value})}));
  expect(response.status).toBe(200);
- expect(db.item.updateMany).toHaveBeenCalledWith({where:{id:"item",isArchived:false},data:{[field]:value}});
+ expect(db.item.updateMany).toHaveBeenCalledWith({where:{id:"item",isArchived:false},data:field==="majorCategory"?{majorCategory:value,minorCategory:null}:{[field]:value}});
  const stockField=field==="defaultUnit"?"unit":field;
  expect(db.inventoryInstance.updateMany).toHaveBeenCalledWith(expect.objectContaining({
   where:expect.objectContaining({itemId:"item",status:{not:"廃止"},[stockField]:field==="defaultUnit"?"個":"旧"}),
   data:{[stockField]:value},
  }));
+ if(field==="majorCategory")expect(db.inventoryInstance.updateMany).toHaveBeenCalledWith(expect.objectContaining({data:{minorCategory:null}}));
  expect(db.inventoryHistory.deleteMany).not.toHaveBeenCalled();
  expect(db.inventoryInstance.deleteMany).not.toHaveBeenCalled();
  expect(db.adminActionLog.create.mock.calls[0][0].data.action).toBe("ITEM_BULK_"+operation);
