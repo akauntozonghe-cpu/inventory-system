@@ -41,14 +41,14 @@ it("shows 11 linked product masters even when all their inventory detail counts 
     Array.from({length:11},(_,i)=>"商品"+i)
   );
 });
-it("uses the same product-reference scope as the deletion preflight including archived products",async()=>{
+it("keeps archived products out of active usage counts while reporting historical references",async()=>{
   db.item.findMany.mockResolvedValue([item(1),item(2,true),item(3)]);
   const response=await GET(new NextRequest("http://localhost/api/admin/classifications"));
   const data=await response.json();
   expect(data.classifications.find((row:{kind:string})=>row.kind==="MAJOR"))
-    .toMatchObject({itemCount:3,archivedItemCount:1,inventoryCount:0});
+    .toMatchObject({itemCount:2,archivedItemCount:1,inventoryCount:0});
   const archived=data.classifications.find((row:{kind:string})=>row.kind==="MAJOR").linkedItems;
-  expect(archived.find((row:{id:string})=>row.id==="item-2").isArchived).toBe(true);
+  expect(archived.some((row:{id:string})=>row.id==="item-2")).toBe(false);
   // Historical / archived product references are counted but not editable.
   expect(data.items.map((row:{id:string})=>row.id)).toEqual(["item-1","item-3"]);
   expect(db.item.findMany.mock.calls[0][0].where).toBeUndefined();
