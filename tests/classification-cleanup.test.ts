@@ -3,12 +3,13 @@ import {NextRequest,NextResponse} from "next/server";
 const authState=vi.hoisted(()=>({admin:true}));
 const db=vi.hoisted(()=>({
   $transaction:vi.fn(),
-  classification:{findUnique:vi.fn(),count:vi.fn(),delete:vi.fn(),upsert:vi.fn()},
+  classification:{findUnique:vi.fn(),findUniqueOrThrow:vi.fn(),count:vi.fn(),delete:vi.fn(),upsert:vi.fn()},
   item:{count:vi.fn(),findMany:vi.fn(),updateMany:vi.fn()},
   inventoryInstance:{count:vi.fn(),findMany:vi.fn(),updateMany:vi.fn(),delete:vi.fn()},
   itemRegistrationRequest:{count:vi.fn(),updateMany:vi.fn()},
   stocktakeSession:{count:vi.fn(),updateMany:vi.fn()},
-  storageLocation:{findUnique:vi.fn(),delete:vi.fn()},
+  storageLocation:{findUnique:vi.fn(),findUniqueOrThrow:vi.fn(),delete:vi.fn()},
+  archiveRecord:{create:vi.fn()},
   stocktakeTarget:{deleteMany:vi.fn()},stocktakeRecord:{deleteMany:vi.fn()},
   adminActionLog:{create:vi.fn()},
 }));
@@ -29,6 +30,9 @@ beforeEach(()=>{
   vi.resetAllMocks();authState.admin=true;
   db.$transaction.mockImplementation(async callback=>callback(db));
   db.classification.findUnique.mockResolvedValue({id:"cat-1"});
+  db.classification.findUniqueOrThrow.mockResolvedValue({id:"cat-1",kind:"MAJOR",name:"食品",parentName:"",labelAliases:[]});
+  db.storageLocation.findUniqueOrThrow.mockResolvedValue({id:"loc-1",name:"旧倉庫"});
+  db.archiveRecord.create.mockResolvedValue({id:"archive-1"});
   db.classification.count.mockResolvedValue(0);
   db.item.count.mockResolvedValue(0);
   db.item.findMany.mockResolvedValue([]);
