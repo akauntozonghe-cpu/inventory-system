@@ -1,9 +1,11 @@
 import { escapeLabelText } from "./barcode-label";
+import {compareLabels} from "./natural-label-order";
 export function qrPrintDocument(labels: { name: string; image: string; kind?:string }[]) {
   if (!labels.length) throw new Error("印刷するQRラベルを選択してください。");
+  const ordered=[...labels].sort((a,b)=>compareLabels(a.kind??"",b.kind??"")||compareLabels(a.name,b.name));
   const pages: string[] = [];
-  for (let offset = 0; offset < labels.length; offset += 9) {
-    pages.push(`<main class="sheet">${labels.slice(offset, offset + 9).map(label => `<article class="label"><p>${escapeLabelText(label.kind??"大分類")} · ${label.kind==="保管場所"?"読むとこの棚の在庫を表示":"読むとこの分類の商品を表示"}</p><h1>${escapeLabelText(label.name)}</h1><img src="${escapeLabelText(label.image)}" alt="${escapeLabelText(label.kind??"大分類")}QR" /></article>`).join("")}</main>`);
+  for (let offset = 0; offset < ordered.length; offset += 9) {
+    pages.push(`<main class="sheet">${ordered.slice(offset, offset + 9).map(label => `<article class="label"><p>${escapeLabelText(label.kind??"大分類")} · ${label.kind==="保管場所"?"読むとこの棚の在庫を表示":"読むとこの分類の商品を表示"}</p><h1>${escapeLabelText(label.name)}</h1><img src="${escapeLabelText(label.image)}" alt="${escapeLabelText(label.kind??"大分類")}QR" /></article>`).join("")}</main>`);
   }
   return `<!doctype html><html lang="ja"><head><meta charset="utf-8"><title>分類・保管場所QRラベル</title><style>
   @page{size:A4 portrait;margin:8mm}*{box-sizing:border-box}body{margin:0;color:#000;background:#fff;font-family:Arial,sans-serif}
