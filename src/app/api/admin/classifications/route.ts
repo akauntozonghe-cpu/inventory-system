@@ -481,6 +481,8 @@ export async function POST(request: NextRequest) {
     if (action !== "MERGE_LOCATION" && action !== "ASSIGN_ITEMS") await createAdminActionLog({ adminUserId: auth.user.id, action: `CLASSIFICATION_${action}`, route: "/admin/classifications", detail: { kind, name, parentName, source, target, targetParent, reason: text(body.reason,500), result: result as never } });
     return NextResponse.json({ code: "CLASSIFICATION_UPDATE_OK", message: "分類・在庫・棚卸範囲を更新し、操作履歴へ記録しました。", result });
   } catch (error) { console.error("POST classifications", error);
+    if(error instanceof Error && error.message==="LOCATION_ARCHIVED_REFERENCES")
+      return NextResponse.json({code:"LOCATION_ARCHIVED_REFERENCES",message:"廃止済みの在庫個体がこの保管場所を参照しています。履歴の分離が完了するまでは統合できません。"}, {status:409});
     if(error instanceof Error && error.message==="LOCATION_RETIRED_USE_RESTORE")
       return NextResponse.json({code:"LOCATION_RETIRED_USE_RESTORE",
         message:"同名の保管場所は廃止済みです。廃止済み一覧から復元してください。"},
