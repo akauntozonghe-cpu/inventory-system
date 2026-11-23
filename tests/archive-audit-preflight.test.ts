@@ -38,6 +38,6 @@ describe("archive migration preflight",()=>{
     const response=await GET(req());
     const result=await response.json();
     expect(result.blockers.activeItemsWithUnregisteredClassification).toBe(3);
-    expect(result.safeToMigrate).toBe(false);
+    expect(result.knownBlockersClear).toBe(false);
   });
 });
