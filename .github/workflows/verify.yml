@@ -32,3 +32,8 @@ jobs:
         run: npx tsc --noEmit
       - name: Unit and API tests
         run: npm test
+      - name: Next.js production build
+        run: npx next build
+        env:
+          DATABASE_URL: postgresql://ci:ci@localhost:5432/ci?schema=public
+          NEXT_TELEMETRY_DISABLED: "1"
