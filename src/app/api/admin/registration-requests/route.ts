@@ -1,5 +1,5 @@
 import { findCatalogItem } from "@/lib/catalog-registration";
-import { ensureClassification } from "@/lib/item-links";
+import { requireActiveClassification } from "@/lib/item-links";
 import { scheduleDeviceNotifications } from "@/lib/device-push";
 import { randomInt } from "node:crypto";
 import {
@@ -342,7 +342,7 @@ export async function PATCH(request: NextRequest) {
           },
         });
 
-        await ensureClassification(transaction, registrationRequest.majorCategory, registrationRequest.minorCategory);
+        await requireActiveClassification(transaction, registrationRequest.majorCategory, registrationRequest.minorCategory);
         const inventory = await transaction.inventoryInstance.create({
           data: {
             itemId: item.id,
