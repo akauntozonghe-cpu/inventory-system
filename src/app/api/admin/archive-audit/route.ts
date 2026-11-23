@@ -45,7 +45,7 @@ export async function GET(request:NextRequest){
       archivedStillInsideActiveTables:{items:archivedItems,inventoryInstances:archivedStocks,classifications:retiredMasters,storageLocations:retiredLocations},
       blockers:{
         activeStocksInRetiredLocations:stocksInRetiredLocations,
-        pendingRegistrationRequestsInRetiredLocations,
+        pendingRegistrationRequestsInRetiredLocations:pendingRequestsInRetiredLocations,
         activeStocksLinkedToArchivedItems:stocksOfArchivedItems,
         activeItemsWithUnregisteredClassification,
       },
