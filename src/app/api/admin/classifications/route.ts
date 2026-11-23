@@ -147,13 +147,13 @@ export async function POST(request: NextRequest) {
           if(!nextParent || nextParent.retiredAt)throw new Error("CLASSIFICATION_PARENT_NOT_ACTIVE");
         }
         if (kind === "MAJOR") {
-          const items = await tx.item.updateMany({ where: { majorCategory: source }, data: { majorCategory: target } });
+          const items = await tx.item.updateMany({ where: { majorCategory: source, isArchived:false }, data: { majorCategory: target } });
           // Rename only stock values that actually use the renamed label.
           // A lot deliberately assigned another category must not change.
-          const inventories = await tx.inventoryInstance.updateMany({ where: { majorCategory: source }, data: { majorCategory: target } });
+          const inventories = await tx.inventoryInstance.updateMany({ where: { majorCategory: source, status:{not:"廃止"}, item:{isArchived:false} }, data: { majorCategory: target } });
           await tx.itemRegistrationRequest.updateMany({ where: { majorCategory: source, status: "PENDING" }, data: { majorCategory: target } });
           await tx.stocktakeSession.updateMany({ where: { scopeType: "MAJOR_CATEGORY", scopeValue: source, status: { in: ["IN_PROGRESS", "PAUSED", "REVIEW", "CONFLICT"] } }, data: { scopeValue: target, scopeLabel: target } });
-          const children = await tx.classification.findMany({ where: { kind: "MINOR", parentName: source } });
+          const children = await tx.classification.findMany({ where: { kind: "MINOR", parentName: source, retiredAt:null } });
           for (const child of children) await renameClassificationMaster(tx, "MINOR", child.name, source, child.name, target);
           await renameClassificationMaster(tx, "MAJOR", source, "", target, "");
           return { items: items.count, inventories: inventories.count };
@@ -162,22 +162,21 @@ export async function POST(request: NextRequest) {
         const otherParents = await tx.item.count({ where: { minorCategory: source, NOT: { majorCategory: parentName } } });
         const activeScope = await tx.stocktakeSession.count({ where: { scopeType: "MINOR_CATEGORY", scopeValue: source, status: { in: ["IN_PROGRESS", "PAUSED", "REVIEW", "CONFLICT"] } } });
         if (source !== target && otherParents && activeScope) throw new Error("同名の小分類をまとめて棚卸中です。棚卸の完了後に小分類名を変更してください。");
-        const where = { minorCategory: source, majorCategory: parentName };
+        const where = { minorCategory: source, majorCategory: parentName, isArchived:false };
         const nextMajor = targetParent || parentName;
         const items = await tx.item.updateMany({ where, data: { minorCategory: target, majorCategory: nextMajor } });
         // Keep null/inherited and other independently configured lot categories.
         const inherited = await tx.inventoryInstance.updateMany({
-          where: { minorCategory: source, majorCategory: null, item: { majorCategory: nextMajor } },
+          where: { minorCategory: source, majorCategory: null, status:{not:"廃止"},item: { majorCategory: nextMajor, isArchived:false } },
           data: { minorCategory: target },
         });
         const explicitlyLinked = await tx.inventoryInstance.updateMany({
-          where: { minorCategory: source, majorCategory: parentName },
+          where: { minorCategory: source, majorCategory: parentName, status:{not:"廃止"},item:{isArchived:false} },
           data: { minorCategory: target, majorCategory: nextMajor },
         });
         const inventories = { count: inherited.count + explicitlyLinked.count };
         await tx.itemRegistrationRequest.updateMany({ where: { ...where, status: "PENDING" }, data: { minorCategory: target, majorCategory: nextMajor } });
         if (!otherParents) await tx.stocktakeSession.updateMany({ where: { scopeType: "MINOR_CATEGORY", scopeValue: source, status: { in: ["IN_PROGRESS", "PAUSED", "REVIEW", "CONFLICT"] } }, data: { scopeValue: target, scopeLabel: target } });
-        await ensureClassification(tx, nextMajor, null);
         await renameClassificationMaster(tx, "MINOR", source, parentName, target, nextMajor);
         return { items: items.count, inventories: inventories.count };
       });
