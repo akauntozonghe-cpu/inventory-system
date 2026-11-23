@@ -13,7 +13,7 @@ describe("shared product information", () => {
   });
   it("updates inherited units and categories without changing quantities or explicit per-lot overrides", async () => {
     const update = vi.fn();
-    const tx = { inventoryInstance: { updateMany: update }, classification: { upsert: vi.fn() } } as unknown as Prisma.TransactionClient;
+    const tx = { inventoryInstance: { updateMany: update }, classification: { findUnique: vi.fn().mockResolvedValue({id:"active",retiredAt:null}) } } as unknown as Prisma.TransactionClient;
     const before = { majorCategory: "旧分類", minorCategory: null, manufacturer: "会社", defaultUnit: "個" };
     await syncItemLinks(tx, "item", before, { ...before, majorCategory: "新分類", defaultUnit: "本" });
     expect(update).toHaveBeenCalledTimes(2);
@@ -31,7 +31,7 @@ describe("shared product information", () => {
   });
   it("does not touch lot units when only the product name is edited", async () => {
     const update = vi.fn();
-    const tx = { inventoryInstance: { updateMany: update }, classification: { upsert: vi.fn() } } as unknown as Prisma.TransactionClient;
+    const tx = { inventoryInstance: { updateMany: update }, classification: { findUnique: vi.fn().mockResolvedValue({id:"active",retiredAt:null}) } } as unknown as Prisma.TransactionClient;
     const fields = { majorCategory: "食品", minorCategory: null, manufacturer: null, defaultUnit: "個" };
     await syncItemLinks(tx, "item", fields, fields);
     expect(update).not.toHaveBeenCalled();
