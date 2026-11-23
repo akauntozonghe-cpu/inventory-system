@@ -40,7 +40,7 @@ export async function GET(request:NextRequest){
     }
     return NextResponse.json({
       status:"AUDIT_ONLY",
-      safeToMigrate:stocksInRetiredLocations===0&&pendingRequestsInRetiredLocations===0&&stocksOfArchivedItems===0&&activeItemsWithUnregisteredClassification===0,
+      knownBlockersClear:stocksInRetiredLocations===0&&pendingRequestsInRetiredLocations===0&&stocksOfArchivedItems===0&&activeItemsWithUnregisteredClassification===0,
       active:{items:activeItems,inventoryInstances:activeStocks,classifications:activeMasters,storageLocations:activeLocations},
       archivedStillInsideActiveTables:{items:archivedItems,inventoryInstances:archivedStocks,classifications:retiredMasters,storageLocations:retiredLocations},
       blockers:{
