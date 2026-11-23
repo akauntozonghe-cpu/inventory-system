@@ -54,7 +54,7 @@ export function barcodePrintDocument(items: Array<{ name: string; barcode: strin
     if (label.labelWidth > pageWidth) throw new Error("このコードは用紙の幅を超えています。コードを確認してください。");
     if (rowWidth && rowWidth + label.labelWidth > pageWidth) { rowWidth = 0; rowTop += labelHeight; }
     if (rowTop + labelHeight > pageHeight) { pages.push([]); rowTop = 0; rowWidth = 0; }
-    pages[pages.length - 1].push(`<article class="label" style="width:${label.labelWidth}mm;height:${labelHeight}mm">${includeName ? `<div class="name-guide">${escapeLabelText(label.name)}</div>` : ""}<div class="barcode-sticker"><span class="code-caption">${/^\\d{8}$|^\\d{13}$/.test(label.value)?"JAN":"商品コード"} ${escapeLabelText(label.value)}</span>${label.svg}</div></article>`);
+    pages[pages.length - 1].push(`<article class="label" style="width:${label.labelWidth}mm;height:${labelHeight}mm">${includeName ? `<div class="name-guide">${escapeLabelText(label.name)}</div>` : ""}<div class="barcode-sticker"><span class="code-caption">${/^\d{8}$|^\d{13}$/.test(label.value)?"JAN":"商品コード"} ${escapeLabelText(label.value)}</span>${label.svg}</div></article>`);
     rowWidth += label.labelWidth;
     if (layout === "LABEL") { rowWidth = pageWidth; }
   }
