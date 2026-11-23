@@ -24,7 +24,7 @@ vi.mock("@/lib/auth", () => ({
 vi.mock("@/lib/edit-access", () => ({ requireEditAccess: async () => ({ user: { id: "admin" }, authorization: { mode: "STANDARD_ADMIN" } }) }));
 vi.mock("@/lib/error-report", () => ({ createAdminActionLog: mocks.log }));
 vi.mock("@/lib/device-push", () => ({ scheduleDeviceNotifications: vi.fn() }));
-vi.mock("@/lib/item-links", () => ({ ensureClassification: vi.fn() }));
+vi.mock("@/lib/item-links", () => ({ ensureClassification: vi.fn(), requireActiveClassification: vi.fn() }));
 import { POST as register } from "../src/app/api/items/register/route";
 import { PATCH as review } from "../src/app/api/admin/registration-requests/route";
 import { PATCH as edit } from "../src/app/api/inventory/[id]/route";

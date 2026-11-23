@@ -2,6 +2,7 @@ import AppAccessProvider from "@/components/auth/AppAccessProvider";
 import PermissionProvider from "@/components/pwa/PermissionProvider";
 import PermissionNotice from "@/components/pwa/PermissionNotice";
 import PageNavigation from "@/components/common/PageNavigation";
+import InterruptedWorkBanner from "@/components/common/InterruptedWorkBanner";
 import DevicePushSession from "@/components/pwa/DevicePushSession";
 import PageAdminMode from "@/components/auth/PageAdminMode";
 import ScanAudioInitializer from "@/components/ScanAudioInitializer";
@@ -36,7 +37,7 @@ export default function RootLayout({
         <IdleSessionGuard />
         <DevicePushSession />
         <ScanAudioInitializer />
-        <AppAccessProvider><PageAdminMode><PermissionProvider><PageNavigation/><PermissionNotice/><div id="main-content" tabIndex={-1} className="min-h-screen" style={{paddingBottom:"var(--app-footer-height, 4rem)"}}>{children}</div><PwaManager /></PermissionProvider></PageAdminMode></AppAccessProvider>
+        <AppAccessProvider><PageAdminMode><PermissionProvider><PageNavigation/><PermissionNotice/><div id="main-content" tabIndex={-1} className="min-h-screen" style={{paddingBottom:"var(--app-footer-height, 4rem)"}}><InterruptedWorkBanner/>{children}</div><PwaManager /></PermissionProvider></PageAdminMode></AppAccessProvider>
       </body>
     </html>
   );

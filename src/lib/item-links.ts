@@ -14,6 +14,9 @@ export type CommonFields = {
  * Never rewrite stocktake snapshots, quantities, movement logs or deleted stock.
  */
 export async function syncItemLinks(tx: Prisma.TransactionClient, id: string, before: CommonFields, after: CommonFields) {
+  if (before.majorCategory !== after.majorCategory || before.minorCategory !== after.minorCategory) {
+    await requireActiveClassification(tx, after.majorCategory, after.minorCategory);
+  }
   const active = { itemId: id, status: { not: "廃止" } } as const;
   if (before.manufacturer !== after.manufacturer && before.manufacturer !== null) {
     await tx.inventoryInstance.updateMany({
@@ -47,9 +50,6 @@ export async function syncItemLinks(tx: Prisma.TransactionClient, id: string, be
       data: { minorCategory: after.minorCategory },
     });
   }
-  if (before.majorCategory !== after.majorCategory || before.minorCategory !== after.minorCategory) {
-    await ensureClassification(tx, after.majorCategory, after.minorCategory);
-  }
 }
 
 export async function ensureClassification(tx: Prisma.TransactionClient, major: string | null | undefined, minor: string | null | undefined) {
@@ -63,4 +63,20 @@ export async function ensureClassification(tx: Prisma.TransactionClient, major: 
     update: {},
     create: { kind: "MINOR", name: minor, parentName: major },
   });
+}
+
+/** Ordinary item / stock writes may reference ONLY active master entries.
+ * Creating or renaming masters is an explicit administrator-only operation.
+ * Never infer new active masters from archived or legacy item strings.
+ */
+export async function requireActiveClassification(tx: Prisma.TransactionClient, major: string | null | undefined, minor: string | null | undefined) {
+  if (!major) {
+    if (minor) throw new Error("CLASSIFICATION_PARENT_REQUIRED");
+    return;
+  }
+  const parent=await tx.classification.findUnique({where:{kind_name_parentName:{kind:"MAJOR",name:major,parentName:""}},select:{id:true,retiredAt:true}});
+  if (!parent || parent.retiredAt) throw new Error("CLASSIFICATION_TARGET_NOT_ACTIVE");
+  if (!minor)return;
+  const child=await tx.classification.findUnique({where:{kind_name_parentName:{kind:"MINOR",name:minor,parentName:major}},select:{id:true,retiredAt:true}});
+  if (!child || child.retiredAt) throw new Error("CLASSIFICATION_TARGET_NOT_ACTIVE");
 }

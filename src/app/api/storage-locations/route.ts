@@ -12,6 +12,7 @@ function getText(value: unknown, maxLength = 200) {
 export async function GET() {
   try {
     const locations = await prisma.storageLocation.findMany({
+      where: { retiredAt: null },
       orderBy: {
         name: "asc",
       },
@@ -72,9 +73,8 @@ export async function POST(request: NextRequest) {
       },
     });
 
-    if (exists) {
-      return NextResponse.json(exists);
-    }
+    if (exists?.retiredAt) return NextResponse.json({code:"LOCATION_RETIRED",message:"同名の廃止記録が存在します。管理者の廃止記録画面から再登録を行ってください。"}, {status:409});
+    if (exists) return NextResponse.json(exists);
 
     const location = await prisma.storageLocation.create({
       data: {

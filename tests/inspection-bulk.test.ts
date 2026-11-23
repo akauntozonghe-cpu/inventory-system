@@ -1,13 +1,13 @@
 import {beforeEach,expect,it,vi} from "vitest";
 import {NextRequest,NextResponse} from "next/server";
 const state=vi.hoisted(()=>({role:"ADMIN",elevated:false}));
-const db=vi.hoisted(()=>({$transaction:vi.fn(),item:{findMany:vi.fn(),updateMany:vi.fn(),deleteMany:vi.fn()},inventoryInstance:{findMany:vi.fn(),updateMany:vi.fn(),deleteMany:vi.fn()},inventoryHistory:{deleteMany:vi.fn()},classification:{upsert:vi.fn()},marketplaceListing:{count:vi.fn()},stocktakeTarget:{count:vi.fn()},adminActionLog:{create:vi.fn()}}));
+const db=vi.hoisted(()=>({$transaction:vi.fn(),item:{findMany:vi.fn(),updateMany:vi.fn(),deleteMany:vi.fn()},inventoryInstance:{findMany:vi.fn(),updateMany:vi.fn(),deleteMany:vi.fn()},inventoryHistory:{deleteMany:vi.fn()},classification:{upsert:vi.fn(),findUnique:vi.fn().mockResolvedValue({id:"active",retiredAt:null})},marketplaceListing:{count:vi.fn()},stocktakeTarget:{count:vi.fn()},adminActionLog:{create:vi.fn()}}));
 vi.mock("@/lib/prisma",()=>({prisma:db}));
 vi.mock("@/lib/auth",()=>({requireAdmin:()=>state.role==="ADMIN"||state.elevated?{user:{id:"actor",role:state.role}}:{response:NextResponse.json({code:"ADMIN_REQUIRED"},{status:403})},getAdminElevation:()=>state.elevated?{adminUserId:"sponsor"}:null}));
 import {POST} from "../src/app/api/items/bulk/route";
 import {activeInventoryWhere,isInspectionTarget,productCodes} from "../src/lib/product-scope";
 const request=(operation:string,reason="管理上問題なし")=>POST(new NextRequest("http://localhost/api/items/bulk",{method:"POST",body:JSON.stringify({operation,itemIds:["item"],reason})}));
-beforeEach(()=>{vi.resetAllMocks();state.role="ADMIN";state.elevated=false;db.$transaction.mockImplementation(fn=>fn(db));db.item.findMany.mockResolvedValue([{id:"item",isArchived:false}]);db.item.updateMany.mockResolvedValue({count:1});db.item.deleteMany.mockResolvedValue({count:1});db.inventoryInstance.findMany.mockResolvedValue([]);db.inventoryInstance.deleteMany.mockResolvedValue({count:1});db.marketplaceListing.count.mockResolvedValue(0);db.stocktakeTarget.count.mockResolvedValue(0);});
+beforeEach(()=>{vi.resetAllMocks();db.classification.findUnique.mockResolvedValue({id:"active",retiredAt:null});state.role="ADMIN";state.elevated=false;db.$transaction.mockImplementation(fn=>fn(db));db.item.findMany.mockResolvedValue([{id:"item",isArchived:false}]);db.item.updateMany.mockResolvedValue({count:1});db.item.deleteMany.mockResolvedValue({count:1});db.inventoryInstance.findMany.mockResolvedValue([]);db.inventoryInstance.deleteMany.mockResolvedValue({count:1});db.marketplaceListing.count.mockResolvedValue(0);db.stocktakeTarget.count.mockResolvedValue(0);});
 it("excludes retired and explicitly exempt products without removing exempt active stock",()=>{
  expect(isInspectionTarget({isArchived:true})).toBe(false);expect(isInspectionTarget({inspectionExcluded:true})).toBe(false);expect(isInspectionTarget({},"廃止")).toBe(false);expect(isInspectionTarget({})).toBe(true);
  expect(activeInventoryWhere.item).not.toHaveProperty("inspectionExcluded");
@@ -81,12 +81,13 @@ it.each([
  db.item.findMany.mockResolvedValue([{id:"item",name:"商品",isArchived:false,manufacturer:"旧",majorCategory:"旧",minorCategory:"旧",defaultUnit:"個"}]);
  const response=await POST(new NextRequest("http://localhost/api/items/bulk",{method:"POST",body:JSON.stringify({operation,itemIds:["item"],reason:"管理情報を整理",value})}));
  expect(response.status).toBe(200);
- expect(db.item.updateMany).toHaveBeenCalledWith({where:{id:"item",isArchived:false},data:{[field]:value}});
+ expect(db.item.updateMany).toHaveBeenCalledWith({where:{id:"item",isArchived:false},data:field==="majorCategory"?{majorCategory:value,minorCategory:null}:{[field]:value}});
  const stockField=field==="defaultUnit"?"unit":field;
  expect(db.inventoryInstance.updateMany).toHaveBeenCalledWith(expect.objectContaining({
   where:expect.objectContaining({itemId:"item",status:{not:"廃止"},[stockField]:field==="defaultUnit"?"個":"旧"}),
   data:{[stockField]:value},
  }));
+ if(field==="majorCategory")expect(db.inventoryInstance.updateMany).toHaveBeenCalledWith(expect.objectContaining({data:{minorCategory:null}}));
  expect(db.inventoryHistory.deleteMany).not.toHaveBeenCalled();
  expect(db.inventoryInstance.deleteMany).not.toHaveBeenCalled();
  expect(db.adminActionLog.create.mock.calls[0][0].data.action).toBe("ITEM_BULK_"+operation);

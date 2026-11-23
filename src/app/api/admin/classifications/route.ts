@@ -11,6 +11,7 @@ import { prisma } from "@/lib/prisma";
 import { createAdminActionLog } from "@/lib/error-report";
 
 function text(value: unknown, max = 100) { return normalizeDisplayText(value, max); }
+const classificationKey=(value:string)=>value.normalize("NFKC").trim().toLocaleLowerCase("ja");
 /**
  * Identity of an EXISTING record is an exact database key. Converting the
  * old name "フリマ３" to "フリマ3" before lookup can delete the wrong master,
@@ -38,8 +39,10 @@ async function mergeInventory(sourceLocationId: string, targetLocationId: string
       where:{storageLocationId:sourceLocationId,status:{not:"PENDING"}},
     });
     if(historicalRequests) throw new Error("LOCATION_HISTORICAL_REQUESTS");
+    const retiredStocks=await tx.inventoryInstance.count({where:{storageLocationId:sourceLocationId,status:"廃止"}});
+    if(retiredStocks)throw new Error("LOCATION_ARCHIVED_REFERENCES");
     const migratedStocks = await tx.inventoryInstance.updateMany({
-      where: { storageLocationId: sourceLocationId },
+      where: { storageLocationId: sourceLocationId, status:{not:"廃止"} },
       data: { storageLocationId: targetLocationId },
     });
     const migratedRequests = await tx.itemRegistrationRequest.updateMany({
@@ -54,6 +57,9 @@ async function mergeInventory(sourceLocationId: string, targetLocationId: string
       },
       data: { scopeValue: to.name, scopeLabel: to.name },
     });
+    await tx.archiveRecord.create({data:{entityType:"STORAGE_LOCATION",originalId:from.id,
+      snapshot:JSON.parse(JSON.stringify(from)),snapshotVersion:1,
+      archivedByUserId:actorId,reason}});
     await tx.storageLocation.delete({ where: { id: sourceLocationId } });
     await tx.adminActionLog.create({
       data: {
@@ -115,30 +121,44 @@ export async function POST(request: NextRequest) {
           kind,name,parentName:kind==="MAJOR"?"":parentName,
         }}});
         if(previous?.retiredAt) throw new Error("CLASSIFICATION_RETIRED_USE_RESTORE");
+        const siblings=await tx.classification.findMany({where:{kind,parentName:kind==="MAJOR"?"":parentName},select:{name:true}});
+        if(siblings.some(row=>classificationKey(row.name)===classificationKey(name))) throw new Error("CLASSIFICATION_DUPLICATE_NORMALIZED");
         if(kind==="MINOR") {
           const parent=await tx.classification.findUnique({where:{kind_name_parentName:{
             kind:"MAJOR",name:parentName,parentName:"",
           }}});
-          if(parent?.retiredAt) throw new Error("CLASSIFICATION_RETIRED_USE_RESTORE");
+          if(!parent || parent.retiredAt) throw new Error("CLASSIFICATION_PARENT_NOT_ACTIVE");
         }
         await ensureClassification(tx, kind === "MAJOR" ? name : parentName, kind === "MINOR" ? name : null);
         return { created: true };
       });
     } else if (action === "RENAME_OR_MERGE_CLASSIFICATION") {
-      if (!["MAJOR", "MINOR"].includes(kind) || !source || !target) return NextResponse.json({ code: "CLASSIFICATION_INPUT_INVALID", message: "変更元と変更先を指定してください。" }, { status: 400 });
+      const editMode = body.editMode;
+      if (!["MAJOR", "MINOR"].includes(kind) || !source || !target || !["MERGE","RENAME"].includes(String(editMode))) return NextResponse.json({ code: "CLASSIFICATION_INPUT_INVALID", message: "変更方法・変更元・変更先を指定してください。" }, { status: 400 });
       result = await prisma.$transaction(async (tx) => {
         const destination=await tx.classification.findUnique({where:{kind_name_parentName:{
           kind,name:target,parentName:kind==="MAJOR"?"":targetParent||parentName,
         }}});
         if(destination?.retiredAt)throw new Error("CLASSIFICATION_RETIRED_USE_RESTORE");
+        if(editMode==="MERGE" && (!destination || (source===target && (kind==="MAJOR" || parentName===(targetParent||parentName))))) throw new Error("CLASSIFICATION_MERGE_TARGET_REQUIRED");
+        if(editMode==="MERGE" && text(body.reason,500).length<2) throw new Error("CLASSIFICATION_MERGE_REASON_REQUIRED");
+        if(editMode==="RENAME" && destination && (source!==target || (kind==="MINOR" && parentName!==(targetParent||parentName)))) throw new Error("CLASSIFICATION_RENAME_DUPLICATE");
+        if(editMode==="RENAME"){
+          const siblings=await tx.classification.findMany({where:{kind,parentName:kind==="MAJOR"?"":targetParent||parentName},select:{name:true,parentName:true}});
+          if(siblings.some(row=>classificationKey(row.name)===classificationKey(target) && !(row.name===source && row.parentName===(kind==="MAJOR"?"":parentName)))) throw new Error("CLASSIFICATION_DUPLICATE_NORMALIZED");
+        }
+        if(kind==="MINOR"){
+          const nextParent=await tx.classification.findUnique({where:{kind_name_parentName:{kind:"MAJOR",name:targetParent||parentName,parentName:""}}});
+          if(!nextParent || nextParent.retiredAt)throw new Error("CLASSIFICATION_PARENT_NOT_ACTIVE");
+        }
         if (kind === "MAJOR") {
-          const items = await tx.item.updateMany({ where: { majorCategory: source }, data: { majorCategory: target } });
+          const items = await tx.item.updateMany({ where: { majorCategory: source, isArchived:false }, data: { majorCategory: target } });
           // Rename only stock values that actually use the renamed label.
           // A lot deliberately assigned another category must not change.
-          const inventories = await tx.inventoryInstance.updateMany({ where: { majorCategory: source }, data: { majorCategory: target } });
+          const inventories = await tx.inventoryInstance.updateMany({ where: { majorCategory: source, status:{not:"廃止"}, item:{isArchived:false} }, data: { majorCategory: target } });
           await tx.itemRegistrationRequest.updateMany({ where: { majorCategory: source, status: "PENDING" }, data: { majorCategory: target } });
           await tx.stocktakeSession.updateMany({ where: { scopeType: "MAJOR_CATEGORY", scopeValue: source, status: { in: ["IN_PROGRESS", "PAUSED", "REVIEW", "CONFLICT"] } }, data: { scopeValue: target, scopeLabel: target } });
-          const children = await tx.classification.findMany({ where: { kind: "MINOR", parentName: source } });
+          const children = await tx.classification.findMany({ where: { kind: "MINOR", parentName: source, retiredAt:null } });
           for (const child of children) await renameClassificationMaster(tx, "MINOR", child.name, source, child.name, target);
           await renameClassificationMaster(tx, "MAJOR", source, "", target, "");
           return { items: items.count, inventories: inventories.count };
@@ -147,22 +167,21 @@ export async function POST(request: NextRequest) {
         const otherParents = await tx.item.count({ where: { minorCategory: source, NOT: { majorCategory: parentName } } });
         const activeScope = await tx.stocktakeSession.count({ where: { scopeType: "MINOR_CATEGORY", scopeValue: source, status: { in: ["IN_PROGRESS", "PAUSED", "REVIEW", "CONFLICT"] } } });
         if (source !== target && otherParents && activeScope) throw new Error("同名の小分類をまとめて棚卸中です。棚卸の完了後に小分類名を変更してください。");
-        const where = { minorCategory: source, majorCategory: parentName };
+        const where = { minorCategory: source, majorCategory: parentName, isArchived:false };
         const nextMajor = targetParent || parentName;
         const items = await tx.item.updateMany({ where, data: { minorCategory: target, majorCategory: nextMajor } });
         // Keep null/inherited and other independently configured lot categories.
         const inherited = await tx.inventoryInstance.updateMany({
-          where: { minorCategory: source, majorCategory: null, item: { majorCategory: nextMajor } },
+          where: { minorCategory: source, majorCategory: null, status:{not:"廃止"},item: { majorCategory: nextMajor, isArchived:false } },
           data: { minorCategory: target },
         });
         const explicitlyLinked = await tx.inventoryInstance.updateMany({
-          where: { minorCategory: source, majorCategory: parentName },
+          where: { minorCategory: source, majorCategory: parentName, status:{not:"廃止"},item:{isArchived:false} },
           data: { minorCategory: target, majorCategory: nextMajor },
         });
         const inventories = { count: inherited.count + explicitlyLinked.count };
         await tx.itemRegistrationRequest.updateMany({ where: { ...where, status: "PENDING" }, data: { minorCategory: target, majorCategory: nextMajor } });
         if (!otherParents) await tx.stocktakeSession.updateMany({ where: { scopeType: "MINOR_CATEGORY", scopeValue: source, status: { in: ["IN_PROGRESS", "PAUSED", "REVIEW", "CONFLICT"] } }, data: { scopeValue: target, scopeLabel: target } });
-        await ensureClassification(tx, nextMajor, null);
         await renameClassificationMaster(tx, "MINOR", source, parentName, target, nextMajor);
         return { items: items.count, inventories: inventories.count };
       });
@@ -181,12 +200,12 @@ export async function POST(request: NextRequest) {
         // pre-existing items until an administrator explicitly reclassifies them.
         if(hasMajor && majorCategory){
           const m=await tx.classification.findUnique({where:{kind_name_parentName:{kind:"MAJOR",name:majorCategory,parentName:""}}});
-          if(m?.retiredAt)throw new Error("CLASSIFICATION_RETIRED_USE_RESTORE");
+          if(!m || m.retiredAt)throw new Error("CLASSIFICATION_TARGET_NOT_ACTIVE");
         }
         if(hasMinor && minorCategory){
           const major=hasMajor?majorCategory:text(body.currentMajor);
           const m=await tx.classification.findUnique({where:{kind_name_parentName:{kind:"MINOR",name:minorCategory,parentName:major??""}}});
-          if(m?.retiredAt)throw new Error("CLASSIFICATION_RETIRED_USE_RESTORE");
+          if(!m || m.retiredAt)throw new Error("CLASSIFICATION_TARGET_NOT_ACTIVE");
         }
         const selected = await tx.item.findMany({ where: { id: { in: itemIds }, isArchived: false }, select: { id: true, majorCategory: true, minorCategory: true } });
         if (selected.length !== itemIds.length) throw new Error("CLASSIFICATION_ITEMS_CHANGED");
@@ -356,6 +375,12 @@ export async function POST(request: NextRequest) {
         const assessment = await assessClassificationCleanup(tx, kind as "MAJOR" | "MINOR", source, parentName);
         if (!assessment.canDelete) return { deleted: false, assessment };
         if (body.expectedId !== assessment.id) throw new Error("CLASSIFICATION_ITEMS_CHANGED");
+        const original=await tx.classification.findUniqueOrThrow({where:{id:assessment.id!},include:{labelAliases:true}});
+        await tx.archiveRecord.create({data:{
+          entityType:"CLASSIFICATION",originalId:original.id,
+          snapshot:JSON.parse(JSON.stringify(original)),snapshotVersion:1,
+          archivedByUserId:auth.user!.id,reason:text(body.reason,500)||"分類整理",
+        }});
         await tx.classification.delete({ where: { id: assessment.id! } });
         await tx.adminActionLog.create({ data: {
           adminUserId: auth.user!.id,
@@ -422,6 +447,12 @@ export async function POST(request: NextRequest) {
         const assessment = await assessLocationCleanup(tx, sourceId);
         if (!assessment.canDelete) return { deleted: false, assessment };
         if (body.expectedId !== assessment.id || body.confirmName !== assessment.name) throw new Error("LOCATION_CHANGED");
+        const original=await tx.storageLocation.findUniqueOrThrow({where:{id:sourceId}});
+        await tx.archiveRecord.create({data:{
+          entityType:"STORAGE_LOCATION",originalId:original.id,
+          snapshot:JSON.parse(JSON.stringify(original)),snapshotVersion:1,
+          archivedByUserId:auth.user!.id,reason:text(body.reason,500)||"保管場所整理",
+        }});
         await tx.storageLocation.delete({ where: { id: sourceId } });
         await tx.adminActionLog.create({ data: {
           adminUserId: auth.user!.id,
@@ -450,10 +481,23 @@ export async function POST(request: NextRequest) {
     if (action !== "MERGE_LOCATION" && action !== "ASSIGN_ITEMS") await createAdminActionLog({ adminUserId: auth.user.id, action: `CLASSIFICATION_${action}`, route: "/admin/classifications", detail: { kind, name, parentName, source, target, targetParent, reason: text(body.reason,500), result: result as never } });
     return NextResponse.json({ code: "CLASSIFICATION_UPDATE_OK", message: "分類・在庫・棚卸範囲を更新し、操作履歴へ記録しました。", result });
   } catch (error) { console.error("POST classifications", error);
+    if(error instanceof Error && error.message==="LOCATION_ARCHIVED_REFERENCES")
+      return NextResponse.json({code:"LOCATION_ARCHIVED_REFERENCES",message:"廃止済みの在庫個体がこの保管場所を参照しています。履歴の分離が完了するまでは統合できません。"}, {status:409});
     if(error instanceof Error && error.message==="LOCATION_RETIRED_USE_RESTORE")
       return NextResponse.json({code:"LOCATION_RETIRED_USE_RESTORE",
         message:"同名の保管場所は廃止済みです。廃止済み一覧から復元してください。"},
         {status:409});
+    if(error instanceof Error && ["CLASSIFICATION_MERGE_TARGET_REQUIRED","CLASSIFICATION_MERGE_REASON_REQUIRED","CLASSIFICATION_RENAME_DUPLICATE","CLASSIFICATION_PARENT_NOT_ACTIVE","CLASSIFICATION_TARGET_NOT_ACTIVE","CLASSIFICATION_DUPLICATE_NORMALIZED"].includes(error.message)){
+      const messages:Record<string,string>={
+        CLASSIFICATION_MERGE_TARGET_REQUIRED:"統合先は登録済みの別の有効な分類から選択してください。",
+        CLASSIFICATION_MERGE_REASON_REQUIRED:"統合理由を2文字以上で入力してください。",
+        CLASSIFICATION_RENAME_DUPLICATE:"同名の分類が既にあります。名称変更ではなく統合先を選択してください。",
+        CLASSIFICATION_PARENT_NOT_ACTIVE:"有効な親の大分類を選択してください。",
+        CLASSIFICATION_TARGET_NOT_ACTIVE:"変更先は登録済みの有効な分類から選択してください。",
+        CLASSIFICATION_DUPLICATE_NORMALIZED:"全角・半角などの表記を統一すると同じ分類が既にあります。既存分類を選択してください。",
+      };
+      return NextResponse.json({code:error.message,message:messages[error.message]},{status:409});
+    }
     if(error instanceof Error && error.message==="CLASSIFICATION_RETIRED_USE_RESTORE")
       return NextResponse.json({code:"CLASSIFICATION_RETIRED_USE_RESTORE",
         message:"その分類は廃止済みです。分類・保管場所の整理にある「廃止済み」から復元してください。"},

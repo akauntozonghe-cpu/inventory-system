@@ -16,25 +16,17 @@ export async function GET(request: NextRequest) {
       prisma.classification.findMany({ select: { kind: true, name: true, parentName: true, retiredAt: true } }),
       prisma.item.findMany({ where: { isArchived: false }, select: { majorCategory: true, minorCategory: true, defaultUnit: true } }),
     ]);
-    const retiredMajors=new Set(masters.filter(row=>row.kind==="MAJOR"&&row.retiredAt).map(row=>row.name));
-    const retiredMinorPairs=new Set(masters.filter(row=>row.kind==="MINOR"&&row.retiredAt)
-      .map(row=>JSON.stringify([row.parentName,row.name])));
-    const availableMajor=(name:string|null|undefined)=>Boolean(name)&&!retiredMajors.has(name!);
-    const availableMinor=(parentName:string,name:string)=>
-      !retiredMajors.has(parentName)&&!retiredMinorPairs.has(JSON.stringify([parentName,name]));
-    const minorPairs = [
-      ...masters.filter((row) => row.kind === "MINOR"&&availableMinor(row.parentName,row.name))
-        .map((row) => ({ name: row.name, parentName: row.parentName })),
-      ...items.filter((item) => item.minorCategory && availableMinor(item.majorCategory??"",item.minorCategory))
-        .map((item) => ({ name: item.minorCategory!, parentName: item.majorCategory ?? "" })),
-    ];
+    // Choices are authoritative master records, never inferred from item history.
+    const activeMajorNames=new Set(masters.filter(row=>row.kind==="MAJOR"&&!row.retiredAt).map(row=>row.name));
+    const minorPairs=masters.filter(row=>row.kind==="MINOR"&&!row.retiredAt&&activeMajorNames.has(row.parentName))
+      .map(row=>({name:row.name,parentName:row.parentName}));
     return NextResponse.json({
       success: true,
       storageLocations: locations.map((location) => location.name),
       storageLocationOptions: locations,
-      majorCategories: uniqueSorted([...masters.filter((row) => row.kind === "MAJOR"&&!row.retiredAt).map((row) => row.name), ...items.map((item) => item.majorCategory).filter(availableMajor)]),
+      majorCategories: uniqueSorted([...activeMajorNames]),
       minorCategories: uniqueSorted(minorPairs.map((row) => row.name)),
-      minorCategoryOptions: [...new Map(minorPairs.map((row) => [JSON.stringify([row.parentName, row.name]), row])).values()],
+      minorCategoryOptions: [...new Map(minorPairs.map((row) => [JSON.stringify([row.parentName, row.name]), row])).values()].sort((a,b)=>a.parentName.localeCompare(b.parentName,"ja",{numeric:true})||a.name.localeCompare(b.name,"ja",{numeric:true})),
       units: uniqueSorted([...DEFAULT_UNITS, ...items.map((item) => item.defaultUnit), ...inventories.map((row) => row.unit)]).filter((unit) => !unitValidationMessage(unit)),
     }, { headers: { "Cache-Control": "private, no-store" } });
   } catch (error) {

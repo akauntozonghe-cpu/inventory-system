@@ -1,6 +1,7 @@
+import {activeClassificationError} from "@/lib/active-classification-error";
 import { findCatalogItem } from "@/lib/catalog-registration";
 import { scheduleDeviceNotifications } from "@/lib/device-push";
-import { ensureClassification } from "@/lib/item-links";
+import { requireActiveClassification } from "@/lib/item-links";
 import { unitValidationMessage } from "@/lib/unit";
 import { randomInt } from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
@@ -313,7 +314,7 @@ export async function POST(request: NextRequest) {
           },
         });
 
-        await ensureClassification(transaction, majorCategory, minorCategory);
+        await requireActiveClassification(transaction, majorCategory, minorCategory);
 
         const inventory = await transaction.inventoryInstance.create({
           data: {
@@ -413,6 +414,8 @@ export async function POST(request: NextRequest) {
     );
   } catch (error) {
     console.error("POST /api/items/register", error);
+    const categoryError=activeClassificationError(error);
+    if(categoryError) return NextResponse.json({code:categoryError.code,message:categoryError.message},{status:categoryError.status});
 
     if (isRetryableDatabaseError(error)) {
       return NextResponse.json(

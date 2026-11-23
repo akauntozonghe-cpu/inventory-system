@@ -42,13 +42,23 @@ describe("product barcode labels", () => {
     expect(html.match(/class="sheet"/g)).toHaveLength(2);
     expect(html.match(/class="label"/g)).toHaveLength(61);
     expect(html).not.toContain('<script>alert');
-    expect(html).toContain('width:32mm;height:26mm');
+    expect(html).toContain('width:32mm;height:32mm');
     expect(html).toContain('width="29.832mm" height="20.744mm"');
+  });
+  it("prints the product name and JAN in a separate detachable guide without enlarging the barcode symbol",()=>{
+    const html=barcodePrintDocument([{name:"商品名 A",barcode:"4901234567894"}],"A4",0.8,true);
+    expect(html).toContain('<div class="name-guide"><strong>商品名 A</strong><span>JAN 4901234567894</span></div>');
+    expect(html).toContain('<div class="barcode-sticker"><svg');
+    expect(html).toContain('width="29.832mm" height="20.744mm"');
+    expect(html).toContain('border-bottom:.2mm dashed');
+    const withoutName=barcodePrintDocument([{name:"商品名 A",barcode:"4901234567894"}],"A4",0.8,false);
+    expect(withoutName).not.toContain('<div class="name-guide">');
+    expect(withoutName).toContain('width:32mm;height:23mm');
   });
   it("uses one page per label with the same physical barcode as A4", () => {
     const html = barcodePrintDocument([{ name: "商品", barcode: "4901234567894" }, { name: "商品", barcode: "4901234567894" }], "LABEL");
     expect(html.match(/class="sheet"/g)).toHaveLength(2);
-    expect(html).toContain('size:32mm 26mm');
+    expect(html).toContain('size:32mm 32mm');
   });
   it("packs 120 compact labels per A4 and moves the 121st onto a new page", () => {
     const html = barcodePrintDocument(Array.from({ length: 121 }, () => ({name:"皿",barcode:"4901234567894"})), "A4", 0.8, false, "COMPACT");

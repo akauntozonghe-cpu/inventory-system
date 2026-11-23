@@ -1,5 +1,6 @@
+import {activeClassificationError} from "@/lib/active-classification-error";
 import { findCatalogItem } from "@/lib/catalog-registration";
-import { ensureClassification } from "@/lib/item-links";
+import { requireActiveClassification } from "@/lib/item-links";
 import { scheduleDeviceNotifications } from "@/lib/device-push";
 import { randomInt } from "node:crypto";
 import {
@@ -342,7 +343,7 @@ export async function PATCH(request: NextRequest) {
           },
         });
 
-        await ensureClassification(transaction, registrationRequest.majorCategory, registrationRequest.minorCategory);
+        await requireActiveClassification(transaction, registrationRequest.majorCategory, registrationRequest.minorCategory);
         const inventory = await transaction.inventoryInstance.create({
           data: {
             itemId: item.id,
@@ -465,6 +466,8 @@ export async function PATCH(request: NextRequest) {
     });
   } catch (error) {
     console.error("PATCH /api/admin/registration-requests", error);
+    const categoryError=activeClassificationError(error);
+    if(categoryError) return NextResponse.json({code:categoryError.code,message:categoryError.message},{status:categoryError.status});
     if (error instanceof Error && error.message === "REGISTRATION_REQUEST_ALREADY_REVIEWED") {
       return NextResponse.json({ code: error.message, message: "この申請はすでに処理されています。画面を更新してください。" }, { status: 409 });
     }

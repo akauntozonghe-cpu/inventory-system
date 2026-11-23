@@ -1,4 +1,5 @@
-import { ensureClassification } from "@/lib/item-links";
+import {activeClassificationError} from "@/lib/active-classification-error";
+import { requireActiveClassification } from "@/lib/item-links";
 import {activeInventoryWhere} from "@/lib/product-scope";
 import { unitValidationMessage } from "@/lib/unit";
 import { NextRequest, NextResponse } from "next/server";
@@ -163,7 +164,7 @@ export async function POST(request: NextRequest) {
         const majorCategory = body.majorCategory === undefined ? item.majorCategory : getOptionalText(body.majorCategory, 100);
         const minorCategory = body.minorCategory === undefined ? item.minorCategory : getOptionalText(body.minorCategory, 100);
         if (minorCategory && !majorCategory) throw new Error("小分類を設定する場合は大分類を選択してください。");
-        await ensureClassification(transaction, majorCategory, minorCategory);
+        await requireActiveClassification(transaction, majorCategory, minorCategory);
 
         const created =
           await transaction.inventoryInstance.create({
@@ -233,6 +234,8 @@ export async function POST(request: NextRequest) {
     );
   } catch (error) {
     console.error("POST /api/inventory", error);
+    const categoryError=activeClassificationError(error);
+    if(categoryError)return NextResponse.json({code:categoryError.code,message:categoryError.message},{status:categoryError.status});
 
     const code = errorMessage(
       error,
@@ -435,6 +438,8 @@ export async function PUT(request: NextRequest) {
     });
   } catch (error) {
     console.error("PUT /api/inventory", error);
+    const categoryError=activeClassificationError(error);
+    if(categoryError)return NextResponse.json({code:categoryError.code,message:categoryError.message},{status:categoryError.status});
 
     const code = errorMessage(
       error,

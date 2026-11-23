@@ -1,5 +1,6 @@
+import {activeClassificationError} from "@/lib/active-classification-error";
 import { requireEditAccess } from "@/lib/edit-access";
-import { ensureClassification } from "@/lib/item-links";
+import { requireActiveClassification } from "@/lib/item-links";
 import { NextRequest, NextResponse } from "next/server";
 import {
   AllocationType,
@@ -419,7 +420,7 @@ export async function PATCH(
     };
 
     const result = await prisma.$transaction(async (transaction) => {
-      await ensureClassification(transaction,
+      await requireActiveClassification(transaction,
         body.majorCategory === undefined ? existing.majorCategory : emptyToNull(body.majorCategory),
         body.minorCategory === undefined ? existing.minorCategory : emptyToNull(body.minorCategory));
       const updated = await transaction.inventoryInstance.update({
@@ -510,6 +511,8 @@ export async function PATCH(
     });
   } catch (error) {
     console.error(error);
+    const categoryError=activeClassificationError(error);
+    if(categoryError) return NextResponse.json({code:categoryError.code,message:categoryError.message},{status:categoryError.status});
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2025") return NextResponse.json({ code: "INVENTORY_CHANGED", message: "在庫が更新されました。最新の内容を確認してからやり直してください。" }, { status: 409 });
 
     if (

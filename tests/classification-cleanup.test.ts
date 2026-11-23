@@ -3,12 +3,13 @@ import {NextRequest,NextResponse} from "next/server";
 const authState=vi.hoisted(()=>({admin:true}));
 const db=vi.hoisted(()=>({
   $transaction:vi.fn(),
-  classification:{findUnique:vi.fn(),count:vi.fn(),delete:vi.fn(),upsert:vi.fn()},
+  classification:{findUnique:vi.fn(),findUniqueOrThrow:vi.fn(),count:vi.fn(),delete:vi.fn(),upsert:vi.fn()},
   item:{count:vi.fn(),findMany:vi.fn(),updateMany:vi.fn()},
   inventoryInstance:{count:vi.fn(),findMany:vi.fn(),updateMany:vi.fn(),delete:vi.fn()},
   itemRegistrationRequest:{count:vi.fn(),updateMany:vi.fn()},
   stocktakeSession:{count:vi.fn(),updateMany:vi.fn()},
-  storageLocation:{findUnique:vi.fn(),delete:vi.fn()},
+  storageLocation:{findUnique:vi.fn(),findUniqueOrThrow:vi.fn(),delete:vi.fn()},
+  archiveRecord:{create:vi.fn()},
   stocktakeTarget:{deleteMany:vi.fn()},stocktakeRecord:{deleteMany:vi.fn()},
   adminActionLog:{create:vi.fn()},
 }));
@@ -29,6 +30,9 @@ beforeEach(()=>{
   vi.resetAllMocks();authState.admin=true;
   db.$transaction.mockImplementation(async callback=>callback(db));
   db.classification.findUnique.mockResolvedValue({id:"cat-1"});
+  db.classification.findUniqueOrThrow.mockResolvedValue({id:"cat-1",kind:"MAJOR",name:"食品",parentName:"",labelAliases:[]});
+  db.storageLocation.findUniqueOrThrow.mockResolvedValue({id:"loc-1",name:"旧倉庫"});
+  db.archiveRecord.create.mockResolvedValue({id:"archive-1"});
   db.classification.count.mockResolvedValue(0);
   db.item.count.mockResolvedValue(0);
   db.item.findMany.mockResolvedValue([]);
@@ -65,7 +69,7 @@ describe("safe classification / location retirement",()=>{
     expect(db.adminActionLog.create).not.toHaveBeenCalled();
   });
   it.each([
-    ["an item",()=>db.item.count.mockResolvedValue(1)],
+    ["an item",()=>db.item.count.mockImplementation(async ({where}:{where?:{isArchived?:boolean}})=>where?.isArchived===true?0:1)],
     ["a lot-level override",()=>db.inventoryInstance.count.mockResolvedValue(2)],
     ["a pending registration",()=>db.itemRegistrationRequest.count.mockResolvedValue(3)],
     ["an active stocktake",()=>db.stocktakeSession.count.mockResolvedValue(1)],
@@ -298,7 +302,7 @@ describe("safe classification / location retirement",()=>{
     const response=await post({action:"MERGE_LOCATION",sourceId:locationId,targetId:"loc-2",reason:"旧倉庫を廃止"});
     expect(response.status).toBe(200);
     expect(db.inventoryInstance.updateMany).toHaveBeenCalledWith({
-      where:{storageLocationId:locationId},data:{storageLocationId:"loc-2"},
+      where:{storageLocationId:locationId,status:{not:"廃止"}},data:{storageLocationId:"loc-2"},
     });
     expect(db.itemRegistrationRequest.updateMany).toHaveBeenCalled();
     expect(db.stocktakeSession.updateMany).toHaveBeenCalled();

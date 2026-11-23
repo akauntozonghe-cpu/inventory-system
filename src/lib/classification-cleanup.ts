@@ -92,6 +92,7 @@ export async function assessClassificationCleanup(
   ]);
   const historicalRegistrationRequests=registrationRequests-pendingRegistrationRequests;
   const archivedStocks=stocks-activeStocks;
+  const activeItems=items-archivedItems;
   const linkedStocks=activeStocks
     ? await tx.inventoryInstance.findMany({
       where:{AND:[whereStock,{status:{not:"廃止"}}]},
@@ -107,7 +108,7 @@ export async function assessClassificationCleanup(
     && archivedItems===0 && positiveStockRows===0
     && pendingRegistrationRequests===0 && activeStocktakes===0 && childCategories===0;
   const reasons = [
-    ...(items ? [`商品マスタが${items}件、この分類を設定しています`] : []),
+    ...(activeItems ? [`現役の商品マスタが${activeItems}件、この分類を設定しています`] : []),
     ...(activeStocks ? [`使用中の在庫明細が${activeStocks}件、個別にこの分類を参照しています`] : []),
     ...(pendingRegistrationRequests ? [`未処理の登録申請が${pendingRegistrationRequests}件あります`] : []),
     ...(activeStocktakes ? [`進行中・確認中の棚卸が${activeStocktakes}件あります`] : []),
@@ -119,7 +120,7 @@ export async function assessClassificationCleanup(
     id: master?.id ?? null,
     retiredAt:master?.retiredAt ?? null,
     name, kind, counts, reasons,
-    canDelete: Boolean(master) && items===0 && activeStocks===0
+    canDelete: Boolean(master) && activeItems===0 && activeStocks===0
       && pendingRegistrationRequests===0 && activeStocktakes===0 && childCategories===0,
     canUnassignAndDelete,
     linkedItems,
@@ -128,6 +129,7 @@ export async function assessClassificationCleanup(
     })),
     warning: [
       "完全削除は分類マスタだけを削除します。商品・在庫・棚卸・登録申請の記録は変更しません。",
+      ...(archivedItems ? [`廃止済み商品${archivedItems}件の過去の分類文字列は変更されず、廃止記録として扱います。`] : []),
       ...(archivedStocks||historicalRegistrationRequests
         ? [`削除済み在庫${archivedStocks}件、処理済み登録申請${historicalRegistrationRequests}件は履歴として残ります（削除を妨げません）。`]
         : []),

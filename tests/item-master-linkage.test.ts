@@ -5,9 +5,9 @@ import {inventoryCategoryWhere} from "../src/lib/inventory-category";
 
 function mockTx(){
   const stock=vi.fn().mockResolvedValue({count:1});
-  const classification=vi.fn().mockResolvedValue({});
+  const classification=vi.fn().mockResolvedValue({id:"active",retiredAt:null});
   return {
-    tx:{inventoryInstance:{updateMany:stock},classification:{upsert:classification}} as unknown as Prisma.TransactionClient,
+    tx:{inventoryInstance:{updateMany:stock},classification:{findUnique:classification}} as unknown as Prisma.TransactionClient,
     stock, classification,
   };
 }
