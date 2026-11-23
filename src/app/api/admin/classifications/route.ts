@@ -39,8 +39,10 @@ async function mergeInventory(sourceLocationId: string, targetLocationId: string
       where:{storageLocationId:sourceLocationId,status:{not:"PENDING"}},
     });
     if(historicalRequests) throw new Error("LOCATION_HISTORICAL_REQUESTS");
+    const retiredStocks=await tx.inventoryInstance.count({where:{storageLocationId:sourceLocationId,status:"廃止"}});
+    if(retiredStocks)throw new Error("LOCATION_ARCHIVED_REFERENCES");
     const migratedStocks = await tx.inventoryInstance.updateMany({
-      where: { storageLocationId: sourceLocationId },
+      where: { storageLocationId: sourceLocationId, status:{not:"廃止"} },
       data: { storageLocationId: targetLocationId },
     });
     const migratedRequests = await tx.itemRegistrationRequest.updateMany({
@@ -55,6 +57,9 @@ async function mergeInventory(sourceLocationId: string, targetLocationId: string
       },
       data: { scopeValue: to.name, scopeLabel: to.name },
     });
+    await tx.archiveRecord.create({data:{entityType:"STORAGE_LOCATION",originalId:from.id,
+      snapshot:JSON.parse(JSON.stringify(from)),snapshotVersion:1,
+      archivedByUserId:actorId,reason}});
     await tx.storageLocation.delete({ where: { id: sourceLocationId } });
     await tx.adminActionLog.create({
       data: {
